@@ -1,0 +1,10 @@
+[service]
+#name = "my-cool-service" Optional, will take filename.
+path = "/home/isaacisback/dev/horust/example/service/first.sh"
+
+[start]
+delay = "10s"
+restart = "always"
+# after-service = ["my-other-service"]
+is-started-endpoint = ""
+health-check = ""
