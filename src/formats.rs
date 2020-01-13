@@ -26,6 +26,7 @@ impl Default for RestartStrategy {
 #[serde(rename_all = "kebab-case")]
 pub struct Service {
     pub name: String,
+    // TODO: Change to program + args.
     pub path: PathBuf,
     #[serde(default)]
     pub restart: RestartStrategy,

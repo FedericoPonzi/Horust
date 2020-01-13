@@ -3,47 +3,36 @@ use crate::formats::Service;
 use std::collections::HashMap;
 use std::hash::Hash;
 
-/**
-   B -> A, C
-   A-> B
-   C -> B
-   {
-        B: 2
-        A: 0
-   [B, C
-
-   A -> B
-
-
-*/
-
 /// Get a starting executon order
 /// Result is a vector of vectors(batches) of Service.
 /// Each batch has no dependence between each other so they can be started in parallel.
-pub fn topological_sort(serv: Vec<Service>) -> Result<Vec<Vec<Service>>> {
+/// TODO: this might deadlock if `services` is not a DAG.
+pub fn topological_sort(services: Vec<Service>) -> Result<Vec<Vec<Service>>> {
     // Keep a service_name : Service map.
-    let mut name_serv = serv
+    let mut name_serv = services
         .iter()
         .cloned()
         .map(|srv| (srv.name.clone(), srv))
         .collect::<HashMap<String, Service>>();
     // Create an adjacency list: Service -> [ services ]
-    let mut adj_list = serv.iter().cloned().fold(HashMap::new(), |mut acc, srv| {
-        let service_name = srv.name.clone();
-        if !acc.contains_key(&service_name) {
-            acc.insert(service_name.clone(), Vec::new());
-        }
-        srv.start_after.into_iter().for_each(|dep| {
-            let mut old_adjs: Vec<String> = acc.remove(&dep).unwrap_or(Vec::new());
-            old_adjs.push(service_name.clone());
-            acc.insert(dep, old_adjs);
+    let mut adj_list = services
+        .iter()
+        .cloned()
+        .fold(HashMap::new(), |mut acc, srv| {
+            let service_name = srv.name.clone();
+            if !acc.contains_key(&service_name) {
+                acc.insert(service_name.clone(), Vec::new());
+            }
+            srv.start_after.into_iter().for_each(|dep| {
+                let mut old_adjs: Vec<String> = acc.remove(&dep).unwrap_or(Vec::new());
+                old_adjs.push(service_name.clone());
+                acc.insert(dep, old_adjs);
+            });
+            acc
         });
-        acc
-    });
-    //.collect::<HashMap<String, Vec<String>>>();
 
     // Count the indegree of each node
-    let mut indegree: HashMap<String, u64> = serv
+    let mut indegree: HashMap<String, u64> = services
         .into_iter()
         .map(|srv| (srv.name, srv.start_after.len() as u64))
         .collect();
@@ -54,7 +43,7 @@ pub fn topological_sort(serv: Vec<Service>) -> Result<Vec<Vec<Service>>> {
 
     while !indegree.is_empty() {
         println!("Indegree not empty! Indegree: {:?}", indegree);
-        let (no_deps, new_indegree): (HashMap<String, u64>, HashMap<String, u64>) = indegree
+        let (no_deps, new_indegree) = indegree
             .into_iter()
             .partition(|(name, indegree)| *indegree == 0);
         indegree = new_indegree;
@@ -64,7 +53,7 @@ pub fn topological_sort(serv: Vec<Service>) -> Result<Vec<Vec<Service>>> {
             .map(|v| name_serv.get(v).unwrap().to_owned())
             .collect();
         ret.push(as_v);
-        // Update adj_list, by removing no_deps nodes.
+        // Update adj_list, by removing no_deps nodes. Lower indegree for each dependant service.
         println!("No_deps: {:?}", no_deps);
         no_deps.into_iter().for_each(|(name, _zero_deg)| {
             let dependants = adj_list.remove(&name).unwrap();
@@ -109,9 +98,17 @@ mod test {
     pub fn test_top_sort() -> Result<()> {
         let a = Service::from_name("a");
         let b = Service::start_after("b", vec!["a"]);
-        let simple = vec![a.clone(), b.clone()];
-        let res = topological_sort(simple)?;
-        let expected = vec![vec![a], vec![b]];
+        let res = topological_sort(vec![a.clone(), b.clone()])?;
+        let expected = vec![vec![a.clone()], vec![b.clone()]];
+        assert_eq!(res, expected);
+
+        let c = Service::start_after("c", vec!["a"]);
+        let res = topological_sort(vec![a.clone(), b.clone(), c.clone()])?;
+        let expected = vec![vec![a.clone()], vec![b.clone(), c.clone()]];
+        assert_eq!(res, expected);
+
+        let res = topological_sort(vec![a.clone(), b.clone(), c.clone()])?;
+        let expected = vec![vec![a.clone()], vec![b.clone(), c.clone()]];
         assert_eq!(res, expected);
         Ok(())
     }
