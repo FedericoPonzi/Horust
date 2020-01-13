@@ -33,15 +33,14 @@ http://supervisord.org/installing.html
 [service]
 name = "my-cool-service" #Optional, will take filename.toml.
 ```
-* `path` = `string`: Path of the program/script to run.
-```
-[service]
-path = "/home/federicoponzi/dev/horust/example/service/first.sh"
-```
-* `command` = `string`: Will run the provided command using `sh` shell, like: `sh -c 'your command here'`.
+* `command` = `string`: Specify a command to run, or a full path. You can also add arguments. If a full path is not provided, the binary will be searched using the $PATH env variable.
 ```
 [service]
 command = "curl google.com"
+```
+```
+[service]
+command = "/home/federicoponzi/dev/main.sh"
 ```
 * `wd` = `string`: Change the current working directory to the value of wd, before spawning the service.
 ```toml
