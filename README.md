@@ -51,8 +51,9 @@ wd = "/"
 * `restart` = `always|on-failure|never`: Defines the restart strategy.
 ```
 [service]
-wd = "on-failure"
+restart = "on-failure"
 ```
+
 * `readiness` = `health|custom command`: If not present, the service will be considered ready as soon as has been spawned. Otherwise, use:
     * `health`: Use the same strategy defined in the health configuration, 
     * `custom command`: If the custom command is succesfull then your service is ready.
@@ -63,4 +64,14 @@ readiness = "health"
 * `restart-backoff` = `string`: If the service cannot be started, use this backoff time before retrying again.
 
 ### Healthness Check
-You can check the healthness of your system using an endpoint:
+You can check the healthness of your system using an endpoint.
+ * You can use the enforce dependency to kill every dependent system.
+
+```toml
+[service]
+name = "my-cool-service"
+command = "curl google.com"
+wd = "/tmp/"
+restart = "always"
+restart-backoff = "10s"
+```
