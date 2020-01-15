@@ -79,37 +79,37 @@ mod test {
             Service {
                 name: name.to_owned(),
                 start_after: start_after.into_iter().map(|v| v.into()).collect(),
-                path: "".into(),
+                working_directory: "".into(),
                 restart: RestartStrategy::Always,
                 start_delay: Duration::from_secs(0),
+                command: "".to_string(),
+                restart_backoff: Default::default(),
             }
         }
         fn from_name(name: &str) -> Self {
-            Service {
-                name: name.to_owned(),
-                start_after: Vec::new(),
-                path: "".into(),
-                restart: RestartStrategy::Always,
-                start_delay: Duration::from_secs(0),
-            }
+            Self::start_after(name, Vec::new())
         }
     }
     #[test]
     pub fn test_top_sort() -> Result<()> {
         let a = Service::from_name("a");
         let b = Service::start_after("b", vec!["a"]);
+
         let res = topological_sort(vec![a.clone(), b.clone()])?;
         let expected = vec![vec![a.clone()], vec![b.clone()]];
-        assert_eq!(res, expected);
+        assert_eq!(res, expected, "a -> b");
 
         let c = Service::start_after("c", vec!["a"]);
         let res = topological_sort(vec![a.clone(), b.clone(), c.clone()])?;
         let expected = vec![vec![a.clone()], vec![b.clone(), c.clone()]];
-        assert_eq!(res, expected);
+        assert_eq!(res, expected, "(a-> (b, c)");
 
-        let res = topological_sort(vec![a.clone(), b.clone(), c.clone()])?;
-        let expected = vec![vec![a.clone()], vec![b.clone(), c.clone()]];
-        assert_eq!(res, expected);
+        let d = Service::from_name("d");
+        let e = Service::from_name("e");
+
+        let res = topological_sort(vec![a.clone(), d.clone(), e.clone()])?;
+        let expected = vec![vec![a.clone(), e.clone(), d.clone()]];
+        assert_eq!(res, expected, "(a,e,d)");
         Ok(())
     }
 }
