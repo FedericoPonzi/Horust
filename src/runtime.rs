@@ -74,22 +74,6 @@ mod test {
     use crate::runtime::topological_sort;
     use std::time::Duration;
 
-    impl Service {
-        pub fn start_after(name: &str, start_after: Vec<&str>) -> Self {
-            Service {
-                name: name.to_owned(),
-                start_after: start_after.into_iter().map(|v| v.into()).collect(),
-                working_directory: "".into(),
-                restart: RestartStrategy::Always,
-                start_delay: Duration::from_secs(0),
-                command: "".to_string(),
-                restart_backoff: Default::default(),
-            }
-        }
-        fn from_name(name: &str) -> Self {
-            Self::start_after(name, Vec::new())
-        }
-    }
     #[test]
     pub fn test_top_sort() -> Result<()> {
         let a = Service::from_name("a");

@@ -1,8 +1,9 @@
 mod error;
 mod formats;
+mod horust;
 mod runtime;
-
-use crate::formats::{Horust, Service};
+use crate::formats::Service;
+use crate::horust::Horust;
 use crate::runtime::topological_sort;
 use std::io;
 use std::path::Path;
@@ -30,7 +31,8 @@ fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     //1. Fetch services:
     let opt = Opts::from_args();
     println!("Opts: {:#?}", opt);
-    let horust = Horust::fetch_services("/etc/horust/services");
+    let path = "/home/isaacisback/dev/rust/horust/examples/services";
+    let horust = Horust::from_services_dir(path)?;
     horust.run();
 
     Ok(())

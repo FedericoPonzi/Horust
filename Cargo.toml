@@ -12,3 +12,6 @@ nix = "~0.16"
 parse_duration = "~2.0"
 clap = "~2.33"
 structopt = "~0.3"
+
+[dev-dependencies]
+tempdir = "~0.3"
