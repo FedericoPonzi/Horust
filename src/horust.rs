@@ -1,20 +1,16 @@
 use crate::error::HorustError;
+use crate::error::Result;
 use crate::formats::{Service, ServiceName};
 use libc::{_exit, STDOUT_FILENO};
 use nix::sys::signal::{sigaction, SaFlags, SigAction, SigHandler, SigSet, SIGCHLD};
 use nix::sys::wait::waitpid;
-use nix::unistd::{chdir, execve, execvp, getpid, Pid};
 use nix::unistd::{fork, getppid, ForkResult};
-use serde::{Deserialize, Deserializer, Serialize};
+use nix::unistd::{getpid, Pid};
 use std::collections::HashMap;
 use std::ffi::{c_void, CStr, CString, OsStr};
 use std::fmt::Debug;
+use std::fs;
 use std::path::{Path, PathBuf};
-use std::process::exit;
-use std::thread::sleep;
-use std::time::Duration;
-use std::{fs, io, ptr};
-use structopt::StructOpt;
 
 #[derive(Debug)]
 pub struct Horust {
@@ -32,6 +28,8 @@ impl Horust {
         })
     }
     pub fn run(&self) -> super::error::Result<()> {
+        self.setup_signal_handling();
+
         self.services.iter().for_each(|services| {
             services.iter().for_each(|service| {
                 self.spawn_process(service);
@@ -56,41 +54,45 @@ impl Horust {
             })
     }
 
-    pub fn fetch_services<P>(path: &P) -> io::Result<Vec<Service>>
+    pub fn fetch_services<P>(path: &P) -> Result<Vec<Service>>
     where
         P: AsRef<Path> + ?Sized + AsRef<OsStr> + Debug,
     {
         eprintln!("Fetching services from : {:?}", path);
-        fs::read_dir(path).map(|dir| {
-            dir.into_iter()
-                .filter_map(std::result::Result::ok)
-                .map(|direntry| direntry.path())
-                .filter(|path: &PathBuf| {
-                    eprintln!("Evaluating file: {:?}", path.display());
-                    eprintln!(
-                        "Result: {}, {}",
-                        path.is_file(),
-                        path.extension()
-                            .unwrap_or("".as_ref())
-                            .to_str()
-                            .unwrap()
-                            .ends_with("toml")
-                    );
-                    path.is_file()
-                        && path
-                            .extension()
-                            .unwrap_or("".as_ref())
-                            .to_str()
-                            .unwrap()
-                            .ends_with("toml")
-                })
-                .map(|path| {
-                    let mut ret: Service =
-                        toml::from_str(fs::read_to_string(path).unwrap().as_str()).unwrap();
-                    ret
-                })
-                .collect::<Vec<Service>>()
-        })
+        fs::read_dir(path)
+            .map_err(HorustError::from)
+            .and_then(|dir| {
+                dir.filter_map(std::result::Result::ok)
+                    .map(|dir_entry| dir_entry.path())
+                    .filter(|path: &PathBuf| {
+                        /*eprintln!("Evaluating file: {:?}", path.display());
+                        eprintln!(
+                            "Result: {}, {}",
+                            path.is_file(),
+                            path.extension()
+                                .unwrap_or("".as_ref())
+                                .to_str()
+                                .unwrap()
+                                .ends_with("toml")
+                        );*/
+                        path.is_file()
+                            && path
+                                .extension()
+                                .unwrap_or_else(|| "".as_ref())
+                                .to_str()
+                                .unwrap()
+                                .ends_with("toml")
+                    })
+                    .map(|path| {
+                        fs::read_to_string(path)
+                            .map_err(HorustError::from)
+                            .and_then(|content| {
+                                toml::from_str::<Service>(content.as_str())
+                                    .map_err(HorustError::from)
+                            })
+                    })
+                    .collect::<Result<Vec<Service>>>()
+            })
     }
 
     pub fn run_service(&self, service: &Service) {
@@ -101,8 +103,8 @@ impl Horust {
 
         let arg_cstrings = chunks
             .into_iter()
-            .map(|arg| CString::new(arg))
-            .collect::<Result<Vec<_>, _>>()
+            .map(|arg| CString::new(arg).map_err(HorustError::from))
+            .collect::<Result<Vec<_>>>()
             .unwrap();
         let arg_cptr: Vec<&CStr> = arg_cstrings.iter().map(|c| c.as_c_str()).collect();
         eprintln!("Filepath: {:?}", filename);
@@ -154,7 +156,7 @@ impl Horust {
     }
     fn print_signal_safe(s: &str) {
         unsafe {
-            libc::write(STDOUT_FILENO, s.as_ptr() as (*const c_void), s.len());
+            libc::write(STDOUT_FILENO, s.as_ptr() as *const c_void, s.len());
         }
     }
 
@@ -172,6 +174,7 @@ mod test {
     use std::path::PathBuf;
     use tempdir::TempDir;
 
+    //TODO
     fn create_test_dir() -> io::Result<TempDir> {
         let ret = TempDir::new("horust").unwrap();
         let a = Service::from_name("a");

@@ -9,7 +9,7 @@ libc = "~0.2"
 toml = "~0.5"
 serde = {version = "~1.0", features = ["derive"] }
 nix = "~0.16"
-parse_duration = "~2.0"
+humantime-serde = "~0.1"
 clap = "~2.33"
 structopt = "~0.3"
 

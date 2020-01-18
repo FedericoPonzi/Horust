@@ -1,4 +1,3 @@
 #!/bin/bash
-echo $(pwd) > /tmp/out.txt
-
+echo "pwd is: " $(pwd)
 #ls -l >> /tmp/out.txt

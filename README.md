@@ -12,9 +12,13 @@ start-delay = "10s"
 start-after = "my-other-service.toml"
 ```
 
-
 ### TODO:
-
+* Improve handle RestartStrategy
+* Add parser for Duration
+* Connect stdout to somewhere (maybe by default to horust's stdout.);
+* Wait for all processes to die, or until sigterm is received.
+* Spawn all the processes with a new process group (to ease the shutdown via killpg)
+* Echo simple service
 
 ### Features:
 * Run it as a standalone program. 

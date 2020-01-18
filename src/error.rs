@@ -1,12 +1,13 @@
-use std::fmt::{Display, Formatter};
-use std::io::Error;
-use std::{fmt, io};
+use std::ffi::NulError;
+use std::fmt::{self, Display, Formatter};
 
 pub type Result<T> = std::result::Result<T, HorustError>;
 
 #[derive(Debug)]
 pub enum ErrorKind {
     Io(std::io::Error),
+    SerDe(toml::de::Error),
+    NullError(std::ffi::NulError),
 }
 
 #[derive(Debug)]
@@ -31,10 +32,25 @@ impl From<ErrorKind> for HorustError {
         HorustError { kind }
     }
 }
+impl From<toml::de::Error> for HorustError {
+    fn from(err: toml::de::Error) -> Self {
+        HorustError {
+            kind: ErrorKind::SerDe(err),
+        }
+    }
+}
 impl From<std::io::Error> for HorustError {
-    fn from(err: Error) -> Self {
+    fn from(err: std::io::Error) -> Self {
         HorustError {
             kind: ErrorKind::Io(err),
+        }
+    }
+}
+
+impl From<std::ffi::NulError> for HorustError {
+    fn from(err: NulError) -> Self {
+        HorustError {
+            kind: ErrorKind::NullError(err),
         }
     }
 }

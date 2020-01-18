@@ -1,18 +1,7 @@
-use crate::error::HorustError;
-use libc::{_exit, STDOUT_FILENO};
-use nix::sys::signal::{sigaction, SaFlags, SigAction, SigHandler, SigSet, SIGCHLD};
-use nix::sys::wait::waitpid;
-use nix::unistd::{chdir, execve, execvp, getpid, Pid};
-use nix::unistd::{fork, getppid, ForkResult};
-use serde::{Deserialize, Deserializer, Serialize};
-use std::collections::HashMap;
-use std::ffi::{c_void, OsStr};
-use std::path::{Path, PathBuf};
-use std::process::exit;
-use std::thread::sleep;
+use nix::unistd::Pid;
+use serde::{Deserialize, Serialize};
+use std::path::PathBuf;
 use std::time::Duration;
-use std::{fs, io};
-use structopt::StructOpt;
 
 pub type ServiceName = String;
 
@@ -27,11 +16,29 @@ enum ServiceStatus {
     Failed,
 }
 
-#[derive(Serialize, Clone, Deserialize, Debug)]
+#[derive(Serialize, Clone, Deserialize, Debug, Eq, PartialEq)]
+#[serde(rename_all = "kebab-case")]
 pub enum RestartStrategy {
     Always,
     OnFailure,
     Never,
+}
+
+impl From<String> for RestartStrategy {
+    fn from(strategy: String) -> Self {
+        strategy.as_str().into()
+    }
+}
+
+impl From<&str> for RestartStrategy {
+    fn from(strategy: &str) -> Self {
+        match strategy.to_lowercase().as_str() {
+            "always" => RestartStrategy::Always,
+            "on-failure" => RestartStrategy::OnFailure,
+            "never" => RestartStrategy::Never,
+            _ => RestartStrategy::Never,
+        }
+    }
 }
 impl Default for RestartStrategy {
     fn default() -> Self {
@@ -39,7 +46,7 @@ impl Default for RestartStrategy {
     }
 }
 
-#[derive(Serialize, Clone, Deserialize, Debug)]
+#[derive(Serialize, Clone, Deserialize, Debug, Eq, PartialEq)]
 #[serde(rename_all = "kebab-case")]
 pub struct Service {
     pub name: String,
@@ -52,32 +59,8 @@ pub struct Service {
     pub start_after: Vec<ServiceName>,
     #[serde(default)]
     pub restart: RestartStrategy,
-    #[serde(default)]
+    #[serde(default, with = "humantime_serde")]
     pub restart_backoff: Duration,
-}
-
-impl Service {
-    pub fn new(command: String) -> Self {
-        Service {
-            name: "Myservice".to_string(),
-            command,
-            working_directory: "".into(),
-            start_after: vec![],
-            start_delay: Default::default(),
-            restart: RestartStrategy::Never,
-            restart_backoff: Default::default(),
-        }
-    }
-}
-impl std::cmp::PartialEq for Service {
-    fn eq(&self, other: &Self) -> bool {
-        self.name == other.name && self.command == other.command
-    }
-}
-impl std::cmp::Eq for Service {}
-
-fn default_duration() -> Duration {
-    Duration::from_secs(0)
 }
 
 #[cfg(test)]
@@ -100,5 +83,35 @@ mod test {
         pub fn from_name(name: &str) -> Self {
             Self::start_after(name, Vec::new())
         }
+    }
+    #[test]
+    pub fn test_should_deserialize() {
+        let name = "my-cool-service";
+        let command = "/home/isaacisback/dev/rust/horust/examples/services/first.sh";
+        let working_directory = "/tmp/";
+        let restart = "always";
+        let restart_backoff = "10s";
+        let service = format!(
+            r#"
+name = "{}"
+command = "{}"
+working-directory = "{}"
+restart = "{}"
+restart-backoff = "{}"
+"#,
+            name, command, working_directory, restart, restart_backoff
+        );
+        let des = toml::from_str(&service);
+        let des: Service = des.unwrap();
+        let expected = Service {
+            name: name.into(),
+            command: command.into(),
+            working_directory: working_directory.into(),
+            start_delay: Default::default(),
+            start_after: vec![],
+            restart: restart.into(),
+            restart_backoff: Duration::from_secs(10),
+        };
+        assert_eq!(des, expected);
     }
 }
