@@ -3,6 +3,7 @@ use crate::error::Result;
 use crate::formats::ServiceStatus::Running;
 use crate::formats::{RestartStrategy, Service, ServiceName, ServiceStatus};
 use libc::{_exit, STDOUT_FILENO};
+use libc::{prctl, PR_SET_CHILD_SUBREAPER};
 use nix::sys::signal::{sigaction, SaFlags, SigAction, SigHandler, SigSet, SIGCHLD};
 use nix::sys::wait::{waitpid, WaitStatus};
 use nix::unistd::{fork, getppid, ForkResult};
@@ -146,7 +147,11 @@ impl Horust {
             std::thread::sleep(Duration::from_secs(1))
         }
     }
+
     pub fn run(&mut self) -> super::error::Result<()> {
+        unsafe {
+            prctl(PR_SET_CHILD_SUBREAPER, 1, 0, 0, 0);
+        }
         //self.setup_signal_handling();
         let supervised = Arc::clone(&self.supervised);
         std::thread::spawn(|| {
@@ -163,24 +168,17 @@ impl Horust {
                         .start_after()
                         .iter()
                         .filter(|s| {
-                            let v = sup
-                                .iter()
+                            sup.iter()
                                 .filter(|s| {
                                     s.status != ServiceStatus::Running
                                         && s.status != ServiceStatus::Failed
                                 })
                                 .count()
-                                != 0;
-                            println!("For v: {:?}", v);
-                            v
+                                != 0
                         })
                         .count()
                         == 0;
                     if can_run && service.status == ServiceStatus::Stopped {
-                        println!(
-                            "Can {} service run? {}, service status: {:?}!",
-                            service.service.name, can_run, service.status
-                        );
                         service.status = ServiceStatus::ToBeRun;
                         let supervised_ref = Arc::clone(&self.supervised);
                         let service = service.service.clone();
@@ -211,13 +209,7 @@ impl Horust {
                 .iter()
                 .filter(|sh| sh.status != ServiceStatus::Finished)
                 .count();
-            /*println!(
-                "Ret: {:?}",
-                sup.iter()
-                    .cloned()
-                    .filter(|sh| sh.status != ServiceStatus::Finished)
-                    .collect::<Vec<ServiceHandler>>()
-            );*/
+
             // Every process has finished:
             if ret == 0 {
                 break;
@@ -236,7 +228,7 @@ impl Horust {
         P: AsRef<Path> + ?Sized + AsRef<OsStr> + Debug,
     {
         Self::fetch_services(path).map_err(Into::into).map(|servs| {
-            eprintln!("Servs found: {:?}", servs);
+            eprintln!("Services found: {:?}", servs);
             Horust::new(servs)
         })
     }

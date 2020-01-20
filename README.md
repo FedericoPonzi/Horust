@@ -13,14 +13,9 @@ start-after = "my-other-service.toml"
 ```
 
 ### TODO:
-* Improve handle RestartStrategy
-* Add parser for Duration
-* Connect stdout to somewhere (maybe by default to horust's stdout.);
 * Wait for all processes to die, or until sigterm is received.
 * Spawn all the processes with a new process group (to ease the shutdown via killpg)
-* Echo sample service to stdout.
 * Add logger
-* Reaping thread: A thread which cosntantly calls waitpid.
 * subproc reaper.
 
 ### Features:

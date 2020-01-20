@@ -1,9 +1,7 @@
 mod error;
 mod formats;
 mod horust;
-mod runtime;
 use crate::horust::Horust;
-use std::time::Duration;
 use structopt::StructOpt;
 
 #[derive(StructOpt, Debug)]
@@ -16,7 +14,16 @@ struct Opts {
     #[structopt(short, long, parse(from_occurrences))]
     /// A level of verbosity, and can be used multiple times
     verbose: i32,
+    #[structopt(long = "sample-service")]
+    sample_service: bool,
 }
+
+const SAMPLE: &str = r#"name = "my-cool-service"
+command = "/home/isaacisback/dev/rust/horust/examples/services/first.sh"
+working-directory = "/tmp/"
+restart = "never"
+start-delay = "2s"
+#restart-backoff = "10s"#;
 
 fn main() -> Result<(), error::HorustError> {
     /*
@@ -26,7 +33,10 @@ fn main() -> Result<(), error::HorustError> {
     chdir("/");
     */
     let opt = Opts::from_args();
-    println!("Opts: {:#?}", opt);
+    if opt.sample_service {
+        println!("{}", SAMPLE);
+        return Ok(());
+    }
     let path = "/home/isaacisback/dev/rust/horust/examples/services";
     Horust::from_services_dir(path)?.run()
 }
