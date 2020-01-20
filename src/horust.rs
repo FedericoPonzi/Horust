@@ -157,7 +157,7 @@ impl Horust {
         std::thread::spawn(|| {
             Horust::supervisor_thread(supervised);
         });
-        println!("Going to start services!");
+        debug!("Going to start services!");
         loop {
             let mut sup = self.supervised.lock().unwrap();
             *sup = sup
@@ -238,7 +238,7 @@ impl Horust {
     where
         P: AsRef<Path> + ?Sized + AsRef<OsStr> + Debug,
     {
-        eprintln!("Fetching services from : {:?}", path);
+        debug!("Fetching services from : {:?}", path);
         fs::read_dir(path)
             .map_err(HorustError::from)
             .and_then(|dir| {
@@ -283,7 +283,7 @@ impl Horust {
         }
     }
     pub fn exec_service(service: &Service) {
-        eprintln!("Set cwd: {:?}", &service.working_directory);
+        debug("Set cwd: {:?}", &service.working_directory);
         std::env::set_current_dir(&service.working_directory).unwrap();
         let mut chunks: Vec<&str> = service.command.split_whitespace().collect();
         let filename = CString::new(chunks.remove(0)).unwrap();
@@ -294,7 +294,7 @@ impl Horust {
             .collect::<Result<Vec<_>>>()
             .unwrap();
         let arg_cptr: Vec<&CStr> = arg_cstrings.iter().map(|c| c.as_c_str()).collect();
-        eprintln!("Filepath: {:?}", filename);
+        debug!("Filepath: {:?}", filename);
         // TODO: clear signal mask if needed.
         nix::unistd::execvp(filename.as_ref(), arg_cptr.as_ref()).expect("Execvp() failed: ");
     }

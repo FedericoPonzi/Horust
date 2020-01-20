@@ -2,7 +2,10 @@ mod error;
 mod formats;
 mod horust;
 use crate::horust::Horust;
+use nix::unistd::chdir;
 use structopt::StructOpt;
+#[macro_use]
+extern crate log;
 
 #[derive(StructOpt, Debug)]
 #[structopt(version = "0.1", author = "Federico Ponzi", name = "horust")]
@@ -26,12 +29,14 @@ start-delay = "2s"
 #restart-backoff = "10s"#;
 
 fn main() -> Result<(), error::HorustError> {
-    /*
-    if (getpid() != 1) {
-        std::process::exit(1);
-    }
+    // Set up logging.
+    let env = env_logger::Env::new()
+        .filter("HORUST_LOG")
+        .write_style("HORUST_LOG_STYLE");
+    env_logger::init_from_env(env);
+
     chdir("/");
-    */
+
     let opt = Opts::from_args();
     if opt.sample_service {
         println!("{}", SAMPLE);

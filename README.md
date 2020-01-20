@@ -15,8 +15,6 @@ start-after = "my-other-service.toml"
 ### TODO:
 * Wait for all processes to die, or until sigterm is received.
 * Spawn all the processes with a new process group (to ease the shutdown via killpg)
-* Add logger
-* subproc reaper.
 
 ### Features:
 * Run it as a standalone program. 
