@@ -123,6 +123,17 @@ impl Horust {
                         }
                         RestartStrategy::Always => {
                             //TODO: Restart
+                            *locked = locked
+                                .iter()
+                                .cloned()
+                                .map(|mut sh| {
+                                    println!("Going to set this to Stopped :)");
+                                    if sh.name() == service.name() {
+                                        sh.status = ServiceStatus::Stopped;
+                                    }
+                                    sh
+                                })
+                                .collect();
                         }
                     }
                 }
