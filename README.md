@@ -18,7 +18,10 @@ start-after = "my-other-service.toml"
 * Connect stdout to somewhere (maybe by default to horust's stdout.);
 * Wait for all processes to die, or until sigterm is received.
 * Spawn all the processes with a new process group (to ease the shutdown via killpg)
-* Echo simple service
+* Echo sample service to stdout.
+* Add logger
+* Reaping thread: A thread which cosntantly calls waitpid.
+* subproc reaper.
 
 ### Features:
 * Run it as a standalone program. 
@@ -27,6 +30,9 @@ start-after = "my-other-service.toml"
 
 ### Related:
 http://supervisord.org/installing.html
+
+### FAQ:
+What happens to dependant process, if a dependency process dies?
 
 
 ## Configuration

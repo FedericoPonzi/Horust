@@ -3,6 +3,7 @@ mod formats;
 mod horust;
 mod runtime;
 use crate::horust::Horust;
+use std::time::Duration;
 use structopt::StructOpt;
 
 #[derive(StructOpt, Debug)]

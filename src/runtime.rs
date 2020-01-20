@@ -6,6 +6,9 @@ use std::collections::BTreeMap;
 /// Result is a vector of vectors(batches) of Service.
 /// Each batch has no dependence between each other so they can be started in parallel.
 /// TODO: this might deadlock if `services` is not a DAG.
+/// TODO: this topological sorting works, every process in set index i + 1 has only
+/// dependencies in `0...i`. But, this might lead to a non optimal solution, because if a process j + 1 has a dependency
+/// in the set `i`, it will become dependent to all the process in position i.
 pub fn topological_sort(services: Vec<Service>) -> Result<Vec<Vec<Service>>> {
     // Keep a service_name : Service map.
     let name_serv = services
@@ -92,6 +95,7 @@ mod test {
         let res = topological_sort(vec![a.clone(), d.clone(), e.clone()])?;
         let expected = vec![vec![a.clone(), d.clone(), e.clone()]];
         assert_eq!(res, expected, "(a,e,d)");
+
         Ok(())
     }
 }

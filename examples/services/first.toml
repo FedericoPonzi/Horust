@@ -1,5 +1,6 @@
 name = "my-cool-service"
 command = "/home/isaacisback/dev/rust/horust/examples/services/first.sh"
 working-directory = "/tmp/"
-restart = "always"
+restart = "never"
+start-delay = "1s"
 #restart-backoff = "10s"

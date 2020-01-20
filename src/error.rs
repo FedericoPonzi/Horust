@@ -8,6 +8,7 @@ pub enum ErrorKind {
     Io(std::io::Error),
     SerDe(toml::de::Error),
     NullError(std::ffi::NulError),
+    Nix(nix::Error),
 }
 
 #[derive(Debug)]
@@ -43,6 +44,13 @@ impl From<std::io::Error> for HorustError {
     fn from(err: std::io::Error) -> Self {
         HorustError {
             kind: ErrorKind::Io(err),
+        }
+    }
+}
+impl From<nix::Error> for HorustError {
+    fn from(err: nix::Error) -> Self {
+        HorustError {
+            kind: ErrorKind::Nix(err),
         }
     }
 }

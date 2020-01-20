@@ -1,3 +1,3 @@
 #!/bin/bash
-echo "pwd is: " $(pwd)
+echo "[First.sh] pwd is: " $(pwd)
 #ls -l >> /tmp/out.txt

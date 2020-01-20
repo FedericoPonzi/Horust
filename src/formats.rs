@@ -10,10 +10,14 @@ struct ServiceIstance {
     pid: Pid,
     status: ServiceStatus,
 }
-enum ServiceStatus {
-    Stop,
+
+#[derive(Serialize, Clone, Deserialize, Debug, Eq, PartialEq)]
+pub enum ServiceStatus {
+    ToBeRun,
     Running,
     Failed,
+    Finished,
+    Stopped,
 }
 
 #[derive(Serialize, Clone, Deserialize, Debug, Eq, PartialEq)]
@@ -53,7 +57,7 @@ pub struct Service {
     pub command: String,
     #[serde(default)]
     pub working_directory: PathBuf,
-    #[serde(default)]
+    #[serde(default, with = "humantime_serde")]
     pub start_delay: Duration,
     #[serde(default = "Vec::new")]
     pub start_after: Vec<ServiceName>,
@@ -90,6 +94,7 @@ mod test {
         let command = "/home/isaacisback/dev/rust/horust/examples/services/first.sh";
         let working_directory = "/tmp/";
         let restart = "always";
+        let start_delay = "1s";
         let restart_backoff = "10s";
         let service = format!(
             r#"
@@ -98,8 +103,9 @@ command = "{}"
 working-directory = "{}"
 restart = "{}"
 restart-backoff = "{}"
+start-delay = "{}"
 "#,
-            name, command, working_directory, restart, restart_backoff
+            name, command, working_directory, restart, restart_backoff, start_delay
         );
         let des = toml::from_str(&service);
         let des: Service = des.unwrap();
@@ -107,7 +113,7 @@ restart-backoff = "{}"
             name: name.into(),
             command: command.into(),
             working_directory: working_directory.into(),
-            start_delay: Default::default(),
+            start_delay: Duration::from_secs(1),
             start_after: vec![],
             restart: restart.into(),
             restart_backoff: Duration::from_secs(10),
