@@ -83,60 +83,71 @@ impl Horust {
     }
 
     fn supervisor_thread(supervised: Arc<Mutex<Vec<ServiceHandler>>>) {
+        let mut reapable = vec![];
         loop {
             match waitpid(Pid::from_raw(-1), None) {
                 Ok(wait_status) => {
                     let pid = wait_status.pid().expect("No pid!?");
-                    println!("Pid has exited: {}", pid);
-                    let mut locked = supervised.lock().unwrap();
-                    println!("{:?}", locked);
-                    let service: &ServiceHandler = locked
-                        .iter()
-                        .filter(|s| s.pid == Some(pid))
-                        .take(1)
-                        .collect::<Vec<&ServiceHandler>>()
-                        .get(0)
-                        .unwrap(); //.get(&pid).expect("Pid not found!");
-                    match service.restart() {
-                        RestartStrategy::Never => {
-                            eprintln!("Pid successfully exited.");
-                            //let mut locked = supervised.lock().unwrap();
-                            *locked = locked
-                                .iter()
-                                .cloned()
-                                .map(|mut sh| {
-                                    println!("Going to set this to finished :)");
-                                    if sh.name() == service.name() {
-                                        sh.status = ServiceStatus::Finished;
+                    debug!("Pid has exited: {}", pid);
+                    reapable.push(pid);
+                    reapable = reapable
+                        .into_iter()
+                        .filter_map(|pid| {
+                            let mut locked = supervised.lock().unwrap();
+                            debug!("{:?}", locked);
+                            let service: Option<&ServiceHandler> =
+                                locked.iter().filter(|s| s.pid == Some(pid)).take(1).last();
+
+                            // It might happen that before supervised was updated, the process was already started, executed,
+                            // and exited. Thus we're trying to reaping it, but there is still no map Pid -> Service.
+                            if let Some(service) = service {
+                                match service.restart() {
+                                    RestartStrategy::Never => {
+                                        eprintln!("Pid successfully exited.");
+                                        //let mut locked = supervised.lock().unwrap();
+                                        *locked = locked
+                                            .iter()
+                                            .cloned()
+                                            .map(|mut sh| {
+                                                println!("Going to set this to finished :)");
+                                                if sh.name() == service.name() {
+                                                    sh.status = ServiceStatus::Finished;
+                                                }
+                                                sh
+                                            })
+                                            .collect();
+                                        println!("new locked: {:?}", locked);
                                     }
-                                    sh
-                                })
-                                .collect();
-                            println!("new locked: {:?}", locked);
-                        }
-                        RestartStrategy::OnFailure => {
-                            if let WaitStatus::Exited(pid, exit) = wait_status {
-                                if exit != 0 {
-                                    //TODO
-                                    eprintln!("Going to rerun the process because it failed!");
+                                    RestartStrategy::OnFailure => {
+                                        if let WaitStatus::Exited(pid, exit) = wait_status {
+                                            if exit != 0 {
+                                                //TODO
+                                                eprintln!(
+                                                    "Going to rerun the process because it failed!"
+                                                );
+                                            }
+                                        }
+                                    }
+                                    RestartStrategy::Always => {
+                                        //TODO: Restart
+                                        *locked = locked
+                                            .iter()
+                                            .cloned()
+                                            .map(|mut sh| {
+                                                println!("Going to set this to Stopped :)");
+                                                if sh.name() == service.name() {
+                                                    sh.status = ServiceStatus::Stopped;
+                                                }
+                                                sh
+                                            })
+                                            .collect();
+                                    }
                                 }
+                                return None;
                             }
-                        }
-                        RestartStrategy::Always => {
-                            //TODO: Restart
-                            *locked = locked
-                                .iter()
-                                .cloned()
-                                .map(|mut sh| {
-                                    println!("Going to set this to Stopped :)");
-                                    if sh.name() == service.name() {
-                                        sh.status = ServiceStatus::Stopped;
-                                    }
-                                    sh
-                                })
-                                .collect();
-                        }
-                    }
+                            Some(pid)
+                        })
+                        .collect();
                 }
                 Err(err) => {
                     if !err.to_string().contains("ECHILD") {
@@ -267,13 +278,13 @@ impl Horust {
     pub fn spawn_process(service: &Service) -> Result<Pid> {
         match fork() {
             Ok(ForkResult::Child) => {
-                println!("Child PID: {}, PPID: {}.", getpid(), getppid());
+                debug!("Child PID: {}, PPID: {}.", getpid(), getppid());
                 Horust::exec_service(service);
                 unreachable!()
             }
 
             Ok(ForkResult::Parent { child, .. }) => {
-                println!("Spawned child with PID {}.", child);
+                debug!("Spawned child with PID {}.", child);
                 return Ok(child);
             }
 
@@ -283,7 +294,7 @@ impl Horust {
         }
     }
     pub fn exec_service(service: &Service) {
-        debug("Set cwd: {:?}", &service.working_directory);
+        debug!("Set cwd: {:?}", &service.working_directory);
         std::env::set_current_dir(&service.working_directory).unwrap();
         let mut chunks: Vec<&str> = service.command.split_whitespace().collect();
         let filename = CString::new(chunks.remove(0)).unwrap();

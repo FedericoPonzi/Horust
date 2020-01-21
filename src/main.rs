@@ -9,14 +9,10 @@ extern crate log;
 
 #[derive(StructOpt, Debug)]
 #[structopt(version = "0.1", author = "Federico Ponzi", name = "horust")]
-/// Horust is an supervisor system designed for containers.
+/// Horust is a complete supervisor and init system, designed for running in containers.
 struct Opts {
-    /// Sets a custom config file. Could have been an Option<T> with no default too
     #[structopt(short = "c", long = "config", default_value = "default.conf")]
     config: String,
-    #[structopt(short, long, parse(from_occurrences))]
-    /// A level of verbosity, and can be used multiple times
-    verbose: i32,
     #[structopt(long = "sample-service")]
     sample_service: bool,
 }
@@ -35,7 +31,7 @@ fn main() -> Result<(), error::HorustError> {
         .write_style("HORUST_LOG_STYLE");
     env_logger::init_from_env(env);
 
-    chdir("/");
+    //chdir("/").expect("Error: chdir()");
 
     let opt = Opts::from_args();
     if opt.sample_service {
