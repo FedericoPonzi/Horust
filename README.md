@@ -1,4 +1,7 @@
-#Horust
+# Horust
+[![GHA Build Status](https://github.com/FedericoPonzi/horust/workflows/CI/badge.svg)](https://github.com/FedericoPonzi/horust/actions?query=workflow%3ACI)
+[![MIT licensed](https://img.shields.io/badge/license-MIT-blue.svg)](./LICENSE)
+
 Horust is an supervisor system written in rust and designed to be run in containers. 
 
 ## How to use it
@@ -10,7 +13,7 @@ path = "/usr/bin/mycoolapp.sh"
 restart = "always"
 start-delay = "10s"
 start-after = "my-other-service.toml"
-```
+``` 
 
 ### TODO:
 * Kill all process when sigterm is received.
