@@ -4,7 +4,8 @@ use crate::formats::ServiceStatus::Running;
 use crate::formats::{RestartStrategy, Service, ServiceName, ServiceStatus};
 use libc::{_exit, STDOUT_FILENO};
 use libc::{prctl, PR_SET_CHILD_SUBREAPER};
-use nix::sys::signal::{sigaction, SaFlags, SigAction, SigHandler, SigSet, SIGCHLD};
+use nix::sys::signal::{sigaction, signal, SaFlags, SigAction, SigHandler, SigSet, SIGTERM};
+use nix::sys::wait::WaitStatus::Signaled;
 use nix::sys::wait::{waitpid, WaitStatus};
 use nix::unistd::{fork, getppid, ForkResult};
 use nix::unistd::{getpid, Pid};
@@ -13,6 +14,7 @@ use std::ffi::{c_void, CStr, CString, OsStr};
 use std::fmt::Debug;
 use std::fs;
 use std::path::{Path, PathBuf};
+use std::sync::atomic::AtomicBool;
 use std::sync::mpsc::{Receiver, Sender};
 use std::sync::{mpsc, Arc, Mutex};
 use std::time::Duration;
@@ -31,6 +33,8 @@ impl SignalSafe {
         }
     }
 }
+
+static SIGTERM_RECEIVED: AtomicBool = AtomicBool::new(false);
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 struct ServiceHandler {
@@ -301,29 +305,19 @@ impl Horust {
         // for example: `waitpid`.
         let flags = SaFlags::SA_RESTART;
         let sig_action = SigAction::new(
-            SigHandler::Handler(Horust::handle_sigchld),
+            SigHandler::Handler(Horust::handle_sigterm),
             flags,
             SigSet::empty(),
         );
 
-        if let Err(err) = unsafe { sigaction(SIGCHLD, &sig_action) } {
+        if let Err(err) = unsafe { sigaction(SIGTERM, &sig_action) } {
             panic!("sigaction() failed: {}", err);
         };
     }
-    extern "C" fn handle_sigchld(_: libc::c_int) {
-        SignalSafe::print("Received SIGCHILD.\n");
-        match waitpid(Pid::from_raw(-1), None) {
-            Ok(exit) => {
-                // exit: WaitStatus has pid and exit code.
-
-                SignalSafe::print(format!("Child exited: {:?}.\n", exit).as_ref());
-                //Horust::exit_signal_safe(0);
-            }
-            Err(err) => {
-                SignalSafe::print(format!("waitpid() failed {}.\n", err).as_ref());
-                //Horust::exit_signal_safe(1);
-            }
-        }
+    //TODO: killpg
+    extern "C" fn handle_sigterm(_: libc::c_int) {
+        SignalSafe::print("Received SIGTERM.\n");
+        SignalSafe::exit(1);
     }
 }
 
