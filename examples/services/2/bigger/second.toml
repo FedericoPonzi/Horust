@@ -1,0 +1,7 @@
+name = "second-service"
+command = "/home/isaacisback/dev/rust/horust/examples/services/2/bigger/first.sh second"
+working-directory = "/tmp/"
+restart = "never"
+start-after = ["my-first-service"]
+start-delay = "2s"
+#restart-backoff = "10s"

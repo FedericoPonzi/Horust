@@ -13,10 +13,11 @@ start-after = "my-other-service.toml"
 ```
 
 ### TODO:
-* Wait for all processes to die, or until sigterm is received.
+* Kill all process when sigterm is received.
 * Spawn all the processes with a new process group (to ease the shutdown via killpg)
 * Reload configuration via SIGHUP (or another signal because as of now it can be run in a terminal).
 * Create another binary for getting the status of the services.
+* healthchecks
 
 ### Features:
 * Run it as a standalone program. 

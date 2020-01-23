@@ -4,5 +4,5 @@ https://github.com/tokio-rs/mio/issues/16 and: https://github.com/tokio-rs/mio/i
 
 ## Run it with:
 ```bash
-RUST_LOG=debug cargo run 
+HORUST_LOG=debug cargo run 
 ```

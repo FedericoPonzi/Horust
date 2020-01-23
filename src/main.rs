@@ -38,6 +38,6 @@ fn main() -> Result<(), error::HorustError> {
         println!("{}", SAMPLE);
         return Ok(());
     }
-    let path = "/home/isaacisback/dev/rust/horust/examples/services";
+    let path = "/home/isaacisback/dev/rust/horust/examples/services/2/bigger";
     Horust::from_services_dir(path)?.run()
 }

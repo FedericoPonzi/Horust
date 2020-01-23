@@ -1,15 +1,8 @@
-use nix::unistd::Pid;
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 use std::time::Duration;
 
 pub type ServiceName = String;
-
-struct ServiceIstance {
-    service: Service,
-    pid: Pid,
-    status: ServiceStatus,
-}
 
 #[derive(Serialize, Clone, Deserialize, Debug, Eq, PartialEq)]
 pub enum ServiceStatus {
@@ -19,7 +12,15 @@ pub enum ServiceStatus {
     Finished,
     Stopped,
 }
-
+impl ServiceStatus {
+    pub fn from_exit(exit_code: i32) -> Self {
+        if exit_code == 0 {
+            ServiceStatus::Finished
+        } else {
+            ServiceStatus::Failed
+        }
+    }
+}
 #[derive(Serialize, Clone, Deserialize, Debug, Eq, PartialEq)]
 #[serde(rename_all = "kebab-case")]
 pub enum RestartStrategy {
