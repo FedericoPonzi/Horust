@@ -33,6 +33,7 @@ impl From<ErrorKind> for HorustError {
         HorustError { kind }
     }
 }
+
 impl From<toml::de::Error> for HorustError {
     fn from(err: toml::de::Error) -> Self {
         HorustError {
@@ -40,6 +41,7 @@ impl From<toml::de::Error> for HorustError {
         }
     }
 }
+
 impl From<std::io::Error> for HorustError {
     fn from(err: std::io::Error) -> Self {
         HorustError {
@@ -47,6 +49,7 @@ impl From<std::io::Error> for HorustError {
         }
     }
 }
+
 impl From<nix::Error> for HorustError {
     fn from(err: nix::Error) -> Self {
         HorustError {

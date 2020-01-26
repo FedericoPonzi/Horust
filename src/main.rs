@@ -1,5 +1,3 @@
-mod error;
-mod formats;
 mod horust;
 use crate::horust::Horust;
 use nix::unistd::chdir;
@@ -24,7 +22,7 @@ restart = "never"
 start-delay = "2s"
 #restart-backoff = "10s"#;
 
-fn main() -> Result<(), error::HorustError> {
+fn main() -> Result<(), horust::HorustError> {
     // Set up logging.
     let env = env_logger::Env::new()
         .filter("HORUST_LOG")

@@ -1,7 +1,11 @@
-use crate::error::HorustError;
-use crate::error::Result;
-use crate::formats::ServiceStatus::Running;
-use crate::formats::{RestartStrategy, Service, ServiceName, ServiceStatus};
+mod error;
+mod formats;
+mod reaper;
+
+pub use self::error::HorustError;
+use self::error::Result;
+use self::formats::ServiceStatus::Running;
+use self::formats::{RestartStrategy, Service, ServiceName, ServiceStatus};
 use libc::{_exit, STDOUT_FILENO};
 use libc::{prctl, PR_SET_CHILD_SUBREAPER};
 use nix::sys::signal::{sigaction, signal, SaFlags, SigAction, SigHandler, SigSet, SIGTERM};
@@ -34,10 +38,10 @@ impl SignalSafe {
     }
 }
 
-static SIGTERM_RECEIVED: AtomicBool = AtomicBool::new(false);
+static mut SIGTERM_RECEIVED: bool = false;
 
 #[derive(Clone, Debug, Eq, PartialEq)]
-struct ServiceHandler {
+pub struct ServiceHandler {
     service: Service,
     status: ServiceStatus,
     pid: Option<Pid>,
@@ -86,66 +90,14 @@ impl Horust {
         }
     }
 
-    fn supervisor_thread(supervised: Arc<Mutex<Vec<ServiceHandler>>>) {
-        let mut reapable = HashMap::new();
-        loop {
-            match waitpid(Pid::from_raw(-1), None) {
-                Ok(wait_status) => {
-                    if let WaitStatus::Exited(pid, exit_code) = wait_status {
-                        debug!("Pid has exited: {}", pid);
-                        reapable.insert(pid, exit_code);
-                        reapable = reapable
-                            .into_iter()
-                            .filter_map(|(pid, exit_code)| {
-                                let mut locked = supervised.lock().unwrap();
-                                debug!("{:?}", locked);
-                                let service: Option<&mut ServiceHandler> = locked
-                                    .iter_mut()
-                                    .filter(|sh| sh.pid == Some(pid))
-                                    .take(1)
-                                    .last();
-                                // It might happen that before supervised was updated, the process was already started, executed,
-                                // and exited. Thus we're trying to reaping it, but there is still no map Pid -> Service.
-                                if let Some(service) = service {
-                                    match service.restart() {
-                                        RestartStrategy::Never => {
-                                            eprintln!("Pid successfully exited.");
-                                            service.status = ServiceStatus::from_exit(exit_code);
-                                            debug!("new locked: {:?}", locked);
-                                        }
-                                        RestartStrategy::OnFailure => {
-                                            service.status = ServiceStatus::from_exit(exit_code);
-                                            debug!("Going to rerun the process because it failed!");
-                                        }
-                                        RestartStrategy::Always => {
-                                            service.status = ServiceStatus::Stopped;
-                                        }
-                                    }
-                                    return None;
-                                }
-                                Some((pid, exit_code))
-                            })
-                            .collect();
-                    }
-                }
-                Err(err) => {
-                    if !err.to_string().contains("ECHILD") {
-                        error!("Error waitpid(): {}", err);
-                    }
-                }
-            }
-            std::thread::sleep(Duration::from_secs(1))
-        }
-    }
-
-    pub fn run(&mut self) -> super::error::Result<()> {
+    pub fn run(&mut self) -> Result<()> {
         unsafe {
             prctl(PR_SET_CHILD_SUBREAPER, 1, 0, 0, 0);
         }
         //self.setup_signal_handling();
         let supervised = Arc::clone(&self.supervised);
         std::thread::spawn(|| {
-            Horust::supervisor_thread(supervised);
+            reaper::supervisor_thread(supervised);
         });
         debug!("Going to start services!");
         loop {
@@ -182,7 +134,7 @@ impl Horust {
                                 .cloned()
                                 .map(|mut sh| {
                                     if sh.name() == service.name {
-                                        println!("Now it's running!");
+                                        debug!("Now it's running!");
                                         sh.status = ServiceStatus::Running;
                                         sh.pid = Some(pid);
                                     }
@@ -213,7 +165,7 @@ impl Horust {
         Horust::spawn_process(service)
     }
 
-    pub fn from_services_dir<P>(path: &P) -> super::error::Result<Horust>
+    pub fn from_services_dir<P>(path: &P) -> Result<Horust>
     where
         P: AsRef<Path> + ?Sized + AsRef<OsStr> + Debug,
     {
@@ -229,30 +181,26 @@ impl Horust {
         P: AsRef<Path> + ?Sized + AsRef<OsStr> + Debug,
     {
         debug!("Fetching services from : {:?}", path);
-        fs::read_dir(path)
-            .map_err(HorustError::from)
-            .and_then(|dir| {
-                dir.filter_map(std::result::Result::ok)
-                    .map(|dir_entry| dir_entry.path())
-                    .filter(|path: &PathBuf| {
-                        path.is_file()
-                            && path
-                                .extension()
-                                .unwrap_or_else(|| "".as_ref())
-                                .to_str()
-                                .unwrap()
-                                .ends_with("toml")
-                    })
-                    .map(|path| {
-                        fs::read_to_string(path)
-                            .map_err(HorustError::from)
-                            .and_then(|content| {
-                                toml::from_str::<Service>(content.as_str())
-                                    .map_err(HorustError::from)
-                            })
-                    })
-                    .collect::<Result<Vec<Service>>>()
+        let dir = fs::read_dir(path)?;
+        dir.filter_map(std::result::Result::ok)
+            .map(|dir_entry| dir_entry.path())
+            .filter(|path: &PathBuf| {
+                path.is_file()
+                    && path
+                        .extension()
+                        .unwrap_or_else(|| "".as_ref())
+                        .to_str()
+                        .unwrap()
+                        .ends_with("toml")
             })
+            .map(|path| {
+                fs::read_to_string(path)
+                    .map_err(HorustError::from)
+                    .and_then(|content| {
+                        toml::from_str::<Service>(content.as_str()).map_err(HorustError::from)
+                    })
+            })
+            .collect::<Result<Vec<Service>>>()
     }
     pub fn spawn_process(service: &Service) -> Result<Pid> {
         match fork() {
@@ -317,13 +265,16 @@ impl Horust {
     //TODO: killpg
     extern "C" fn handle_sigterm(_: libc::c_int) {
         SignalSafe::print("Received SIGTERM.\n");
+        unsafe {
+            SIGTERM_RECEIVED = true;
+        }
         SignalSafe::exit(1);
     }
 }
 
 #[cfg(test)]
 mod test {
-    use crate::formats::Service;
+    use self::formats::Service;
     use std::io;
     use tempdir::TempDir;
 

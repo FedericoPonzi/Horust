@@ -70,7 +70,7 @@ pub struct Service {
 
 #[cfg(test)]
 mod test {
-    use crate::formats::{RestartStrategy, Service};
+    use crate::horust::formats::{RestartStrategy, Service};
     use std::time::Duration;
 
     impl Service {
