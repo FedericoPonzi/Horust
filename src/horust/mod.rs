@@ -274,7 +274,8 @@ impl Horust {
 
 #[cfg(test)]
 mod test {
-    use self::formats::Service;
+    use crate::horust::formats::Service;
+    use crate::horust::Horust;
     use std::io;
     use tempdir::TempDir;
 
@@ -286,12 +287,19 @@ mod test {
 
         let a_str = toml::to_string(&a).unwrap();
         let b_str = toml::to_string(&b).unwrap();
-        std::fs::write(ret.path().join("my-first-service.yml"), a_str)?;
-        std::fs::write(ret.path().join("my-second-service.yml"), b_str)?;
-
+        std::fs::write(ret.path().join("my-first-service.toml"), a_str)?;
+        std::fs::write(ret.path().join("my-second-service.toml"), b_str)?;
         Ok(ret)
     }
-    fn test_fetch_directories() -> io::Result<()> {
+    #[test]
+    fn test_fetch_services() -> io::Result<()> {
+        let tempdir = create_test_dir()?;
+        std::fs::write(tempdir.path().join("not-a-service"), "Hello world")?;
+        let res = Horust::fetch_services(tempdir.path()).unwrap();
+        assert_eq!(res.len(), 2);
+        let names: Vec<String> = res.into_iter().map(|serv| serv.name).collect();
+        assert_eq!(vec!["a", "b"], names);
+
         Ok(())
     }
 }

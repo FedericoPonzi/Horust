@@ -21,6 +21,7 @@ impl ServiceStatus {
         }
     }
 }
+
 #[derive(Serialize, Clone, Deserialize, Debug, Eq, PartialEq)]
 #[serde(rename_all = "kebab-case")]
 pub enum RestartStrategy {
@@ -71,6 +72,8 @@ pub struct Service {
 #[cfg(test)]
 mod test {
     use crate::horust::formats::{RestartStrategy, Service};
+    use crate::horust::ServiceHandler;
+    use crate::SAMPLE;
     use std::time::Duration;
 
     impl Service {
@@ -90,7 +93,12 @@ mod test {
         }
     }
     #[test]
-    pub fn test_should_deserialize() {
+    fn test_should_deserialize_sample() {
+        let des = toml::from_str::<Service>(SAMPLE);
+        assert!(des.is_ok())
+    }
+    #[test]
+    pub fn test_should_correctly_deserialize() {
         let name = "my-cool-service";
         let command = "/home/isaacisback/dev/rust/horust/examples/services/first.sh";
         let working_directory = "/tmp/";

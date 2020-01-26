@@ -6,6 +6,8 @@ use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
+/// A endlessly running function meant to be run in a separate thread.
+/// Its purpose is to continuously try to reap possibly dead children.
 pub(crate) fn supervisor_thread(supervised: Arc<Mutex<Vec<ServiceHandler>>>) {
     let mut reapable = HashMap::new();
     loop {
@@ -27,6 +29,7 @@ pub(crate) fn supervisor_thread(supervised: Arc<Mutex<Vec<ServiceHandler>>>) {
                             // It might happen that before supervised was updated, the process was already started, executed,
                             // and exited. Thus we're trying to reaping it, but there is still no map Pid -> Service.
                             if let Some(service) = service {
+                                // TODO: Restart strategy
                                 match service.restart() {
                                     RestartStrategy::Never => {
                                         debug!("Pid successfully exited.");
