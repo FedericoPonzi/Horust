@@ -4,6 +4,9 @@
 
 Horust is an supervisor system written in rust and designed to be run in containers. 
 
+## Project Goals:
+* Understandability: most of code should be obvious enough for people to understand, extend and adapt if needed.
+
 ## How to use it
 1. Define your services inside `/etc/horust/services/`.
 An example service:
@@ -80,5 +83,6 @@ http_endpoint = "http://localhost:2020/healthcheck"
 ## Horust configuration
 Horust itself can be tuned and modified by using the following shiny parameters:
 ```bash
+# A web interface for managing horust.
 web_server = false
 ```

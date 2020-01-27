@@ -19,3 +19,7 @@ Just a small collection of useful links:
 * http://www.man7.org/linux/man-pages/man7/signal-safety.7.html
 * https://github.com/tokio-rs/mio/issues/16 
 * https://github.com/tokio-rs/mio/issues/16#issuecomment-102156238
+* https://skarnet.org/software/s6/s6-svscan-1.html
+ man runlevel
+man 8 init
+man getty

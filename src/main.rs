@@ -1,7 +1,9 @@
 mod horust;
 use crate::horust::Horust;
 use nix::unistd::chdir;
+use std::path::PathBuf;
 use structopt::StructOpt;
+
 #[macro_use]
 extern crate log;
 
@@ -13,10 +15,12 @@ struct Opts {
     config: String,
     #[structopt(long = "sample-service")]
     sample_service: bool,
+    #[structopt(long = "services-path", default_value = "/etc/horust/services")]
+    services_path: PathBuf,
 }
 
 const SAMPLE: &str = r#"name = "my-cool-service"
-command = "/home/isaacisback/dev/rust/horust/examples/services/first.sh"
+command = ""
 working-directory = "/tmp/"
 restart = "never"
 start-delay = "2s"
@@ -31,11 +35,10 @@ fn main() -> Result<(), horust::HorustError> {
 
     //chdir("/").expect("Error: chdir()");
 
-    let opt = Opts::from_args();
-    if opt.sample_service {
+    let opts = Opts::from_args();
+    if opts.sample_service {
         println!("{}", SAMPLE);
         return Ok(());
     }
-    let path = "/home/isaacisback/dev/rust/horust/examples/services/2/bigger";
-    Horust::from_services_dir(path)?.run()
+    Horust::from_services_dir(&opts.services_path)?.run()
 }

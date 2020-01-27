@@ -185,13 +185,14 @@ impl Horust {
         dir.filter_map(std::result::Result::ok)
             .map(|dir_entry| dir_entry.path())
             .filter(|path: &PathBuf| {
-                path.is_file()
-                    && path
-                        .extension()
+                let has_toml_extension = |path: &PathBuf| {
+                    path.extension()
                         .unwrap_or_else(|| "".as_ref())
                         .to_str()
                         .unwrap()
                         .ends_with("toml")
+                };
+                path.is_file() && has_toml_extension(path)
             })
             .map(|path| {
                 fs::read_to_string(path)
@@ -262,7 +263,7 @@ impl Horust {
             panic!("sigaction() failed: {}", err);
         };
     }
-    //TODO: killpg
+    //TODO: kill -9 -1
     extern "C" fn handle_sigterm(_: libc::c_int) {
         SignalSafe::print("Received SIGTERM.\n");
         unsafe {
@@ -284,7 +285,6 @@ mod test {
         let ret = TempDir::new("horust").unwrap();
         let a = Service::from_name("a");
         let b = Service::start_after("b", vec!["a"]);
-
         let a_str = toml::to_string(&a).unwrap();
         let b_str = toml::to_string(&b).unwrap();
         std::fs::write(ret.path().join("my-first-service.toml"), a_str)?;
