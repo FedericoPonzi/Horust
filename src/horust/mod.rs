@@ -4,16 +4,13 @@ mod reaper;
 
 pub use self::error::HorustError;
 use self::error::Result;
-use self::formats::ServiceStatus::Running;
 use self::formats::{RestartStrategy, Service, ServiceName, ServiceStatus};
 use libc::{_exit, STDOUT_FILENO};
 use libc::{prctl, PR_SET_CHILD_SUBREAPER};
 use nix::sys::signal::{sigaction, signal, SaFlags, SigAction, SigHandler, SigSet, SIGTERM};
-use nix::sys::wait::WaitStatus::Signaled;
-use nix::sys::wait::{waitpid, WaitStatus};
+use nix::sys::wait::WaitStatus;
 use nix::unistd::{fork, getppid, ForkResult};
 use nix::unistd::{getpid, Pid};
-use std::collections::HashMap;
 use std::ffi::{c_void, CStr, CString, OsStr};
 use std::fmt::Debug;
 use std::fs;
@@ -50,7 +47,7 @@ impl From<Service> for ServiceHandler {
     fn from(service: Service) -> Self {
         ServiceHandler {
             service,
-            status: ServiceStatus::Stopped,
+            status: ServiceStatus::Initial,
             pid: None,
         }
     }
@@ -101,26 +98,30 @@ impl Horust {
         });
         debug!("Going to start services!");
         loop {
-            let mut sup = self.supervised.lock().unwrap();
-            *sup = sup
+            let mut superv_services = self.supervised.lock().unwrap();
+            *superv_services = superv_services
                 .iter()
                 .cloned()
                 .map(|mut service| {
+                    /// Check if all dependant services are either running or finished:
                     let can_run = service
                         .start_after()
                         .iter()
-                        .filter(|s| {
-                            sup.iter()
+                        .filter(|service_name| {
+                            // Looking for the supervised services:
+                            superv_services
+                                .iter()
                                 .filter(|s| {
-                                    s.status != ServiceStatus::Running
-                                        && s.status != ServiceStatus::Stopped
+                                    &s.service.name == *service_name
+                                        && s.status != ServiceStatus::Running
+                                        && s.status != ServiceStatus::Finished
                                 })
                                 .count()
                                 != 0
                         })
                         .count()
                         == 0;
-                    if can_run && service.status == ServiceStatus::Stopped {
+                    if can_run && service.status == ServiceStatus::Initial {
                         service.status = ServiceStatus::ToBeRun;
                         let supervised_ref = Arc::clone(&self.supervised);
                         let service = service.service.clone();
@@ -146,8 +147,7 @@ impl Horust {
                     service
                 })
                 .collect();
-            //let sup = self.supervised.lock().unwrap();
-            let ret = sup
+            let ret = superv_services
                 .iter()
                 .filter(|sh| sh.status != ServiceStatus::Finished)
                 .count();
@@ -203,6 +203,7 @@ impl Horust {
             })
             .collect::<Result<Vec<Service>>>()
     }
+
     pub fn spawn_process(service: &Service) -> Result<Pid> {
         match fork() {
             Ok(ForkResult::Child) => {

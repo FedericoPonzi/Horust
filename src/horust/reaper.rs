@@ -33,15 +33,19 @@ pub(crate) fn supervisor_thread(supervised: Arc<Mutex<Vec<ServiceHandler>>>) {
                                 match service.restart() {
                                     RestartStrategy::Never => {
                                         debug!("Pid successfully exited.");
+                                        // Will never be restarted, even if failed:
                                         service.status = ServiceStatus::from_exit(exit_code);
-                                        debug!("new locked: {:?}", locked);
                                     }
                                     RestartStrategy::OnFailure => {
-                                        service.status = ServiceStatus::from_exit(exit_code);
+                                        service.status = match ServiceStatus::from_exit(exit_code) {
+                                            ServiceStatus::Failed => ServiceStatus::Initial,
+                                            _ => ServiceStatus::Finished,
+                                        };
+
                                         debug!("Going to rerun the process because it failed!");
                                     }
                                     RestartStrategy::Always => {
-                                        service.status = ServiceStatus::Stopped;
+                                        service.status = ServiceStatus::Initial;
                                     }
                                 }
                                 return None;

@@ -69,7 +69,8 @@ restart = "always"
 restart-backoff = "10s"
 required = false
 rediness = "/tmp/my-cool-service.ready"
-
+# Rewrite incoming signals before proxying them:
+signal_rewrite = "15:3,5:10"
 [healthness]
 http_endpoint = "http://localhost:2020/healthcheck"
 # Future:
@@ -77,6 +78,11 @@ http_endpoint = "http://localhost:2020/healthcheck"
 # udp_endpoint = "localhost:2020"
 # use a unix domain socket:
 # http_endpoint = "/var/run/my_cool_service.uds"
+# [environment]
+# clear = true
+# load = "/etc/my_db/env"
+# DATABASE_NAME = "My_DB"
+# 
 ```
 
 

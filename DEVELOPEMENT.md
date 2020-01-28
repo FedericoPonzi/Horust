@@ -20,6 +20,16 @@ Just a small collection of useful links:
 * https://github.com/tokio-rs/mio/issues/16 
 * https://github.com/tokio-rs/mio/issues/16#issuecomment-102156238
 * https://skarnet.org/software/s6/s6-svscan-1.html
+* https://felipec.wordpress.com/2013/11/04/init/
+* https://www.mustafaak.in/posts/2016-02-09-forking-process-in-myinit-go/
+* https://blog.darknedgy.net/technology/2015/09/05/0/
+
+### Random init systems:
+* https://github.com/Yelp/dumb-init
+* https://github.com/fpco/pid1
+* https://github.com/krallin/tini/
+* https://github.com/OpenRC/openrc
+
  man runlevel
 man 8 init
 man getty

@@ -6,11 +6,17 @@ pub type ServiceName = String;
 
 #[derive(Serialize, Clone, Deserialize, Debug, Eq, PartialEq)]
 pub enum ServiceStatus {
+    /// This is just an intermediate state between Initial and Running.
     ToBeRun,
+    /// The service is up and healthy
     Running,
+    /// A Failed service might be restarted if the restart policy demands so.
     Failed,
+    /// A finished service has done it's job and won't be restarted.
     Finished,
-    Stopped,
+    /// This is the initial state: A service in Initial state is marked to be runnable:
+    /// it will be run as soon as possible.
+    Initial,
 }
 impl ServiceStatus {
     pub fn from_exit(exit_code: i32) -> Self {
