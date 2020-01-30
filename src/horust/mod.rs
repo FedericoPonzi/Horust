@@ -15,6 +15,7 @@ use std::ffi::{c_void, CStr, CString, OsStr};
 use std::fmt::Debug;
 use std::fs;
 use std::path::{Path, PathBuf};
+use std::process::exit;
 use std::sync::atomic::AtomicBool;
 use std::sync::mpsc::{Receiver, Sender};
 use std::sync::{mpsc, Arc, Mutex};
@@ -64,8 +65,35 @@ impl ServiceHandler {
     fn name(&self) -> &str {
         self.service.name.as_str()
     }
-    fn restart(&self) -> &RestartStrategy {
-        &self.service.restart
+    fn set_pid(&mut self, pid: Pid) {
+        self.status = ServiceStatus::Running;
+        self.pid = Some(pid);
+    }
+    pub fn set_status_by_exit_code(&mut self, exit_code: i32) {
+        let has_failed = exit_code != 0;
+        match self.service.restart_strategy {
+            RestartStrategy::Never => {
+                debug!("Pid successfully exited.");
+                // Will never be restarted, even if failed:
+                self.status = if has_failed {
+                    ServiceStatus::FinishedFailed
+                } else {
+                    ServiceStatus::Finished
+                };
+            }
+            RestartStrategy::OnFailure => {
+                self.status = if has_failed {
+                    ServiceStatus::Initial
+                } else {
+                    ServiceStatus::Finished
+                };
+                debug!("Going to rerun the process because it failed!");
+            }
+            RestartStrategy::Always => {
+                self.status = ServiceStatus::Initial;
+            }
+        };
+        self.pid = None;
     }
 }
 
@@ -77,6 +105,7 @@ pub struct Horust {
 impl Horust {
     pub fn new(services: Vec<Service>) -> Self {
         Horust {
+            //TODO: change to map [service_name: service]
             supervised: Arc::new(Mutex::new(
                 services
                     .clone()
@@ -102,58 +131,44 @@ impl Horust {
             *superv_services = superv_services
                 .iter()
                 .cloned()
-                .map(|mut service| {
-                    /// Check if all dependant services are either running or finished:
-                    let can_run = service
+                .map(|mut service_handler| {
+                    // Check if all dependant services are either running or finished:
+                    let can_run = service_handler
                         .start_after()
                         .iter()
                         .filter(|service_name| {
                             // Looking for the supervised services:
-                            superv_services
-                                .iter()
-                                .filter(|s| {
-                                    &s.service.name == *service_name
-                                        && s.status != ServiceStatus::Running
-                                        && s.status != ServiceStatus::Finished
-                                })
-                                .count()
-                                != 0
+                            !superv_services.iter().any(|s| {
+                                &s.service.name == *service_name
+                                    && s.status != ServiceStatus::Running
+                                    && s.status != ServiceStatus::Finished
+                            })
                         })
                         .count()
                         == 0;
-                    if can_run && service.status == ServiceStatus::Initial {
-                        service.status = ServiceStatus::ToBeRun;
+                    if can_run && service_handler.status == ServiceStatus::Initial {
+                        service_handler.status = ServiceStatus::ToBeRun;
                         let supervised_ref = Arc::clone(&self.supervised);
-                        let service = service.service.clone();
+                        let service = service_handler.service.clone();
                         std::thread::spawn(move || {
                             let pid =
                                 Horust::run_service(&service).expect("Failed spawning service!");
-                            let supervised_ref = Arc::clone(&supervised_ref);
-                            let mut sup = supervised_ref.lock().unwrap();
-                            *sup = sup
-                                .iter()
-                                .cloned()
-                                .map(|mut sh| {
-                                    if sh.name() == service.name {
-                                        debug!("Now it's running!");
-                                        sh.status = ServiceStatus::Running;
-                                        sh.pid = Some(pid);
-                                    }
-                                    sh
-                                })
-                                .collect();
+                            supervised_ref
+                                .lock()
+                                .unwrap()
+                                .iter_mut()
+                                .filter(|sh| sh.name() == service.name)
+                                .for_each(|sh| {
+                                    debug!("Now it's running!");
+                                    sh.set_pid(pid);
+                                });
                         });
                     }
-                    service
+                    service_handler
                 })
                 .collect();
-            let ret = superv_services
-                .iter()
-                .filter(|sh| sh.status != ServiceStatus::Finished)
-                .count();
-
-            // Every process has finished:
-            if ret == 0 {
+            let all_finished = superv_services.iter().all(|sh| sh.status.is_finished());
+            if all_finished {
                 break;
             }
         }
@@ -181,26 +196,21 @@ impl Horust {
         P: AsRef<Path> + ?Sized + AsRef<OsStr> + Debug,
     {
         debug!("Fetching services from : {:?}", path);
+        let is_toml_file = |path: &PathBuf| {
+            let has_toml_extension = |path: &PathBuf| {
+                path.extension()
+                    .unwrap_or_else(|| "".as_ref())
+                    .to_str()
+                    .unwrap()
+                    .ends_with("toml")
+            };
+            path.is_file() && has_toml_extension(path)
+        };
         let dir = fs::read_dir(path)?;
         dir.filter_map(std::result::Result::ok)
             .map(|dir_entry| dir_entry.path())
-            .filter(|path: &PathBuf| {
-                let has_toml_extension = |path: &PathBuf| {
-                    path.extension()
-                        .unwrap_or_else(|| "".as_ref())
-                        .to_str()
-                        .unwrap()
-                        .ends_with("toml")
-                };
-                path.is_file() && has_toml_extension(path)
-            })
-            .map(|path| {
-                fs::read_to_string(path)
-                    .map_err(HorustError::from)
-                    .and_then(|content| {
-                        toml::from_str::<Service>(content.as_str()).map_err(HorustError::from)
-                    })
-            })
+            .filter(is_toml_file)
+            .map(Service::load_from_file)
             .collect::<Result<Vec<Service>>>()
     }
 

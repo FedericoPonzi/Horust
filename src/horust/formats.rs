@@ -1,3 +1,4 @@
+use crate::horust::{Horust, HorustError};
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 use std::time::Duration;
@@ -14,6 +15,8 @@ pub enum ServiceStatus {
     Failed,
     /// A finished service has done it's job and won't be restarted.
     Finished,
+    /// A service which will never be restarted (because of restart policies).
+    FinishedFailed,
     /// This is the initial state: A service in Initial state is marked to be runnable:
     /// it will be run as soon as possible.
     Initial,
@@ -24,6 +27,12 @@ impl ServiceStatus {
             ServiceStatus::Finished
         } else {
             ServiceStatus::Failed
+        }
+    }
+    pub fn is_finished(&self) -> bool {
+        match self {
+            ServiceStatus::Finished | ServiceStatus::FinishedFailed => true,
+            _ => false,
         }
     }
 }
@@ -70,15 +79,20 @@ pub struct Service {
     #[serde(default = "Vec::new")]
     pub start_after: Vec<ServiceName>,
     #[serde(default)]
-    pub restart: RestartStrategy,
+    pub restart_strategy: RestartStrategy,
     #[serde(default, with = "humantime_serde")]
     pub restart_backoff: Duration,
+}
+impl Service {
+    pub fn load_from_file(path: PathBuf) -> Result<Self, HorustError> {
+        let content = std::fs::read_to_string(path)?;
+        toml::from_str::<Service>(content.as_str()).map_err(HorustError::from)
+    }
 }
 
 #[cfg(test)]
 mod test {
     use crate::horust::formats::{RestartStrategy, Service};
-    use crate::horust::ServiceHandler;
     use crate::SAMPLE;
     use std::time::Duration;
 
@@ -88,7 +102,7 @@ mod test {
                 name: name.to_owned(),
                 start_after: start_after.into_iter().map(|v| v.into()).collect(),
                 working_directory: "".into(),
-                restart: RestartStrategy::Always,
+                restart_strategy: RestartStrategy::Always,
                 start_delay: Duration::from_secs(0),
                 command: "".to_string(),
                 restart_backoff: Default::default(),
@@ -130,7 +144,7 @@ start-delay = "{}"
             working_directory: working_directory.into(),
             start_delay: Duration::from_secs(1),
             start_after: vec![],
-            restart: restart.into(),
+            restart_strategy: restart.into(),
             restart_backoff: Duration::from_secs(10),
         };
         assert_eq!(des, expected);

@@ -8,6 +8,8 @@ use std::time::Duration;
 
 /// A endlessly running function meant to be run in a separate thread.
 /// Its purpose is to continuously try to reap possibly dead children.
+/// TODO: Issue with this: child fork, and the pid get reaped here, it gets inserted in the reapable function
+/// but
 pub(crate) fn supervisor_thread(supervised: Arc<Mutex<Vec<ServiceHandler>>>) {
     let mut reapable = HashMap::new();
     loop {
@@ -16,43 +18,6 @@ pub(crate) fn supervisor_thread(supervised: Arc<Mutex<Vec<ServiceHandler>>>) {
                 if let WaitStatus::Exited(pid, exit_code) = wait_status {
                     debug!("Pid has exited: {}", pid);
                     reapable.insert(pid, exit_code);
-                    reapable = reapable
-                        .into_iter()
-                        .filter_map(|(pid, exit_code)| {
-                            let mut locked = supervised.lock().unwrap();
-                            debug!("{:?}", locked);
-                            let service: Option<&mut ServiceHandler> = locked
-                                .iter_mut()
-                                .filter(|sh| sh.pid == Some(pid))
-                                .take(1)
-                                .last();
-                            // It might happen that before supervised was updated, the process was already started, executed,
-                            // and exited. Thus we're trying to reaping it, but there is still no map Pid -> Service.
-                            if let Some(service) = service {
-                                // TODO: Restart strategy
-                                match service.restart() {
-                                    RestartStrategy::Never => {
-                                        debug!("Pid successfully exited.");
-                                        // Will never be restarted, even if failed:
-                                        service.status = ServiceStatus::from_exit(exit_code);
-                                    }
-                                    RestartStrategy::OnFailure => {
-                                        service.status = match ServiceStatus::from_exit(exit_code) {
-                                            ServiceStatus::Failed => ServiceStatus::Initial,
-                                            _ => ServiceStatus::Finished,
-                                        };
-
-                                        debug!("Going to rerun the process because it failed!");
-                                    }
-                                    RestartStrategy::Always => {
-                                        service.status = ServiceStatus::Initial;
-                                    }
-                                }
-                                return None;
-                            }
-                            Some((pid, exit_code))
-                        })
-                        .collect();
                 }
             }
             Err(err) => {
@@ -61,6 +26,28 @@ pub(crate) fn supervisor_thread(supervised: Arc<Mutex<Vec<ServiceHandler>>>) {
                 }
             }
         }
-        std::thread::sleep(Duration::from_secs(1))
+        // It might happen that before supervised was updated, the process was already started, executed,
+        // and exited. Thus we're trying to reaping it, but there is still no map Pid -> Service.
+        reapable.retain(|pid, exit_code| {
+            let mut locked = supervised.lock().unwrap();
+            debug!("pid:{:?}, locked: {:?}", pid, locked);
+            let service: Option<&mut ServiceHandler> = locked
+                .iter_mut()
+                .filter(|sh| sh.pid == Some(*pid))
+                .take(1)
+                .last();
+            if let Some(service) = service {
+                service.set_status_by_exit_code(*exit_code);
+                return true;
+            }
+
+            let is_granchildren = locked
+                .iter()
+                .filter(|sh| sh.status == ServiceStatus::ToBeRun)
+                .count()
+                == 0;
+            return is_granchildren;
+        });
+        std::thread::sleep(Duration::from_millis(500))
     }
 }
