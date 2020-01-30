@@ -133,20 +133,25 @@ impl Horust {
                 .cloned()
                 .map(|mut service_handler| {
                     // Check if all dependant services are either running or finished:
-                    let can_run = service_handler
-                        .start_after()
-                        .iter()
-                        .filter(|service_name| {
-                            // Looking for the supervised services:
-                            !superv_services.iter().any(|s| {
-                                &s.service.name == *service_name
-                                    && s.status != ServiceStatus::Running
-                                    && s.status != ServiceStatus::Finished
-                            })
-                        })
-                        .count()
-                        == 0;
-                    if can_run && service_handler.status == ServiceStatus::Initial {
+                    let check_can_run = |dependencies: &Vec<String>| {
+                        let mut can_run = true;
+                        for service_name in dependencies {
+                            for service in superv_services.iter() {
+                                let is_not_started = service.name() == *service_name
+                                    && (service.status != ServiceStatus::Running
+                                        && service.status != ServiceStatus::Finished);
+                                if is_not_started {
+                                    can_run = false;
+                                    break;
+                                }
+                            }
+                        }
+                        can_run
+                    };
+
+                    if service_handler.status == ServiceStatus::Initial
+                        && check_can_run(service_handler.start_after())
+                    {
                         service_handler.status = ServiceStatus::ToBeRun;
                         let supervised_ref = Arc::clone(&self.supervised);
                         let service = service_handler.service.clone();

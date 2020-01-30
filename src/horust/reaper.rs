@@ -40,12 +40,12 @@ pub(crate) fn supervisor_thread(supervised: Arc<Mutex<Vec<ServiceHandler>>>) {
                 service.set_status_by_exit_code(*exit_code);
                 return true;
             }
-
+            // If is a grandchildren, we don't care about it:
             let is_granchildren = locked
                 .iter()
                 .filter(|sh| sh.status == ServiceStatus::ToBeRun)
                 .count()
-                == 0;
+                != 0;
             return is_granchildren;
         });
         std::thread::sleep(Duration::from_millis(500))
