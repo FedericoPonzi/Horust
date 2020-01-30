@@ -130,7 +130,7 @@ mod test {
 name = "{}"
 command = "{}"
 working-directory = "{}"
-restart = "{}"
+restart-strategy = "{}"
 restart-backoff = "{}"
 start-delay = "{}"
 "#,
