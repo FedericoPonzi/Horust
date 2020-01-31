@@ -4,8 +4,13 @@
 
 Horust is an supervisor system written in rust and designed to be run in containers. 
 
-## Project Goals:
-* Understandability: most of code should be obvious enough for people to understand, extend and adapt if needed.
+## Goals:
+* Supervisioning: A full fledge supervisor system, designed to be used in containers.
+* Init: Use Horust as your init system.
+* Understandability: the code aims to be clear and obivous. Easy to understand, easy to maintain.
+
+## Status
+This should be considered Alpha software. Please check [Contributing](CONTRIBUTING.md) if you want to join the development.
 
 ## How to use it
 1. Define your services inside `/etc/horust/services/`.
@@ -13,7 +18,7 @@ An example service:
 ```toml
 # mycoolapp.toml:
 path = "/usr/bin/mycoolapp.sh"
-restart = "always"
+restart-strategy = "always"
 start-delay = "10s"
 start-after = "my-other-service.toml"
 ``` 
@@ -23,8 +28,8 @@ http://supervisord.org/installing.html
 https://skarnet.org/software/s6/
 https://github.com/OpenRC/openrc/blob/master/supervise-daemon-guide.md
 
-### FAQ:
-What happens to dependant process, if a dependency process dies?
+### FAQs:
+What happens to dependant process, if a dependency process fails?
 
 
 ## Configuration
@@ -67,7 +72,10 @@ command = "curl google.com"
 working_directory = "/tmp/"
 restart = "always"
 restart-backoff = "10s"
-required = false
+# If service cannot be started, bring the system down.
+# Useful if you have some critical service you want to be sure it's running.
+# default: false
+required = false 
 rediness = "/tmp/my-cool-service.ready"
 # Rewrite incoming signals before proxying them:
 signal_rewrite = "15:3,5:10"
