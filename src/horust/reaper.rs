@@ -1,4 +1,4 @@
-use crate::horust::formats::{RestartStrategy, ServiceStatus};
+use crate::horust::formats::ServiceStatus;
 use crate::horust::ServiceHandler;
 use nix::sys::wait::{waitpid, WaitStatus};
 use nix::unistd::Pid;
@@ -41,12 +41,8 @@ pub(crate) fn supervisor_thread(supervised: Arc<Mutex<Vec<ServiceHandler>>>) {
                 return true;
             }
             // If is a grandchildren, we don't care about it:
-            let is_granchildren = locked
-                .iter()
-                .filter(|sh| sh.status == ServiceStatus::ToBeRun)
-                .count()
-                != 0;
-            return is_granchildren;
+            // is grandchildren =
+            locked.iter().any(|sh| sh.status == ServiceStatus::ToBeRun)
         });
         std::thread::sleep(Duration::from_millis(500))
     }

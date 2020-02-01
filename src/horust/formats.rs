@@ -1,4 +1,4 @@
-use crate::horust::{Horust, HorustError};
+use crate::horust::HorustError;
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 use std::time::Duration;
@@ -20,21 +20,6 @@ pub enum ServiceStatus {
     /// This is the initial state: A service in Initial state is marked to be runnable:
     /// it will be run as soon as possible.
     Initial,
-}
-impl ServiceStatus {
-    pub fn from_exit(exit_code: i32) -> Self {
-        if exit_code == 0 {
-            ServiceStatus::Finished
-        } else {
-            ServiceStatus::Failed
-        }
-    }
-    pub fn is_finished(&self) -> bool {
-        match self {
-            ServiceStatus::Finished | ServiceStatus::FinishedFailed => true,
-            _ => false,
-        }
-    }
 }
 
 #[derive(Serialize, Clone, Deserialize, Debug, Eq, PartialEq)]
@@ -61,6 +46,7 @@ impl From<&str> for RestartStrategy {
         }
     }
 }
+
 impl Default for RestartStrategy {
     fn default() -> Self {
         RestartStrategy::Never
@@ -83,6 +69,7 @@ pub struct Service {
     #[serde(default, with = "humantime_serde")]
     pub restart_backoff: Duration,
 }
+
 impl Service {
     pub fn load_from_file(path: PathBuf) -> Result<Self, HorustError> {
         let content = std::fs::read_to_string(path)?;

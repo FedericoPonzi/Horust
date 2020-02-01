@@ -4,39 +4,25 @@ mod reaper;
 
 pub use self::error::HorustError;
 use self::error::Result;
-use self::formats::{RestartStrategy, Service, ServiceName, ServiceStatus};
-use crate::horust::error::ErrorKind::SerDe;
-use crate::horust::formats::ServiceStatus::ToBeRun;
-use libc::{_exit, STDOUT_FILENO};
+use self::formats::{RestartStrategy, Service, ServiceStatus};
+use libc::STDOUT_FILENO;
 use libc::{prctl, PR_SET_CHILD_SUBREAPER};
 use nix::sys::signal::kill;
-use nix::sys::signal::{
-    sigaction, signal, SaFlags, SigAction, SigHandler, SigSet, SIGINT, SIGTERM,
-};
-use nix::sys::wait::WaitStatus;
+use nix::sys::signal::{sigaction, SaFlags, SigAction, SigHandler, SigSet, SIGINT, SIGTERM};
 use nix::unistd::{fork, getppid, ForkResult};
 use nix::unistd::{getpid, Pid};
 use std::ffi::{c_void, CStr, CString, OsStr};
 use std::fmt::Debug;
 use std::fs;
 use std::path::{Path, PathBuf};
-use std::process::exit;
-use std::sync::atomic::AtomicBool;
-use std::sync::mpsc::{Receiver, Sender};
-use std::sync::{mpsc, Arc, Mutex};
-use std::time::Duration;
+use std::sync::{Arc, Mutex};
 
 struct SignalSafe;
+
 impl SignalSafe {
     fn print(s: &str) {
         unsafe {
             libc::write(STDOUT_FILENO, s.as_ptr() as *const c_void, s.len());
-        }
-    }
-
-    fn exit(status: i32) {
-        unsafe {
-            _exit(status);
         }
     }
 }
@@ -49,6 +35,7 @@ pub struct ServiceHandler {
     status: ServiceStatus,
     pid: Option<Pid>,
 }
+
 impl From<Service> for ServiceHandler {
     fn from(service: Service) -> Self {
         ServiceHandler {
@@ -58,11 +45,13 @@ impl From<Service> for ServiceHandler {
         }
     }
 }
+
 impl From<ServiceHandler> for Service {
     fn from(sh: ServiceHandler) -> Self {
         sh.service
     }
 }
+
 impl ServiceHandler {
     fn start_after(&self) -> &Vec<String> {
         self.service.start_after.as_ref()
@@ -76,6 +65,12 @@ impl ServiceHandler {
     }
     pub fn is_running(&self) -> bool {
         self.status == ServiceStatus::Running
+    }
+    pub fn is_finished(&self) -> bool {
+        match self.status {
+            ServiceStatus::Finished | ServiceStatus::FinishedFailed => true,
+            _ => false,
+        }
     }
     pub fn set_status_by_exit_code(&mut self, exit_code: i32) {
         let has_failed = exit_code != 0;
@@ -115,11 +110,7 @@ impl Horust {
         Horust {
             //TODO: change to map [service_name: service]
             supervised: Arc::new(Mutex::new(
-                services
-                    .clone()
-                    .into_iter()
-                    .map(ServiceHandler::from)
-                    .collect(),
+                services.into_iter().map(ServiceHandler::from).collect(),
             )),
         }
     }
@@ -192,7 +183,7 @@ impl Horust {
                     service_handler
                 })
                 .collect();
-            let all_finished = superv_services.iter().all(|sh| sh.status.is_finished());
+            let all_finished = superv_services.iter().all(|sh| sh.is_finished());
             if all_finished {
                 break;
             }
@@ -264,12 +255,10 @@ impl Horust {
 
             Ok(ForkResult::Parent { child, .. }) => {
                 debug!("Spawned child with PID {}.", child);
-                return Ok(child);
+                Ok(child)
             }
 
-            Err(err) => {
-                return Err(HorustError::from(err));
-            }
+            Err(err) => Err(HorustError::from(err)),
         }
     }
     pub fn exec_service(service: &Service) {
@@ -290,17 +279,7 @@ impl Horust {
         nix::unistd::execvp(filename.as_ref(), arg_cptr.as_ref()).expect("Execvp() failed: ");
     }
 
-    fn disable_signal_handling(&self) {
-        nix::sys::signal::sigprocmask(
-            nix::sys::signal::SigmaskHow::SIG_BLOCK,
-            Some(&SigSet::all()),
-            None,
-        )
-        .expect("Failed to set sigprocmask.");
-    }
     fn setup_signal_handling(&self) {
-        //self.disable_signal_handling();
-
         // To allow auto restart on some syscalls,
         // for example: `waitpid`.
         let flags = SaFlags::SA_RESTART;

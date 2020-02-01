@@ -1,6 +1,6 @@
 mod horust;
+
 use crate::horust::Horust;
-use nix::unistd::chdir;
 use std::path::PathBuf;
 use structopt::StructOpt;
 

@@ -20,12 +20,7 @@ impl Display for HorustError {
         write!(f, "HorustError")
     }
 }
-impl HorustError {
-    /// Return the kind of this error.
-    pub fn kind(&self) -> &ErrorKind {
-        &self.kind
-    }
-}
+
 impl std::error::Error for HorustError {}
 
 impl From<ErrorKind> for HorustError {
