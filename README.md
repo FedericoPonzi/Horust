@@ -96,7 +96,9 @@ http_endpoint = "http://localhost:2020/healthcheck"
 
 ## Horust configuration
 Horust itself can be tuned and modified by using the following shiny parameters:
-```bash
+```toml
 # A web interface for managing horust.
-web_server = false
+web-server = false
+# How much time to wait after sending a `sigterm` to a process before sending a SIGKILL.
+timeout-before-sigkill = "10s"
 ```

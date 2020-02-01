@@ -5,9 +5,14 @@ mod reaper;
 pub use self::error::HorustError;
 use self::error::Result;
 use self::formats::{RestartStrategy, Service, ServiceName, ServiceStatus};
+use crate::horust::error::ErrorKind::SerDe;
+use crate::horust::formats::ServiceStatus::ToBeRun;
 use libc::{_exit, STDOUT_FILENO};
 use libc::{prctl, PR_SET_CHILD_SUBREAPER};
-use nix::sys::signal::{sigaction, signal, SaFlags, SigAction, SigHandler, SigSet, SIGTERM};
+use nix::sys::signal::kill;
+use nix::sys::signal::{
+    sigaction, signal, SaFlags, SigAction, SigHandler, SigSet, SIGINT, SIGTERM,
+};
 use nix::sys::wait::WaitStatus;
 use nix::unistd::{fork, getppid, ForkResult};
 use nix::unistd::{getpid, Pid};
@@ -69,6 +74,9 @@ impl ServiceHandler {
         self.status = ServiceStatus::Running;
         self.pid = Some(pid);
     }
+    pub fn is_running(&self) -> bool {
+        self.status == ServiceStatus::Running
+    }
     pub fn set_status_by_exit_code(&mut self, exit_code: i32) {
         let has_failed = exit_code != 0;
         match self.service.restart_strategy {
@@ -120,13 +128,24 @@ impl Horust {
         unsafe {
             prctl(PR_SET_CHILD_SUBREAPER, 1, 0, 0, 0);
         }
-        //self.setup_signal_handling();
+        self.setup_signal_handling();
         let supervised = Arc::clone(&self.supervised);
         std::thread::spawn(|| {
             reaper::supervisor_thread(supervised);
         });
         debug!("Going to start services!");
         loop {
+            if unsafe { SIGTERM_RECEIVED }
+                && self
+                    .supervised
+                    .lock()
+                    .unwrap()
+                    .iter()
+                    .any(|sh| sh.is_running())
+            {
+                println!("Going to stop all services..");
+                self.stop_all_services();
+            }
             let mut superv_services = self.supervised.lock().unwrap();
             *superv_services = superv_services
                 .iter()
@@ -165,6 +184,7 @@ impl Horust {
                                 .filter(|sh| sh.name() == service.name)
                                 .for_each(|sh| {
                                     debug!("Now it's running!");
+                                    // TODO: if status was finished, then send a sigterm.
                                     sh.set_pid(pid);
                                 });
                         });
@@ -178,6 +198,21 @@ impl Horust {
             }
         }
         Ok(())
+    }
+    pub fn stop_all_services(&self) {
+        self.supervised
+            .lock()
+            .unwrap()
+            .iter_mut()
+            .for_each(|service| {
+                if let Some(pid) = service.pid {
+                    kill(pid, SIGTERM)
+                        .map_err(|err| eprintln!("Error: {:?}", err))
+                        .unwrap();
+                }
+                // Removes `Initial` and ToBeRun services.
+                service.status = ServiceStatus::Finished
+            });
     }
 
     pub fn run_service(service: &Service) -> Result<Pid> {
@@ -264,7 +299,7 @@ impl Horust {
         .expect("Failed to set sigprocmask.");
     }
     fn setup_signal_handling(&self) {
-        self.disable_signal_handling();
+        //self.disable_signal_handling();
 
         // To allow auto restart on some syscalls,
         // for example: `waitpid`.
@@ -278,14 +313,16 @@ impl Horust {
         if let Err(err) = unsafe { sigaction(SIGTERM, &sig_action) } {
             panic!("sigaction() failed: {}", err);
         };
+        if let Err(err) = unsafe { sigaction(SIGINT, &sig_action) } {
+            panic!("sigaction() failed: {}", err);
+        };
     }
-    //TODO: kill -9 -1
     extern "C" fn handle_sigterm(_: libc::c_int) {
         SignalSafe::print("Received SIGTERM.\n");
         unsafe {
             SIGTERM_RECEIVED = true;
         }
-        SignalSafe::exit(1);
+        //SignalSafe::exit(1);
     }
 }
 
