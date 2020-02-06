@@ -8,12 +8,11 @@ pub fn health_check(services: Services) {
     // TODO
     let check_http_endpoint = |endpoint: Option<&String>| ServiceStatus::Starting;
     let check_file = |path: Option<&PathBuf>| {
-        if let Some(path) = path {
-            if path.exists() {
-                return ServiceStatus::Running;
-            }
+        if path.is_some() && path.unwrap().exists() {
+            ServiceStatus::Running
+        } else {
+            ServiceStatus::Starting
         }
-        ServiceStatus::Starting
     };
     services
         .lock()
