@@ -81,9 +81,8 @@ rediness = "/tmp/my-cool-service.ready"
 signal_rewrite = "15:3,5:10"
 [healthness]
 http_endpoint = "http://localhost:2020/healthcheck"
+file_endpoint = "/var/myservice/up"
 # Future:
-# tcp_endpoint = "localhost:2020"
-# udp_endpoint = "localhost:2020"
 # use a unix domain socket:
 # http_endpoint = "/var/run/my_cool_service.uds"
 # [environment]

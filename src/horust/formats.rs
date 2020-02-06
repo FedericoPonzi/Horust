@@ -20,6 +20,15 @@ pub struct Service {
     pub restart_strategy: RestartStrategy,
     #[serde(default, with = "humantime_serde")]
     pub restart_backoff: Duration,
+    #[serde()]
+    pub healthness: Option<Healthness>,
+}
+
+#[derive(Serialize, Clone, Deserialize, Debug, Eq, PartialEq)]
+#[serde(rename_all = "kebab-case")]
+pub struct Healthness {
+    pub http_endpoint: Option<String>,
+    pub file_path: Option<PathBuf>,
 }
 
 impl Service {
@@ -29,7 +38,10 @@ command = ""
 working-directory = "/tmp/"
 restart = "never"
 start-delay = "2s"
-#restart-backoff = "10s"#
+#restart-backoff = "10s"
+[healthness]
+http_endpoint = "http://localhost:8080/healthcheck"
+file_paht = "/var/myservice/up""#
             .to_string()
     }
     pub fn from_file(path: PathBuf) -> Result<Self, HorustError> {
@@ -38,18 +50,27 @@ start-delay = "2s"
     }
 }
 
+/// Visualize: https://state-machine-cat.js.org/
+/// initial => Initial : "Will eventually be run";
+//Initial => ToBeRun : "All dependencies are running, a thread has spawned and will run the fork/exec the process";
+//ToBeRun => Starting : "The ServiceHandler has a pid";
+//Starting => Running : "The service has met healthness policy";
+//Starting => Failed : "Service cannot be started";
+//Running => Finished : "Exit status = 0";
+//Running => Failed  : "Exit status != 0";
+//Finished => Initial : "restart = Always";
+//Failed => Initial : "restart = always|on-failure";
 #[derive(Serialize, Clone, Deserialize, Debug, Eq, PartialEq)]
 pub enum ServiceStatus {
+    Starting,
     /// This is just an intermediate state between Initial and Running.
     ToBeRun,
     /// The service is up and healthy
     Running,
-    /// A Failed service might be restarted if the restart policy demands so.
-    Failed,
     /// A finished service has done it's job and won't be restarted.
     Finished,
-    /// A service which will never be restarted (because of restart policies).
-    FinishedFailed,
+    /// A Failed service might be restarted if the restart policy demands so.
+    Failed,
     /// This is the initial state: A service in Initial state is marked to be runnable:
     /// it will be run as soon as possible.
     Initial,
@@ -88,7 +109,7 @@ impl Default for RestartStrategy {
 
 #[cfg(test)]
 mod test {
-    use crate::horust::formats::{RestartStrategy, Service};
+    use crate::horust::formats::{Healthness, RestartStrategy, Service};
     use std::time::Duration;
 
     impl Service {
@@ -101,6 +122,7 @@ mod test {
                 start_delay: Duration::from_secs(0),
                 command: "".to_string(),
                 restart_backoff: Default::default(),
+                healthness: None,
             }
         }
         pub fn from_name(name: &str) -> Self {
@@ -141,6 +163,7 @@ start-delay = "{}"
             start_after: vec![],
             restart_strategy: restart.into(),
             restart_backoff: Duration::from_secs(10),
+            healthness: None,
         };
         assert_eq!(des, expected);
     }

@@ -1,5 +1,6 @@
 mod error;
 mod formats;
+mod healthcheck;
 mod reaper;
 
 pub use self::error::HorustError;
@@ -64,12 +65,15 @@ impl ServiceHandler {
         self.status = ServiceStatus::Running;
         self.pid = Some(pid);
     }
+    pub fn is_starting(&self) -> bool {
+        self.status == ServiceStatus::Starting
+    }
     pub fn is_running(&self) -> bool {
         self.status == ServiceStatus::Running
     }
     pub fn is_finished(&self) -> bool {
         match self.status {
-            ServiceStatus::Finished | ServiceStatus::FinishedFailed => true,
+            ServiceStatus::Finished | ServiceStatus::Failed => true,
             _ => false,
         }
     }
@@ -80,7 +84,7 @@ impl ServiceHandler {
                 debug!("Pid successfully exited.");
                 // Will never be restarted, even if failed:
                 self.status = if has_failed {
-                    ServiceStatus::FinishedFailed
+                    ServiceStatus::Failed
                 } else {
                     ServiceStatus::Finished
                 };
@@ -101,9 +105,11 @@ impl ServiceHandler {
     }
 }
 
+type Services = Arc<Mutex<Vec<ServiceHandler>>>;
+
 #[derive(Debug)]
 pub struct Horust {
-    supervised: Arc<Mutex<Vec<ServiceHandler>>>,
+    supervised: Services,
 }
 
 impl Horust {
