@@ -15,6 +15,7 @@ pub enum ErrorKind {
 pub struct HorustError {
     kind: ErrorKind,
 }
+
 impl Display for HorustError {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::result::Result<(), fmt::Error> {
         write!(f, "HorustError")

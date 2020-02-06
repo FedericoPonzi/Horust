@@ -1,6 +1,6 @@
 mod horust;
 
-use crate::horust::Horust;
+use crate::horust::{Horust, Service};
 use std::path::PathBuf;
 use structopt::StructOpt;
 
@@ -19,13 +19,6 @@ struct Opts {
     services_path: PathBuf,
 }
 
-const SAMPLE: &str = r#"name = "my-cool-service"
-command = ""
-working-directory = "/tmp/"
-restart = "never"
-start-delay = "2s"
-#restart-backoff = "10s"#;
-
 fn main() -> Result<(), horust::HorustError> {
     // Set up logging.
     let env = env_logger::Env::new()
@@ -37,7 +30,7 @@ fn main() -> Result<(), horust::HorustError> {
 
     let opts = Opts::from_args();
     if opts.sample_service {
-        println!("{}", SAMPLE);
+        println!("{}", Service::get_sample_service());
         return Ok(());
     }
     Horust::from_services_dir(&opts.services_path)?.run()

@@ -4,7 +4,8 @@ mod reaper;
 
 pub use self::error::HorustError;
 use self::error::Result;
-use self::formats::{RestartStrategy, Service, ServiceStatus};
+use self::formats::{RestartStrategy, ServiceStatus};
+pub use formats::Service;
 use libc::STDOUT_FILENO;
 use libc::{prctl, PR_SET_CHILD_SUBREAPER};
 use nix::sys::signal::kill;
@@ -211,6 +212,7 @@ impl Horust {
         Horust::spawn_process(service)
     }
 
+    /// Create a new horust instance from a path of services.
     pub fn from_services_dir<P>(path: &P) -> Result<Horust>
     where
         P: AsRef<Path> + ?Sized + AsRef<OsStr> + Debug,
@@ -241,7 +243,7 @@ impl Horust {
         dir.filter_map(std::result::Result::ok)
             .map(|dir_entry| dir_entry.path())
             .filter(is_toml_file)
-            .map(Service::load_from_file)
+            .map(Service::from_file)
             .collect::<Result<Vec<Service>>>()
     }
 

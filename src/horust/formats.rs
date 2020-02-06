@@ -6,6 +6,39 @@ use std::time::Duration;
 pub type ServiceName = String;
 
 #[derive(Serialize, Clone, Deserialize, Debug, Eq, PartialEq)]
+#[serde(rename_all = "kebab-case")]
+pub struct Service {
+    pub name: String,
+    pub command: String,
+    #[serde(default)]
+    pub working_directory: PathBuf,
+    #[serde(default, with = "humantime_serde")]
+    pub start_delay: Duration,
+    #[serde(default = "Vec::new")]
+    pub start_after: Vec<ServiceName>,
+    #[serde(default)]
+    pub restart_strategy: RestartStrategy,
+    #[serde(default, with = "humantime_serde")]
+    pub restart_backoff: Duration,
+}
+
+impl Service {
+    pub fn get_sample_service() -> String {
+        r#"name = "my-cool-service"
+command = ""
+working-directory = "/tmp/"
+restart = "never"
+start-delay = "2s"
+#restart-backoff = "10s"#
+            .to_string()
+    }
+    pub fn from_file(path: PathBuf) -> Result<Self, HorustError> {
+        let content = std::fs::read_to_string(path)?;
+        toml::from_str::<Service>(content.as_str()).map_err(HorustError::from)
+    }
+}
+
+#[derive(Serialize, Clone, Deserialize, Debug, Eq, PartialEq)]
 pub enum ServiceStatus {
     /// This is just an intermediate state between Initial and Running.
     ToBeRun,
@@ -53,34 +86,9 @@ impl Default for RestartStrategy {
     }
 }
 
-#[derive(Serialize, Clone, Deserialize, Debug, Eq, PartialEq)]
-#[serde(rename_all = "kebab-case")]
-pub struct Service {
-    pub name: String,
-    pub command: String,
-    #[serde(default)]
-    pub working_directory: PathBuf,
-    #[serde(default, with = "humantime_serde")]
-    pub start_delay: Duration,
-    #[serde(default = "Vec::new")]
-    pub start_after: Vec<ServiceName>,
-    #[serde(default)]
-    pub restart_strategy: RestartStrategy,
-    #[serde(default, with = "humantime_serde")]
-    pub restart_backoff: Duration,
-}
-
-impl Service {
-    pub fn load_from_file(path: PathBuf) -> Result<Self, HorustError> {
-        let content = std::fs::read_to_string(path)?;
-        toml::from_str::<Service>(content.as_str()).map_err(HorustError::from)
-    }
-}
-
 #[cfg(test)]
 mod test {
     use crate::horust::formats::{RestartStrategy, Service};
-    use crate::SAMPLE;
     use std::time::Duration;
 
     impl Service {
@@ -101,7 +109,7 @@ mod test {
     }
     #[test]
     fn test_should_deserialize_sample() {
-        let des = toml::from_str::<Service>(SAMPLE);
+        let des = toml::from_str::<Service>(Service::get_sample_service().as_ref());
         assert!(des.is_ok())
     }
     #[test]
