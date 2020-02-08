@@ -20,20 +20,28 @@ fn run_checks(services: &Services) {
         .filter(|sh| sh.is_starting())
         .filter(|sh| match sh.service.healthness.as_ref() {
             Some(healthness) => {
-                let mut ret = false;
+                let mut checks = 0;
+                let mut checks_res = 0;
                 if let Some(file_path) = healthness.file_path.as_ref() {
-                    ret = file_path.exists();
+                    checks += 1;
+                    checks_res += if file_path.exists() {
+                        1
+                    } else {
+                        debug!("Healthcheck: File: {:?}, doesn't exists yet.", file_path);
+                        0
+                    };
                 }
                 if let Some(endpoint) = healthness.http_endpoint.as_ref() {
-                    ret = check_http_endpoint(endpoint);
+                    checks += 1;
+                    checks_res += 0;
                 }
                 /*
                     Edge case: [healthcheck] header section is defined, but then it's empty. This should pass.
                 */
+                let res = checks == checks_res;
                 let empty_section =
                     healthness.file_path.is_some() || healthness.http_endpoint.is_some();
-
-                ret || !empty_section
+                res || !empty_section
             }
             None => true,
         })
