@@ -1,4 +1,3 @@
-use crate::horust::formats::ServiceStatus;
 use crate::horust::ServiceHandler;
 use nix::sys::wait::{waitpid, WaitStatus};
 use nix::unistd::Pid;
@@ -16,7 +15,7 @@ pub(crate) fn supervisor_thread(supervised: Arc<Mutex<Vec<ServiceHandler>>>) {
         match waitpid(Pid::from_raw(-1), None) {
             Ok(wait_status) => {
                 if let WaitStatus::Exited(pid, exit_code) = wait_status {
-                    debug!("Pid has exited: {}", pid);
+                    debug!("Pid has exited: {} with exitcode: {}", pid, exit_code);
                     reapable.insert(pid, exit_code);
                 }
             }
@@ -42,7 +41,7 @@ pub(crate) fn supervisor_thread(supervised: Arc<Mutex<Vec<ServiceHandler>>>) {
             }
             // If is a grandchildren, we don't care about it:
             // is grandchildren =
-            locked.iter().any(|sh| sh.status == ServiceStatus::ToBeRun)
+            locked.iter().any(|sh| sh.is_to_be_run())
         });
         std::thread::sleep(Duration::from_millis(500))
     }

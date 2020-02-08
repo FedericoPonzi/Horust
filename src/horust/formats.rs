@@ -41,7 +41,7 @@ start-delay = "2s"
 #restart-backoff = "10s"
 [healthness]
 http_endpoint = "http://localhost:8080/healthcheck"
-file_paht = "/var/myservice/up""#
+file_path = "/var/myservice/up""#
             .to_string()
     }
     pub fn from_file(path: PathBuf) -> Result<Self, HorustError> {
@@ -134,6 +134,8 @@ mod test {
         let des = toml::from_str::<Service>(Service::get_sample_service().as_ref());
         assert!(des.is_ok())
     }
+    #[test]
+    fn test_should_correctly_deserialize_sample() {}
     #[test]
     pub fn test_should_correctly_deserialize() {
         let name = "my-cool-service";

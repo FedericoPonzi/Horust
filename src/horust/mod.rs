@@ -30,6 +30,9 @@ impl SignalSafe {
 }
 
 static mut SIGTERM_RECEIVED: bool = false;
+fn get_sigterm_received() -> bool {
+    unsafe { SIGTERM_RECEIVED }
+}
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct ServiceHandler {
@@ -62,11 +65,21 @@ impl ServiceHandler {
         self.service.name.as_str()
     }
     fn set_pid(&mut self, pid: Pid) {
-        self.status = ServiceStatus::Running;
+        self.status = ServiceStatus::Starting;
         self.pid = Some(pid);
+    }
+    /// TODO: set validation of the FSM.
+    fn set_status(&mut self, status: ServiceStatus) {
+        self.status = status;
+    }
+    pub fn is_to_be_run(&self) -> bool {
+        self.status == ServiceStatus::ToBeRun
     }
     pub fn is_starting(&self) -> bool {
         self.status == ServiceStatus::Starting
+    }
+    pub fn is_initial(&self) -> bool {
+        self.status == ServiceStatus::Initial
     }
     pub fn is_running(&self) -> bool {
         self.status == ServiceStatus::Running
@@ -79,9 +92,17 @@ impl ServiceHandler {
     }
     pub fn set_status_by_exit_code(&mut self, exit_code: i32) {
         let has_failed = exit_code != 0;
+        if has_failed {
+            error!(
+                "Service: {} has failed, exit code: {}",
+                self.name(),
+                exit_code
+            );
+        } else {
+            info!("Service: {} successfully exited.", self.name());
+        }
         match self.service.restart_strategy {
             RestartStrategy::Never => {
-                debug!("Pid successfully exited.");
                 // Will never be restarted, even if failed:
                 self.status = if has_failed {
                     ServiceStatus::Failed
@@ -122,18 +143,26 @@ impl Horust {
         }
     }
 
+    /// Main entrypoint
     pub fn run(&mut self) -> Result<()> {
         unsafe {
             prctl(PR_SET_CHILD_SUBREAPER, 1, 0, 0, 0);
         }
         self.setup_signal_handling();
+
+        let supervised = Arc::clone(&self.supervised);
+        std::thread::spawn(|| {
+            healthcheck::healthcheck_entrypoint(supervised);
+        });
         let supervised = Arc::clone(&self.supervised);
         std::thread::spawn(|| {
             reaper::supervisor_thread(supervised);
         });
+
         debug!("Going to start services!");
+
         loop {
-            if unsafe { SIGTERM_RECEIVED }
+            if get_sigterm_received()
                 && self
                     .supervised
                     .lock()
@@ -154,11 +183,10 @@ impl Horust {
                         let mut can_run = true;
                         for service_name in dependencies {
                             for service in superv_services.iter() {
-                                let is_not_started = service.name() == *service_name
-                                    && (service.status != ServiceStatus::Running
-                                        && service.status != ServiceStatus::Finished);
-                                if is_not_started {
-                                    can_run = false;
+                                let is_started = service.name() == *service_name
+                                    && (service.is_running() || service.is_finished());
+                                if is_started {
+                                    can_run = true;
                                     break;
                                 }
                             }
@@ -166,10 +194,12 @@ impl Horust {
                         can_run
                     };
 
-                    if service_handler.status == ServiceStatus::Initial
-                        && check_can_run(service_handler.start_after())
+                    if service_handler.is_initial() && check_can_run(service_handler.start_after())
                     {
-                        service_handler.status = ServiceStatus::ToBeRun;
+                        service_handler.set_status(ServiceStatus::ToBeRun);
+                        //TODO: Handle.
+                        healthcheck::prepare_service(&service_handler).unwrap();
+
                         let supervised_ref = Arc::clone(&self.supervised);
                         let service = service_handler.service.clone();
                         std::thread::spawn(move || {
@@ -181,8 +211,7 @@ impl Horust {
                                 .iter_mut()
                                 .filter(|sh| sh.name() == service.name)
                                 .for_each(|sh| {
-                                    debug!("Now it's running!");
-                                    // TODO: if status was finished, then send a sigterm.
+                                    debug!("Now it's starting!");
                                     sh.set_pid(pid);
                                 });
                         });
@@ -192,6 +221,7 @@ impl Horust {
                 .collect();
             let all_finished = superv_services.iter().all(|sh| sh.is_finished());
             if all_finished {
+                debug!("All services have finished, exiting...");
                 break;
             }
         }
@@ -209,7 +239,7 @@ impl Horust {
                         .unwrap();
                 }
                 // Removes `Initial` and ToBeRun services.
-                service.status = ServiceStatus::Finished
+                service.set_status(ServiceStatus::Finished)
             });
     }
 
@@ -260,7 +290,6 @@ impl Horust {
                 Horust::exec_service(service);
                 unreachable!()
             }
-
             Ok(ForkResult::Parent { child, .. }) => {
                 debug!("Spawned child with PID {}.", child);
                 Ok(child)
@@ -309,7 +338,6 @@ impl Horust {
         unsafe {
             SIGTERM_RECEIVED = true;
         }
-        //SignalSafe::exit(1);
     }
 }
 
