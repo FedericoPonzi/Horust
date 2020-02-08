@@ -3,6 +3,7 @@
 * Reload configuration via SIGHUP (or another signal because as of now it can be run in a terminal).
 * Create another binary for getting the status of the services.
 * healthchecks
+* signal rewriting
 * Per-service resource limits
 * Benchmark startup time
 

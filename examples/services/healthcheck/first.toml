@@ -4,5 +4,6 @@ working-directory = "/tmp/"
 restart = "never"
 start-delay = "2s"
 #restart-backoff = "10s"
-[healthness]
 file_path = "/tmp/horust-ready"
+
+[healthness]

@@ -1,6 +1,7 @@
 use crate::horust::HorustError;
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
+use std::str::FromStr;
 use std::time::Duration;
 
 pub type ServiceName = String;
@@ -47,6 +48,13 @@ file_path = "/var/myservice/up""#
     pub fn from_file(path: PathBuf) -> Result<Self, HorustError> {
         let content = std::fs::read_to_string(path)?;
         toml::from_str::<Service>(content.as_str()).map_err(HorustError::from)
+    }
+}
+impl FromStr for Service {
+    type Err = HorustError;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        toml::from_str::<Service>(s).map_err(HorustError::from)
     }
 }
 
@@ -109,7 +117,7 @@ impl Default for RestartStrategy {
 
 #[cfg(test)]
 mod test {
-    use crate::horust::formats::{Healthness, RestartStrategy, Service};
+    use crate::horust::formats::{RestartStrategy, Service};
     use std::time::Duration;
 
     impl Service {
@@ -134,7 +142,9 @@ mod test {
         let des = toml::from_str::<Service>(Service::get_sample_service().as_ref());
         assert!(des.is_ok())
     }
+    // TODO: usa sample to verify the correctness of deserialization.
     #[test]
+    #[ignore]
     fn test_should_correctly_deserialize_sample() {}
     #[test]
     pub fn test_should_correctly_deserialize() {

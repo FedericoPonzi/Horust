@@ -7,8 +7,6 @@ use std::time::Duration;
 
 /// A endlessly running function meant to be run in a separate thread.
 /// Its purpose is to continuously try to reap possibly dead children.
-/// TODO: Issue with this: child fork, and the pid get reaped here, it gets inserted in the reapable function
-/// but
 pub(crate) fn supervisor_thread(supervised: Arc<Mutex<Vec<ServiceHandler>>>) {
     let mut reapable = HashMap::new();
     loop {
@@ -32,7 +30,7 @@ pub(crate) fn supervisor_thread(supervised: Arc<Mutex<Vec<ServiceHandler>>>) {
             debug!("pid:{:?}, locked: {:?}", pid, locked);
             let service: Option<&mut ServiceHandler> = locked
                 .iter_mut()
-                .filter(|sh| sh.pid == Some(*pid))
+                .skip_while(|sh| sh.pid == Some(*pid))
                 .take(1)
                 .last();
             if let Some(service) = service {

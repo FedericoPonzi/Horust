@@ -4,13 +4,26 @@
 
 Horust is an supervisor system written in rust and designed to be run in containers. 
 
+
+
+# Table of contents
+* Goals
+* Usage
+* Maintaier
+* Contributing
+* License
+
+
+
 ## Goals:
-* Supervisioning: A full fledge supervisor system, designed to be used in containers.
-* Init: Use Horust as your init system.
-* Understandability: the code aims to be clear and obivous. Easy to understand, easy to maintain.
+* Supervision: A full fledge supervisor system, designed to be used in containers.
+* Init system: Use Horust as your init system.
+* Understandability: The code should be easy to understand and easy to modify.
+* Rock solid: You should be able to trust your favorite egyptian God.
 
 ## Status
-This should be considered Alpha software. Please check [Contributing](CONTRIBUTING.md) if you want to join the development.
+At this point, this should be considered Alpha software. 
+Check [Contributing](CONTRIBUTING.md) if you want to join the development.
 
 ## How to use it
 1. Define your services inside `/etc/horust/services/`.
@@ -101,3 +114,14 @@ web-server = false
 # How much time to wait after sending a `sigterm` to a process before sending a SIGKILL.
 timeout-before-sigkill = "10s"
 ```
+
+## LICENSE
+TBD
+
+## Contributing
+Thanks for considering contributing to horust! 
+[Github Issue](https://github.com/FedericoPonzi/horust/issues) are a good place for getting started. 
+
+If you're planning to add new features, it's super awesome but please let's discuss it via an issue before start working on it.
+
+Have a look on [DEVELOPMENT.md](https://github.com/FedericoPonzi/Horust/blob/master/DEVELOPMENT.md) for more info on how to get started.
