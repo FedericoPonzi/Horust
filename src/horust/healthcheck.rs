@@ -1,5 +1,6 @@
-use crate::horust::formats::ServiceStatus;
+use crate::horust::formats::{Healthness, ServiceStatus};
 use crate::horust::{ServiceHandler, Services};
+use reqwest::blocking::Client;
 
 // TODO: this is not really healthness check, but rather readiness check. please change.
 pub fn healthcheck_entrypoint(services: Services) {
@@ -7,12 +8,13 @@ pub fn healthcheck_entrypoint(services: Services) {
         run_checks(&services)
     }
 }
-fn check_http_endpoint(_endpoint: &str) -> bool {
-    false
+fn check_http_endpoint(endpoint: &str) -> bool {
+    let client = Client::new();
+    let resp: reqwest::blocking::Response = client.head(endpoint).send().unwrap();
+    resp.status().is_success()
 }
 
 fn run_checks(services: &Services) {
-    // TODO
     services
         .lock()
         .unwrap()
@@ -20,7 +22,9 @@ fn run_checks(services: &Services) {
         .filter(|sh| sh.is_starting())
         .filter(|sh| match sh.service.healthness.as_ref() {
             Some(healthness) => {
+                // Count of required checks:
                 let mut checks = 0;
+                // Count of passed checks:
                 let mut checks_res = 0;
                 if let Some(file_path) = healthness.file_path.as_ref() {
                     checks += 1;
@@ -33,7 +37,7 @@ fn run_checks(services: &Services) {
                 }
                 if let Some(endpoint) = healthness.http_endpoint.as_ref() {
                     checks += 1;
-                    checks_res += 0;
+                    checks_res += if check_http_endpoint(endpoint) { 1 } else { 0 };
                 }
                 /*
                     Edge case: [healthcheck] header section is defined, but then it's empty. This should pass.
@@ -48,6 +52,7 @@ fn run_checks(services: &Services) {
         .for_each(|sh| sh.status = ServiceStatus::Running);
 }
 
+/// Setup require for the service, before running the healthchecks and starting the service.
 pub fn prepare_service(service_handler: &ServiceHandler) -> Result<(), std::io::Error> {
     if let Some(healthness) = &service_handler.service.healthness {
         if let Some(file_path) = &healthness.file_path {

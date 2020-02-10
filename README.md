@@ -45,34 +45,23 @@ https://github.com/OpenRC/openrc/blob/master/supervise-daemon-guide.md
 What happens to dependant process, if a dependency process fails?
 
 
-## Configuration
-
+## Services
+You can create new services by creating a toml file. Check the documentation below for a description of each field.
+Bootstrap the creation of a new service, by using `horust --sample-service > new_service.toml`.
+ 
 ### Service section
 * **`name` = `string`**: Name of the service. If not defined, it will use the filename instead.
-```toml
-[service]
-name = "my-cool-service" #Optional, will take filename.toml.
-```
-* `command` = `string`: Specify a command to run, or a full path. You can also add arguments. If a full path is not provided, the binary will be searched using the $PATH env variable.
-```
-[service]
-command = "curl google.com"
-```
-```
-[service]
-command = "/home/federicoponzi/dev/main.sh"
-```
-* `wd` = `string`: Change the current working directory to the value of wd, before spawning the service.
-```toml
-[service]
-wd = "/"
-```
+* **`command` = `string`**: Specify a command to run, or a full path. You can also add arguments. If a full path is not provided, the binary will be searched using the $PATH env variable.
+* **`working_directory` = `string`**: will use this value as current working directory for the service.
 
-* `restart` = `always|on-failure|never`: Defines the restart strategy.
-* `readiness` = `health|custom command`: If not present, the service will be considered ready as soon as has been spawned. Otherwise, use:
-    * `health`: Use the same strategy defined in the health configuration, 
-    * `custom command`: If the custom command is succesfull then your service is ready.
-* `restart-backoff` = `string`: If the service cannot be started, use this backoff time before retrying again.
+#### Restart section
+* **`strategy` = `always|on-failure|never`**: Defines the restart strategy.
+* **`backoff`** = `string`: If the service cannot be started, use this backoff time before retrying again.
+* **`tentatives`** = `number`:
+#### Rediness
+* **`readiness` = `health`**: If not present, the service will be considered ready as soon as has been spawned. Otherwise, use:
+    * **`health`**: Use the same strategy defined in the health configuration, 
+    * **`custom command`**: If the custom command is succesfull then your service is ready.
 
 ### Healthness Check
  * You can check the healthness of your system using an http endpoint.
@@ -83,25 +72,35 @@ wd = "/"
 name = "my-cool-service"
 command = "curl google.com"
 working_directory = "/tmp/"
-restart = "always"
-restart-backoff = "10s"
 # If service cannot be started, bring the system down.
 # Useful if you have some critical service you want to be sure it's running.
 # default: false
-required = false 
-rediness = "/tmp/my-cool-service.ready"
+required = false
 # Rewrite incoming signals before proxying them:
 signal_rewrite = "15:3,5:10"
+
+[failure]
+exit_code = "10,20"
+# Shut down the system if this service fails.
+strategy = "kill-all"
+
+[restart]
+strategy = "always"
+backoff = "10s"
+trials = 3
+rediness = "/tmp/my-cool-service.ready"
 [healthness]
 http_endpoint = "http://localhost:2020/healthcheck"
-file_endpoint = "/var/myservice/up"
+file = "/var/myservice/up"
 # Future:
 # use a unix domain socket:
 # http_endpoint = "/var/run/my_cool_service.uds"
 # [environment]
 # clear = true
 # load = "/etc/my_db/env"
+# Define directly in here:
 # DATABASE_NAME = "My_DB"
+# DATABASE_URI = "mysql@localhost"
 # 
 ```
 

@@ -1,8 +1,3 @@
-mod error;
-mod formats;
-mod healthcheck;
-mod reaper;
-
 pub use self::error::HorustError;
 use self::error::Result;
 use self::formats::{RestartStrategy, ServiceStatus};
@@ -18,6 +13,11 @@ use std::fmt::Debug;
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
+
+mod error;
+mod formats;
+mod healthcheck;
+mod reaper;
 
 struct SignalSafe;
 

@@ -1,8 +1,8 @@
-mod horust;
-
 use crate::horust::{Horust, Service};
 use std::path::PathBuf;
 use structopt::StructOpt;
+
+mod horust;
 
 #[macro_use]
 extern crate log;
