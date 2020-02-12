@@ -23,6 +23,8 @@ pub struct Service {
     pub restart_backoff: Duration,
     #[serde()]
     pub healthness: Option<Healthness>,
+    #[serde()]
+    pub signal_rewrite: Option<String>,
 }
 
 #[derive(Serialize, Clone, Deserialize, Debug, Eq, PartialEq)]
@@ -131,6 +133,7 @@ mod test {
                 command: "".to_string(),
                 restart_backoff: Default::default(),
                 healthness: None,
+                signal_rewrite: None,
             }
         }
         pub fn from_name(name: &str) -> Self {
@@ -176,6 +179,7 @@ start-delay = "{}"
             restart_strategy: restart.into(),
             restart_backoff: Duration::from_secs(10),
             healthness: None,
+            signal_rewrite: None,
         };
         assert_eq!(des, expected);
     }

@@ -1,4 +1,4 @@
-use crate::horust::formats::{Healthness, ServiceStatus};
+use crate::horust::formats::ServiceStatus;
 use crate::horust::{ServiceHandler, Services};
 use reqwest::blocking::Client;
 
