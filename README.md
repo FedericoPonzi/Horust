@@ -63,8 +63,8 @@ Bootstrap the creation of a new service, by using `horust --sample-service > new
     * **`health`**: Use the same strategy defined in the health configuration, 
     * **`custom command`**: If the custom command is successful then your service is ready.
 
-### Healthness Check
- * You can check the healthness of your system using an http endpoint.
+### Healthiness Check
+ * You can check the healthiness of your system using an http endpoint.
  * You can use the enforce dependency to kill every dependent system.
 
 ```toml
@@ -89,7 +89,7 @@ strategy = "always"
 backoff = "10s"
 trials = 3
 rediness = "/tmp/my-cool-service.ready"
-[healthness]
+[healthiness]
 http_endpoint = "http://localhost:2020/healthcheck"
 file = "/var/myservice/up"
 # Future:
@@ -103,7 +103,6 @@ file = "/var/myservice/up"
 # DATABASE_URI = "mysql@localhost"
 # 
 ```
-
 
 ## Horust configuration
 Horust itself can be tuned and modified by using the following shiny parameters:
@@ -121,6 +120,6 @@ TBD
 Thanks for considering contributing to horust! 
 [Github Issue](https://github.com/FedericoPonzi/horust/issues) are a good place for getting started. 
 
-If you're planning to add new features, it's super awesome but please let's discuss it via an issue before start working on it.
+If you're planning to add new features, it's super awesome but please, let's discuss it via an [issue](https://github.com/FedericoPonzi/Horust/issues/new) before you start working on it.
 
 Have a look on [DEVELOPMENT.md](https://github.com/FedericoPonzi/Horust/blob/master/DEVELOPMENT.md) for more info on how to get started.

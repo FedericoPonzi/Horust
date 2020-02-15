@@ -22,7 +22,7 @@ pub struct Service {
     #[serde(default, with = "humantime_serde")]
     pub restart_backoff: Duration,
     #[serde()]
-    pub healthness: Option<Healthness>,
+    pub healthiness: Option<Healthness>,
     #[serde()]
     pub signal_rewrite: Option<String>,
 }
@@ -41,7 +41,7 @@ working-directory = "/tmp/"
 restart = "never"
 start-delay = "2s"
 #restart-backoff = "10s"
-[healthness]
+[healthiness]
 http_endpoint = "http://localhost:8080/healthcheck"
 file_path = "/var/myservice/up""#
         .to_string()
@@ -61,7 +61,7 @@ impl Service {
             start_delay: Duration::from_secs(0),
             command,
             restart_backoff: Default::default(),
-            healthness: None,
+            healthiness: None,
             signal_rewrite: None,
         }
     }
@@ -79,7 +79,7 @@ impl FromStr for Service {
 /// initial => Initial : "Will eventually be run";
 //Initial => ToBeRun : "All dependencies are running, a thread has spawned and will run the fork/exec the process";
 //ToBeRun => Starting : "The ServiceHandler has a pid";
-//Starting => Running : "The service has met healthness policy";
+//Starting => Running : "The service has met healthiness policy";
 //Starting => Failed : "Service cannot be started";
 //Running => Finished : "Exit status = 0";
 //Running => Failed  : "Exit status != 0";
@@ -148,7 +148,7 @@ mod test {
                 start_delay: Duration::from_secs(0),
                 command: "".to_string(),
                 restart_backoff: Default::default(),
-                healthness: None,
+                healthiness: None,
                 signal_rewrite: None,
             }
         }

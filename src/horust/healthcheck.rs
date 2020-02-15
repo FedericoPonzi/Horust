@@ -2,7 +2,7 @@ use crate::horust::formats::ServiceStatus;
 use crate::horust::{ServiceHandler, Services};
 use reqwest::blocking::Client;
 
-// TODO: this is not really healthness check, but rather readiness check. please change.
+// TODO: this is not really healthiness check, but rather readiness check. please change.
 pub(crate) fn healthcheck_entrypoint(services: Services) {
     loop {
         run_checks(&services)
@@ -20,13 +20,13 @@ fn run_checks(services: &Services) {
         .unwrap()
         .iter_mut()
         .filter(|sh| sh.is_starting())
-        .filter(|sh| match sh.service.healthness.as_ref() {
-            Some(healthness) => {
+        .filter(|sh| match sh.service.healthiness.as_ref() {
+            Some(healthiness) => {
                 // Count of required checks:
                 let mut checks = 0;
                 // Count of passed checks:
                 let mut checks_res = 0;
-                if let Some(file_path) = healthness.file_path.as_ref() {
+                if let Some(file_path) = healthiness.file_path.as_ref() {
                     checks += 1;
                     checks_res += if file_path.exists() {
                         1
@@ -35,7 +35,7 @@ fn run_checks(services: &Services) {
                         0
                     };
                 }
-                if let Some(endpoint) = healthness.http_endpoint.as_ref() {
+                if let Some(endpoint) = healthiness.http_endpoint.as_ref() {
                     checks += 1;
                     checks_res += if check_http_endpoint(endpoint) { 1 } else { 0 };
                 }
@@ -44,7 +44,7 @@ fn run_checks(services: &Services) {
                 */
                 let res = checks == checks_res;
                 let empty_section =
-                    healthness.file_path.is_some() || healthness.http_endpoint.is_some();
+                    healthiness.file_path.is_some() || healthiness.http_endpoint.is_some();
                 res || !empty_section
             }
             None => true,
@@ -54,8 +54,8 @@ fn run_checks(services: &Services) {
 
 /// Setup require for the service, before running the healthchecks and starting the service.
 pub(crate) fn prepare_service(service_handler: &ServiceHandler) -> Result<(), std::io::Error> {
-    if let Some(healthness) = &service_handler.service.healthness {
-        if let Some(file_path) = &healthness.file_path {
+    if let Some(healthiness) = &service_handler.service.healthiness {
+        if let Some(file_path) = &healthiness.file_path {
             std::fs::remove_file(file_path)?;
         }
     }
@@ -85,7 +85,7 @@ mod test {
             .for_each(|sh| assert_eq!(sh.status, status));
     }
     #[test]
-    fn test_healthness_checks() {
+    fn test_healthiness_checks() {
         // _no_checks_needed
         let service = get_sample_service().parse().unwrap();
         let services = create_from_service(service);
@@ -102,7 +102,7 @@ mod test {
             file_path: Some(filepath.clone()),
         };
         let mut service: Service = get_sample_service().parse().unwrap();
-        service.healthness = Some(healthcheck);
+        service.healthiness = Some(healthcheck);
         let services = create_from_service(service);
         healthcheck::run_checks(&services);
         assert_status(&services, ServiceStatus::Starting);
