@@ -30,7 +30,7 @@ pub(crate) fn supervisor_thread(supervised: Arc<Mutex<Vec<ServiceHandler>>>) {
             debug!("pid:{:?}, locked: {:?}", pid, locked);
             let service: Option<&mut ServiceHandler> = locked
                 .iter_mut()
-                .skip_while(|sh| sh.pid == Some(*pid))
+                .skip_while(|sh| sh.pid != Some(*pid))
                 .take(1)
                 .last();
             if let Some(service) = service {
