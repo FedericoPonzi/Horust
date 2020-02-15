@@ -34,9 +34,8 @@ pub struct Healthness {
     pub file_path: Option<PathBuf>,
 }
 
-impl Service {
-    pub fn get_sample_service() -> String {
-        r#"name = "my-cool-service"
+pub fn get_sample_service() -> String {
+    r#"name = "my-cool-service"
 command = ""
 working-directory = "/tmp/"
 restart = "never"
@@ -45,8 +44,10 @@ start-delay = "2s"
 [healthness]
 http_endpoint = "http://localhost:8080/healthcheck"
 file_path = "/var/myservice/up""#
-            .to_string()
-    }
+        .to_string()
+}
+
+impl Service {
     pub fn from_file(path: PathBuf) -> Result<Self, HorustError> {
         let content = std::fs::read_to_string(path)?;
         toml::from_str::<Service>(content.as_str()).map_err(HorustError::from)
@@ -133,67 +134,13 @@ impl From<&str> for RestartStrategy {
 #[cfg(test)]
 mod test {
     use crate::horust::formats::{RestartStrategy, Service};
+    use crate::horust::get_sample_service;
+    use std::str::FromStr;
     use std::time::Duration;
 
-    impl Service {
-        pub fn start_after(name: &str, start_after: Vec<&str>) -> Self {
-            Service {
-                name: name.to_owned(),
-                start_after: start_after.into_iter().map(|v| v.into()).collect(),
-                working_directory: "".into(),
-                restart_strategy: RestartStrategy::Always,
-                start_delay: Duration::from_secs(0),
-                command: "".to_string(),
-                restart_backoff: Default::default(),
-                healthness: None,
-                signal_rewrite: None,
-            }
-        }
-        pub fn from_name(name: &str) -> Self {
-            Self::start_after(name, Vec::new())
-        }
-    }
     #[test]
-    fn test_should_deserialize_sample() {
-        let des = toml::from_str::<Service>(Service::get_sample_service().as_ref());
-        assert!(des.is_ok())
-    }
-    // TODO: usa sample to verify the correctness of deserialization.
-    #[test]
-    #[ignore]
-    fn test_should_correctly_deserialize_sample() {}
-    #[test]
-    pub fn test_should_correctly_deserialize() {
-        let name = "my-cool-service";
-        let command = "/home/isaacisback/dev/rust/horust/examples/services/first.sh";
-        let working_directory = "/tmp/";
-        let restart = "always";
-        let start_delay = "1s";
-        let restart_backoff = "10s";
-        let service = format!(
-            r#"
-name = "{}"
-command = "{}"
-working-directory = "{}"
-restart-strategy = "{}"
-restart-backoff = "{}"
-start-delay = "{}"
-"#,
-            name, command, working_directory, restart, restart_backoff, start_delay
-        );
-        let des = toml::from_str(&service);
-        let des: Service = des.unwrap();
-        let expected = Service {
-            name: name.into(),
-            command: command.into(),
-            working_directory: working_directory.into(),
-            start_delay: Duration::from_secs(1),
-            start_after: vec![],
-            restart_strategy: restart.into(),
-            restart_backoff: Duration::from_secs(10),
-            healthness: None,
-            signal_rewrite: None,
-        };
-        assert_eq!(des, expected);
+    fn test_should_correctly_deserialize_sample() {
+        let service = Service::from_str(get_sample_service().as_str());
+        assert!(service.is_ok());
     }
 }

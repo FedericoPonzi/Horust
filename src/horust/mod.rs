@@ -1,7 +1,8 @@
 pub use self::error::HorustError;
 use self::error::Result;
+pub use self::formats::get_sample_service;
 use self::formats::{RestartStrategy, ServiceStatus};
-pub use formats::Service;
+use formats::Service;
 use libc::STDOUT_FILENO;
 use libc::{prctl, PR_SET_CHILD_SUBREAPER};
 use nix::sys::signal::kill;
@@ -35,7 +36,7 @@ fn get_sigterm_received() -> bool {
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
-pub struct ServiceHandler {
+pub(crate) struct ServiceHandler {
     service: Service,
     status: ServiceStatus,
     pid: Option<Pid>,
@@ -142,9 +143,10 @@ impl Horust {
             )),
         }
     }
-    pub fn from_service(service: Service) -> Self {
-        Self::new(vec![service])
+    pub fn from_command(command: String) -> Self {
+        Self::new(vec![Service::from_command(command)])
     }
+
     /// Create a new horust instance from a path of services.
     pub fn from_services_dir<P>(path: &P) -> Result<Horust>
     where

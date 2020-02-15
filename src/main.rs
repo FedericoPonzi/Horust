@@ -1,4 +1,4 @@
-use crate::horust::{Horust, Service};
+use crate::horust::Horust;
 use std::path::PathBuf;
 use structopt::StructOpt;
 
@@ -35,13 +35,15 @@ fn main() -> Result<(), horust::HorustError> {
     let opts = Opts::from_args();
 
     if opts.sample_service {
-        println!("{}", Service::get_sample_service());
+        println!("{}", horust::get_sample_service());
         return Ok(());
     }
-    if let Some(command) = opts.command {
-        let service = Service::from_command(command);
-        Horust::from_service(service).run()
+
+    let mut horust = if let Some(command) = opts.command {
+        Horust::from_command(command)
     } else {
-        Horust::from_services_dir(&opts.services_path)?.run()
-    }
+        Horust::from_services_dir(&opts.services_path)?
+    };
+
+    horust.run()
 }
