@@ -59,7 +59,7 @@ impl Service {
             working_directory: "/".into(),
             restart_strategy: Default::default(),
             start_delay: Duration::from_secs(0),
-            command: command,
+            command,
             restart_backoff: Default::default(),
             healthness: None,
             signal_rewrite: None,
@@ -138,6 +138,24 @@ mod test {
     use std::str::FromStr;
     use std::time::Duration;
 
+    impl Service {
+        pub fn start_after(name: &str, start_after: Vec<&str>) -> Self {
+            Service {
+                name: name.to_owned(),
+                start_after: start_after.into_iter().map(|v| v.into()).collect(),
+                working_directory: "".into(),
+                restart_strategy: RestartStrategy::Always,
+                start_delay: Duration::from_secs(0),
+                command: "".to_string(),
+                restart_backoff: Default::default(),
+                healthness: None,
+                signal_rewrite: None,
+            }
+        }
+        pub fn from_name(name: &str) -> Self {
+            Self::start_after(name, Vec::new())
+        }
+    }
     #[test]
     fn test_should_correctly_deserialize_sample() {
         let service = Service::from_str(get_sample_service().as_str());

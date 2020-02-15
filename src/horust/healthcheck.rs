@@ -3,7 +3,7 @@ use crate::horust::{ServiceHandler, Services};
 use reqwest::blocking::Client;
 
 // TODO: this is not really healthness check, but rather readiness check. please change.
-pub fn healthcheck_entrypoint(services: Services) {
+pub(crate) fn healthcheck_entrypoint(services: Services) {
     loop {
         run_checks(&services)
     }
@@ -53,7 +53,7 @@ fn run_checks(services: &Services) {
 }
 
 /// Setup require for the service, before running the healthchecks and starting the service.
-pub fn prepare_service(service_handler: &ServiceHandler) -> Result<(), std::io::Error> {
+pub(crate) fn prepare_service(service_handler: &ServiceHandler) -> Result<(), std::io::Error> {
     if let Some(healthness) = &service_handler.service.healthness {
         if let Some(file_path) = &healthness.file_path {
             std::fs::remove_file(file_path)?;
@@ -64,8 +64,8 @@ pub fn prepare_service(service_handler: &ServiceHandler) -> Result<(), std::io::
 
 #[cfg(test)]
 mod test {
-    use crate::horust::formats::{Healthness, ServiceStatus};
-    use crate::horust::{healthcheck, Service, ServiceHandler, Services};
+    use crate::horust::formats::{Healthness, Service, ServiceStatus};
+    use crate::horust::{get_sample_service, healthcheck, ServiceHandler, Services};
     use std::sync::{Arc, Mutex};
     fn create_from_service(service: Service) -> Services {
         let services: Vec<Service> = vec![service];
@@ -87,7 +87,7 @@ mod test {
     #[test]
     fn test_healthness_checks() {
         // _no_checks_needed
-        let service = Service::get_sample_service().parse().unwrap();
+        let service = get_sample_service().parse().unwrap();
         let services = create_from_service(service);
         healthcheck::run_checks(&services);
         assert_status(&services, ServiceStatus::Running);
@@ -101,7 +101,7 @@ mod test {
             http_endpoint: None,
             file_path: Some(filepath.clone()),
         };
-        let mut service: Service = Service::get_sample_service().parse().unwrap();
+        let mut service: Service = get_sample_service().parse().unwrap();
         service.healthness = Some(healthcheck);
         let services = create_from_service(service);
         healthcheck::run_checks(&services);

@@ -174,19 +174,20 @@ impl Horust {
         });
 
         debug!("Going to start services!");
+        let some_service_still_running = || {
+            self.supervised
+                .lock()
+                .unwrap()
+                .iter()
+                .any(|sh| sh.is_running())
+        };
 
         loop {
-            if get_sigterm_received()
-                && self
-                    .supervised
-                    .lock()
-                    .unwrap()
-                    .iter()
-                    .any(|sh| sh.is_running())
-            {
+            if get_sigterm_received() && some_service_still_running() {
                 println!("Going to stop all services..");
                 self.stop_all_services();
             }
+
             let mut superv_services = self.supervised.lock().unwrap();
             *superv_services = superv_services
                 .iter()
