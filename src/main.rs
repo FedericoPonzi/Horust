@@ -11,12 +11,18 @@ extern crate log;
 #[structopt(version = "0.1", author = "Federico Ponzi", name = "horust")]
 /// Horust is a complete supervisor and init system, designed for running in containers.
 struct Opts {
-    #[structopt(short = "c", long = "config", default_value = "default.conf")]
+    #[structopt(short, long, default_value = "/etc/horust/horust.toml")]
+    /// Horust's config.
     config: String,
-    #[structopt(long = "sample-service")]
+    #[structopt(long)]
+    /// Prints a service file with all the possible options
     sample_service: bool,
-    #[structopt(long = "services-path", default_value = "/etc/horust/services")]
+    #[structopt(long, default_value = "/etc/horust/services")]
+    /// Path to the directory containing the services
     services_path: PathBuf,
+    #[structopt()]
+    /// Specify a command to run instead of load services path. Useful if you just want to use the reaping capability.
+    command: Option<String>,
 }
 
 fn main() -> Result<(), horust::HorustError> {
@@ -26,12 +32,16 @@ fn main() -> Result<(), horust::HorustError> {
         .write_style("HORUST_LOG_STYLE");
     env_logger::init_from_env(env);
 
-    //chdir("/").expect("Error: chdir()");
-
     let opts = Opts::from_args();
+
     if opts.sample_service {
         println!("{}", Service::get_sample_service());
         return Ok(());
     }
-    Horust::from_services_dir(&opts.services_path)?.run()
+    if let Some(command) = opts.command {
+        let service = Service::from_command(command);
+        Horust::from_service(service).run()
+    } else {
+        Horust::from_services_dir(&opts.services_path)?.run()
+    }
 }

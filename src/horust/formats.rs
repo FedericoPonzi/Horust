@@ -51,7 +51,21 @@ file_path = "/var/myservice/up""#
         let content = std::fs::read_to_string(path)?;
         toml::from_str::<Service>(content.as_str()).map_err(HorustError::from)
     }
+    pub fn from_command(command: String) -> Self {
+        Service {
+            name: command.clone(),
+            start_after: Default::default(),
+            working_directory: "/".into(),
+            restart_strategy: Default::default(),
+            start_delay: Duration::from_secs(0),
+            command: command,
+            restart_backoff: Default::default(),
+            healthness: None,
+            signal_rewrite: None,
+        }
+    }
 }
+
 impl FromStr for Service {
     type Err = HorustError;
 
@@ -93,6 +107,11 @@ pub enum RestartStrategy {
     OnFailure,
     Never,
 }
+impl Default for RestartStrategy {
+    fn default() -> Self {
+        RestartStrategy::Never
+    }
+}
 
 impl From<String> for RestartStrategy {
     fn from(strategy: String) -> Self {
@@ -108,12 +127,6 @@ impl From<&str> for RestartStrategy {
             "never" => RestartStrategy::Never,
             _ => RestartStrategy::Never,
         }
-    }
-}
-
-impl Default for RestartStrategy {
-    fn default() -> Self {
-        RestartStrategy::Never
     }
 }
 

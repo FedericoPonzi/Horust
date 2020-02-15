@@ -142,13 +142,25 @@ impl Horust {
             )),
         }
     }
+    pub fn from_service(service: Service) -> Self {
+        Self::new(vec![service])
+    }
+    /// Create a new horust instance from a path of services.
+    pub fn from_services_dir<P>(path: &P) -> Result<Horust>
+    where
+        P: AsRef<Path> + ?Sized + AsRef<OsStr> + Debug,
+    {
+        let services = fetch_services(path)?;
+        debug!("Services found: {:?}", services);
+        Ok(Horust::new(services))
+    }
 
     /// Main entrypoint
     pub fn run(&mut self) -> Result<()> {
         unsafe {
             prctl(PR_SET_CHILD_SUBREAPER, 1, 0, 0, 0);
         }
-        self.setup_signal_handling();
+        setup_signal_handling();
 
         let supervised = Arc::clone(&self.supervised);
         std::thread::spawn(|| {
@@ -203,8 +215,7 @@ impl Horust {
                         let supervised_ref = Arc::clone(&self.supervised);
                         let service = service_handler.service.clone();
                         std::thread::spawn(move || {
-                            let pid =
-                                Horust::run_service(&service).expect("Failed spawning service!");
+                            let pid = run_service(&service).expect("Failed spawning service!");
                             supervised_ref
                                 .lock()
                                 .unwrap()
@@ -242,109 +253,93 @@ impl Horust {
                 service.set_status(ServiceStatus::Finished)
             });
     }
+}
 
-    pub fn run_service(service: &Service) -> Result<Pid> {
-        std::thread::sleep(service.start_delay);
-        Horust::spawn_process(service)
-    }
-
-    /// Create a new horust instance from a path of services.
-    pub fn from_services_dir<P>(path: &P) -> Result<Horust>
-    where
-        P: AsRef<Path> + ?Sized + AsRef<OsStr> + Debug,
-    {
-        Self::fetch_services(path).map_err(Into::into).map(|servs| {
-            debug!("Services found: {:?}", servs);
-            Horust::new(servs)
-        })
-    }
-
-    /// Search for *.toml files in path, and deserialize them into Service.
-    pub fn fetch_services<P>(path: &P) -> Result<Vec<Service>>
-    where
-        P: AsRef<Path> + ?Sized + AsRef<OsStr> + Debug,
-    {
-        debug!("Fetching services from : {:?}", path);
-        let is_toml_file = |path: &PathBuf| {
-            let has_toml_extension = |path: &PathBuf| {
-                path.extension()
-                    .unwrap_or_else(|| "".as_ref())
-                    .to_str()
-                    .unwrap()
-                    .ends_with("toml")
-            };
-            path.is_file() && has_toml_extension(path)
+/// Search for *.toml files in path, and deserialize them into Service.
+fn fetch_services<P>(path: &P) -> Result<Vec<Service>>
+where
+    P: AsRef<Path> + ?Sized + AsRef<OsStr> + Debug,
+{
+    debug!("Fetching services from : {:?}", path);
+    let is_toml_file = |path: &PathBuf| {
+        let has_toml_extension = |path: &PathBuf| {
+            path.extension()
+                .unwrap_or_else(|| "".as_ref())
+                .to_str()
+                .unwrap()
+                .ends_with("toml")
         };
-        let dir = fs::read_dir(path)?;
-        dir.filter_map(std::result::Result::ok)
-            .map(|dir_entry| dir_entry.path())
-            .filter(is_toml_file)
-            .map(Service::from_file)
-            .collect::<Result<Vec<Service>>>()
+        path.is_file() && has_toml_extension(path)
+    };
+    let dir = fs::read_dir(path)?;
+    dir.filter_map(std::result::Result::ok)
+        .map(|dir_entry| dir_entry.path())
+        .filter(is_toml_file)
+        .map(Service::from_file)
+        .collect::<Result<Vec<Service>>>()
+}
+
+fn run_service(service: &Service) -> Result<Pid> {
+    std::thread::sleep(service.start_delay);
+    spawn_process(service)
+}
+
+fn setup_signal_handling() {
+    // To allow auto restart on some syscalls,
+    // for example: `waitpid`.
+    let flags = SaFlags::SA_RESTART;
+    let sig_action = SigAction::new(SigHandler::Handler(handle_sigterm), flags, SigSet::empty());
+
+    if let Err(err) = unsafe { sigaction(SIGTERM, &sig_action) } {
+        panic!("sigaction() failed: {}", err);
+    };
+    if let Err(err) = unsafe { sigaction(SIGINT, &sig_action) } {
+        panic!("sigaction() failed: {}", err);
+    };
+}
+extern "C" fn handle_sigterm(_: libc::c_int) {
+    SignalSafe::print("Received SIGTERM.\n");
+    unsafe {
+        SIGTERM_RECEIVED = true;
     }
-
-    pub fn spawn_process(service: &Service) -> Result<Pid> {
-        match fork() {
-            Ok(ForkResult::Child) => {
-                debug!("Child PID: {}, PPID: {}.", getpid(), getppid());
-                Horust::exec_service(service);
-                unreachable!()
-            }
-            Ok(ForkResult::Parent { child, .. }) => {
-                debug!("Spawned child with PID {}.", child);
-                Ok(child)
-            }
-
-            Err(err) => Err(HorustError::from(err)),
+}
+fn spawn_process(service: &Service) -> Result<Pid> {
+    match fork() {
+        Ok(ForkResult::Child) => {
+            debug!("Child PID: {}, PPID: {}.", getpid(), getppid());
+            exec_service(service);
+            unreachable!()
         }
-    }
-    pub fn exec_service(service: &Service) {
-        debug!("Set cwd: {:?}", &service.working_directory);
-        std::env::set_current_dir(&service.working_directory).unwrap();
-        let mut chunks: Vec<&str> = service.command.split_whitespace().collect();
-        let filename = CString::new(chunks.remove(0)).unwrap();
-
-        let mut arg_cstrings = chunks
-            .into_iter()
-            .map(|arg| CString::new(arg).map_err(HorustError::from))
-            .collect::<Result<Vec<_>>>()
-            .unwrap();
-        arg_cstrings.insert(0, filename.clone());
-        debug!("args: {:?}", arg_cstrings);
-        let arg_cptr: Vec<&CStr> = arg_cstrings.iter().map(|c| c.as_c_str()).collect();
-        // TODO: clear signal mask if needed.
-        nix::unistd::execvp(filename.as_ref(), arg_cptr.as_ref()).expect("Execvp() failed: ");
-    }
-
-    fn setup_signal_handling(&self) {
-        // To allow auto restart on some syscalls,
-        // for example: `waitpid`.
-        let flags = SaFlags::SA_RESTART;
-        let sig_action = SigAction::new(
-            SigHandler::Handler(Horust::handle_sigterm),
-            flags,
-            SigSet::empty(),
-        );
-
-        if let Err(err) = unsafe { sigaction(SIGTERM, &sig_action) } {
-            panic!("sigaction() failed: {}", err);
-        };
-        if let Err(err) = unsafe { sigaction(SIGINT, &sig_action) } {
-            panic!("sigaction() failed: {}", err);
-        };
-    }
-    extern "C" fn handle_sigterm(_: libc::c_int) {
-        SignalSafe::print("Received SIGTERM.\n");
-        unsafe {
-            SIGTERM_RECEIVED = true;
+        Ok(ForkResult::Parent { child, .. }) => {
+            debug!("Spawned child with PID {}.", child);
+            Ok(child)
         }
+
+        Err(err) => Err(HorustError::from(err)),
     }
+}
+pub fn exec_service(service: &Service) {
+    debug!("Set cwd: {:?}, ", &service.working_directory);
+    std::env::set_current_dir(&service.working_directory).unwrap();
+    let mut chunks: Vec<&str> = service.command.split_whitespace().collect();
+    let filename = CString::new(chunks.remove(0)).unwrap();
+
+    let mut arg_cstrings = chunks
+        .into_iter()
+        .map(|arg| CString::new(arg).map_err(HorustError::from))
+        .collect::<Result<Vec<_>>>()
+        .unwrap();
+    arg_cstrings.insert(0, filename.clone());
+    debug!("args: {:?}", arg_cstrings);
+    let arg_cptr: Vec<&CStr> = arg_cstrings.iter().map(|c| c.as_c_str()).collect();
+    // TODO: clear signal mask if needed.
+    nix::unistd::execvp(filename.as_ref(), arg_cptr.as_ref()).expect("Execvp() failed: ");
 }
 
 #[cfg(test)]
 mod test {
     use crate::horust::formats::Service;
-    use crate::horust::Horust;
+    use crate::horust::{fetch_services, Horust};
     use std::io;
     use tempdir::TempDir;
 
@@ -363,7 +358,7 @@ mod test {
     fn test_fetch_services() -> io::Result<()> {
         let tempdir = create_test_dir()?;
         std::fs::write(tempdir.path().join("not-a-service"), "Hello world")?;
-        let res = Horust::fetch_services(tempdir.path()).unwrap();
+        let res = fetch_services(tempdir.path()).unwrap();
         assert_eq!(res.len(), 2);
         let names: Vec<String> = res.into_iter().map(|serv| serv.name).collect();
         assert_eq!(vec!["a", "b"], names);

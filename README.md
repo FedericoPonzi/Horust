@@ -61,7 +61,7 @@ Bootstrap the creation of a new service, by using `horust --sample-service > new
 #### Rediness
 * **`readiness` = `health`**: If not present, the service will be considered ready as soon as has been spawned. Otherwise, use:
     * **`health`**: Use the same strategy defined in the health configuration, 
-    * **`custom command`**: If the custom command is succesfull then your service is ready.
+    * **`custom command`**: If the custom command is successful then your service is ready.
 
 ### Healthness Check
  * You can check the healthness of your system using an http endpoint.
