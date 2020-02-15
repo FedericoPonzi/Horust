@@ -51,8 +51,17 @@ Bootstrap the creation of a new service, by using `horust --sample-service > new
 
 #### Restart section
 * **`strategy` = `always|on-failure|never`**: Defines the restart strategy.
-* **`backoff`** = `string`: If the service cannot be started, use this backoff time before retrying again.
-* **`tentatives`** = `number`:
+* **`backoff`** = `string`: Use this time before retrying restarting the service. 
+* **`attempts`** = `number`:
+The delay between tentatives is calculated as: `backoff * made_attempts + start-delay`. For instance, using:
+* backoff = 1s
+* attempts = 3
+* start-delay = 1s"
+Will wait for the service to start for 1 second. If it doesn't start:
+* 1st attempt will start after 1*1 + 1 = 2 seconds.
+* 2nd attempt will start after 1*2 + 1 = 3 seconds.
+* 3th and last attempt will start after 1*3 +1 = 4 seconds. If this fails, the service will be considered FailedFinished and won't be restarted.
+The attempt count is reset as soon as the service's state changes from starting to running.
 
 #### Readiness
 * **`readiness` = `health`**: If not present, the service will be considered ready as soon as has been spawned. Otherwise, use:

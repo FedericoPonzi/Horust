@@ -17,7 +17,7 @@ pub(crate) struct Service {
     pub start_delay: Duration,
     #[serde(default = "Vec::new")]
     pub start_after: Vec<ServiceName>,
-    #[serde()]
+    #[serde(default)]
     pub restart: Restart,
     #[serde()]
     pub healthiness: Option<Healthness>,
@@ -38,9 +38,9 @@ command = ""
 working-directory = "/tmp/"
 start-delay = "2s"
 [restart]
-strategy = "always"
-backoff = "1s"
-attempts = 3
+strategy = "never"
+backoff = "0s"
+attempts = 0
 [healthiness]
 http_endpoint = "http://localhost:8080/healthcheck"
 file_path = "/var/myservice/up""#
@@ -115,9 +115,9 @@ pub(crate) struct Restart {
 impl Default for Restart {
     fn default() -> Self {
         Restart {
-            strategy: Default::default(),
-            backoff: Duration::from_secs(1),
-            attempts: 3,
+            strategy: RestartStrategy::Never,
+            backoff: Duration::from_secs(0),
+            attempts: 0,
         }
     }
 }
