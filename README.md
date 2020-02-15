@@ -57,10 +57,12 @@ The delay between tentatives is calculated as: `backoff * made_attempts + start-
 * backoff = 1s
 * attempts = 3
 * start-delay = 1s"
+
 Will wait for the service to start for 1 second. If it doesn't start:
 * 1st attempt will start after 1*1 + 1 = 2 seconds.
 * 2nd attempt will start after 1*2 + 1 = 3 seconds.
 * 3th and last attempt will start after 1*3 +1 = 4 seconds. If this fails, the service will be considered FailedFinished and won't be restarted.
+
 The attempt count is reset as soon as the service's state changes from starting to running.
 
 #### Readiness
