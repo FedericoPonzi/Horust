@@ -31,6 +31,7 @@ impl SignalSafe {
 }
 
 static mut SIGTERM_RECEIVED: bool = false;
+
 fn get_sigterm_received() -> bool {
     unsafe { SIGTERM_RECEIVED }
 }
@@ -62,35 +63,41 @@ impl ServiceHandler {
     fn start_after(&self) -> &Vec<String> {
         self.service.start_after.as_ref()
     }
+
     fn name(&self) -> &str {
         self.service.name.as_str()
     }
+
     fn set_pid(&mut self, pid: Pid) {
         self.status = ServiceStatus::Starting;
         self.pid = Some(pid);
     }
+
     /// TODO: set validation of the FSM.
     fn set_status(&mut self, status: ServiceStatus) {
         self.status = status;
     }
+
     pub fn is_to_be_run(&self) -> bool {
         self.status == ServiceStatus::ToBeRun
     }
+
     pub fn is_starting(&self) -> bool {
         self.status == ServiceStatus::Starting
     }
+
     pub fn is_initial(&self) -> bool {
         self.status == ServiceStatus::Initial
     }
+
     pub fn is_running(&self) -> bool {
         self.status == ServiceStatus::Running
     }
+
     pub fn is_finished(&self) -> bool {
-        match self.status {
-            ServiceStatus::Finished | ServiceStatus::Failed => true,
-            _ => false,
-        }
+        ServiceStatus::Finished == self.status || self.status == ServiceStatus::Failed
     }
+
     pub fn set_status_by_exit_code(&mut self, exit_code: i32) {
         let has_failed = exit_code != 0;
         if has_failed {
@@ -102,7 +109,7 @@ impl ServiceHandler {
         } else {
             info!("Service: {} successfully exited.", self.name());
         }
-        match self.service.restart_strategy {
+        match self.service.restart.strategy {
             RestartStrategy::Never => {
                 // Will never be restarted, even if failed:
                 self.status = if has_failed {
@@ -135,7 +142,7 @@ pub struct Horust {
 }
 
 impl Horust {
-    pub fn new(services: Vec<Service>) -> Self {
+    fn new(services: Vec<Service>) -> Self {
         Horust {
             //TODO: change to map [service_name: service]
             supervised: Arc::new(Mutex::new(
@@ -321,7 +328,8 @@ fn spawn_process(service: &Service) -> Result<Pid> {
         Err(err) => Err(HorustError::from(err)),
     }
 }
-pub fn exec_service(service: &Service) {
+
+pub(crate) fn exec_service(service: &Service) {
     debug!("Set cwd: {:?}, ", &service.working_directory);
     std::env::set_current_dir(&service.working_directory).unwrap();
     let mut chunks: Vec<&str> = service.command.split_whitespace().collect();
@@ -341,8 +349,8 @@ pub fn exec_service(service: &Service) {
 
 #[cfg(test)]
 mod test {
+    use crate::horust::fetch_services;
     use crate::horust::formats::Service;
-    use crate::horust::{fetch_services, Horust};
     use std::io;
     use tempdir::TempDir;
 

@@ -4,16 +4,12 @@
 
 Horust is an supervisor system written in rust and designed to be run in containers. 
 
-
-
 # Table of contents
 * Goals
 * Usage
 * Maintaier
 * Contributing
 * License
-
-
 
 ## Goals:
 * Supervision: A full fledge supervisor system, designed to be used in containers.
@@ -26,7 +22,7 @@ At this point, this should be considered Alpha software.
 Check [Contributing](CONTRIBUTING.md) if you want to join the development.
 
 ## How to use it
-1. Define your services inside `/etc/horust/services/`.
+1. Create a directory with your services. `/etc/horust/services/`.
 An example service:
 ```toml
 # mycoolapp.toml:
@@ -44,7 +40,6 @@ https://github.com/OpenRC/openrc/blob/master/supervise-daemon-guide.md
 ### FAQs:
 What happens to dependant process, if a dependency process fails?
 
-
 ## Services
 You can create new services by creating a toml file. Check the documentation below for a description of each field.
 Bootstrap the creation of a new service, by using `horust --sample-service > new_service.toml`.
@@ -58,7 +53,8 @@ Bootstrap the creation of a new service, by using `horust --sample-service > new
 * **`strategy` = `always|on-failure|never`**: Defines the restart strategy.
 * **`backoff`** = `string`: If the service cannot be started, use this backoff time before retrying again.
 * **`tentatives`** = `number`:
-#### Rediness
+
+#### Readiness
 * **`readiness` = `health`**: If not present, the service will be considered ready as soon as has been spawned. Otherwise, use:
     * **`health`**: Use the same strategy defined in the health configuration, 
     * **`custom command`**: If the custom command is successful then your service is ready.
@@ -88,7 +84,7 @@ strategy = "kill-all"
 strategy = "always"
 backoff = "10s"
 trials = 3
-rediness = "/tmp/my-cool-service.ready"
+
 [healthiness]
 http_endpoint = "http://localhost:2020/healthcheck"
 file = "/var/myservice/up"
@@ -101,7 +97,6 @@ file = "/var/myservice/up"
 # Define directly in here:
 # DATABASE_NAME = "My_DB"
 # DATABASE_URI = "mysql@localhost"
-# 
 ```
 
 ## Horust configuration

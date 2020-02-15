@@ -8,7 +8,7 @@ pub type ServiceName = String;
 
 #[derive(Serialize, Clone, Deserialize, Debug, Eq, PartialEq)]
 #[serde(rename_all = "kebab-case")]
-pub struct Service {
+pub(crate) struct Service {
     pub name: String,
     pub command: String,
     #[serde(default)]
@@ -17,10 +17,8 @@ pub struct Service {
     pub start_delay: Duration,
     #[serde(default = "Vec::new")]
     pub start_after: Vec<ServiceName>,
-    #[serde(default)]
-    pub restart_strategy: RestartStrategy,
-    #[serde(default, with = "humantime_serde")]
-    pub restart_backoff: Duration,
+    #[serde()]
+    pub restart: Restart,
     #[serde()]
     pub healthiness: Option<Healthness>,
     #[serde()]
@@ -38,9 +36,11 @@ pub fn get_sample_service() -> String {
     r#"name = "my-cool-service"
 command = ""
 working-directory = "/tmp/"
-restart = "never"
 start-delay = "2s"
-#restart-backoff = "10s"
+[restart]
+strategy = "always"
+backoff = "1s"
+attempts = 3
 [healthiness]
 http_endpoint = "http://localhost:8080/healthcheck"
 file_path = "/var/myservice/up""#
@@ -52,15 +52,15 @@ impl Service {
         let content = std::fs::read_to_string(path)?;
         toml::from_str::<Service>(content.as_str()).map_err(HorustError::from)
     }
+
     pub fn from_command(command: String) -> Self {
         Service {
             name: command.clone(),
             start_after: Default::default(),
             working_directory: "/".into(),
-            restart_strategy: Default::default(),
+            restart: Default::default(),
             start_delay: Duration::from_secs(0),
             command,
-            restart_backoff: Default::default(),
             healthiness: None,
             signal_rewrite: None,
         }
@@ -103,11 +103,33 @@ pub enum ServiceStatus {
 
 #[derive(Serialize, Clone, Deserialize, Debug, Eq, PartialEq)]
 #[serde(rename_all = "kebab-case")]
+pub(crate) struct Restart {
+    #[serde(default)]
+    pub(crate) strategy: RestartStrategy,
+    #[serde(default, with = "humantime_serde")]
+    backoff: Duration,
+    #[serde(default)]
+    attempts: u32,
+}
+
+impl Default for Restart {
+    fn default() -> Self {
+        Restart {
+            strategy: Default::default(),
+            backoff: Duration::from_secs(1),
+            attempts: 3,
+        }
+    }
+}
+
+#[derive(Serialize, Clone, Deserialize, Debug, Eq, PartialEq)]
+#[serde(rename_all = "kebab-case")]
 pub enum RestartStrategy {
     Always,
     OnFailure,
     Never,
 }
+
 impl Default for RestartStrategy {
     fn default() -> Self {
         RestartStrategy::Never
@@ -133,7 +155,7 @@ impl From<&str> for RestartStrategy {
 
 #[cfg(test)]
 mod test {
-    use crate::horust::formats::{RestartStrategy, Service};
+    use crate::horust::formats::Service;
     use crate::horust::get_sample_service;
     use std::str::FromStr;
     use std::time::Duration;
@@ -144,14 +166,14 @@ mod test {
                 name: name.to_owned(),
                 start_after: start_after.into_iter().map(|v| v.into()).collect(),
                 working_directory: "".into(),
-                restart_strategy: RestartStrategy::Always,
+                restart: Default::default(),
                 start_delay: Duration::from_secs(0),
                 command: "".to_string(),
-                restart_backoff: Default::default(),
                 healthiness: None,
                 signal_rewrite: None,
             }
         }
+
         pub fn from_name(name: &str) -> Self {
             Self::start_after(name, Vec::new())
         }
