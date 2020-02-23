@@ -9,11 +9,13 @@ use nix::sys::signal::kill;
 use nix::sys::signal::{sigaction, SaFlags, SigAction, SigHandler, SigSet, SIGINT, SIGTERM};
 use nix::unistd::{fork, getppid, ForkResult};
 use nix::unistd::{getpid, Pid};
+use shlex;
 use std::ffi::{c_void, CStr, CString, OsStr};
 use std::fmt::Debug;
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
+use std::time::Instant;
 
 mod error;
 mod formats;
@@ -41,6 +43,7 @@ pub(crate) struct ServiceHandler {
     service: Service,
     status: ServiceStatus,
     pid: Option<Pid>,
+    last_state_change: Option<Instant>,
 }
 
 impl From<Service> for ServiceHandler {
@@ -49,6 +52,7 @@ impl From<Service> for ServiceHandler {
             service,
             status: ServiceStatus::Initial,
             pid: None,
+            last_state_change: None,
         }
     }
 }
@@ -330,21 +334,22 @@ fn spawn_process(service: &Service) -> Result<Pid> {
 }
 
 pub(crate) fn exec_service(service: &Service) {
-    debug!("Set cwd: {:?}, ", &service.working_directory);
-    std::env::set_current_dir(&service.working_directory).unwrap();
-    let mut chunks: Vec<&str> = service.command.split_whitespace().collect();
-    let filename = CString::new(chunks.remove(0)).unwrap();
-
-    let mut arg_cstrings = chunks
+    let default = PathBuf::from("/");
+    let cwd = service.working_directory.as_ref().unwrap_or(&default);
+    debug!("Set cwd: {:?}, ", cwd);
+    std::env::set_current_dir(cwd).unwrap();
+    let chunks: Vec<String> = shlex::split(service.command.as_ref()).unwrap();
+    let program_name = CString::new(chunks.get(0).unwrap().as_str()).unwrap();
+    let arg_cstrings = chunks
         .into_iter()
         .map(|arg| CString::new(arg).map_err(HorustError::from))
         .collect::<Result<Vec<_>>>()
         .unwrap();
-    arg_cstrings.insert(0, filename.clone());
+    //arg_cstrings.insert(0, program_name.clone());
     debug!("args: {:?}", arg_cstrings);
     let arg_cptr: Vec<&CStr> = arg_cstrings.iter().map(|c| c.as_c_str()).collect();
     // TODO: clear signal mask if needed.
-    nix::unistd::execvp(filename.as_ref(), arg_cptr.as_ref()).expect("Execvp() failed: ");
+    nix::unistd::execvp(program_name.as_ref(), arg_cptr.as_ref()).expect("Execvp() failed: ");
 }
 
 #[cfg(test)]

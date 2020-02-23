@@ -1,5 +1,6 @@
 use crate::horust::formats::ServiceStatus;
 use crate::horust::{ServiceHandler, Services};
+#[cfg(feature = "http-healthcheck")]
 use reqwest::blocking::Client;
 
 // TODO: this is not really healthiness check, but rather readiness check. please change.
@@ -8,6 +9,7 @@ pub(crate) fn healthcheck_entrypoint(services: Services) {
         run_checks(&services)
     }
 }
+#[cfg(feature = "http-healthcheck")]
 fn check_http_endpoint(endpoint: &str) -> bool {
     let client = Client::new();
     let resp: reqwest::blocking::Response = client.head(endpoint).send().unwrap();
@@ -35,9 +37,13 @@ fn run_checks(services: &Services) {
                         0
                     };
                 }
-                if let Some(endpoint) = healthiness.http_endpoint.as_ref() {
-                    checks += 1;
-                    checks_res += if check_http_endpoint(endpoint) { 1 } else { 0 };
+
+                #[cfg(feature = "http-healthcheck")]
+                {
+                    if let Some(endpoint) = healthiness.http_endpoint.as_ref() {
+                        checks += 1;
+                        checks_res += if check_http_endpoint(endpoint) { 1 } else { 0 };
+                    }
                 }
                 /*
                     Edge case: [healthcheck] header section is defined, but then it's empty. This should pass.

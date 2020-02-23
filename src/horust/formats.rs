@@ -9,10 +9,12 @@ pub type ServiceName = String;
 #[derive(Serialize, Clone, Deserialize, Debug, Eq, PartialEq)]
 #[serde(rename_all = "kebab-case")]
 pub(crate) struct Service {
+    #[serde()]
     pub name: String,
+    #[serde()]
     pub command: String,
-    #[serde(default)]
-    pub working_directory: PathBuf,
+    #[serde()]
+    pub working_directory: Option<PathBuf>,
     #[serde(default, with = "humantime_serde")]
     pub start_delay: Duration,
     #[serde(default = "Vec::new")]
@@ -34,7 +36,7 @@ pub struct Healthness {
 
 pub fn get_sample_service() -> String {
     r#"name = "my-cool-service"
-command = ""
+command = "/bin/bash -c 'echo hello world'"
 working-directory = "/tmp/"
 start-delay = "2s"
 [restart]
@@ -57,7 +59,7 @@ impl Service {
         Service {
             name: command.clone(),
             start_after: Default::default(),
-            working_directory: "/".into(),
+            working_directory: Some("/".into()),
             restart: Default::default(),
             start_delay: Duration::from_secs(0),
             command,
@@ -94,6 +96,8 @@ pub enum ServiceStatus {
     Running,
     /// A finished service has done it's job and won't be restarted.
     Finished,
+    ///TODO: A failed service which won't be restarted.
+    FinishedFailed,
     /// A Failed service might be restarted if the restart policy demands so.
     Failed,
     /// This is the initial state: A service in Initial state is marked to be runnable:
@@ -165,7 +169,7 @@ mod test {
             Service {
                 name: name.to_owned(),
                 start_after: start_after.into_iter().map(|v| v.into()).collect(),
-                working_directory: "".into(),
+                working_directory: Some("".into()),
                 restart: Default::default(),
                 start_delay: Duration::from_secs(0),
                 command: "".to_string(),
