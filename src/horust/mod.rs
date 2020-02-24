@@ -167,6 +167,8 @@ impl Horust {
             .for_each(|service| {
                 if service.is_running() && service.pid().is_some() {
                     debug!("Going to send SIGTERM signal to pid {:?}", service.pid());
+                    // TODO: It might happen that we try to kill something which in the meanwhile has exited.
+                    // Thus here we should handle Error: Sys(ESRCH)
                     kill(*service.pid().unwrap(), SIGTERM)
                         .map_err(|err| eprintln!("Error: {:?}", err))
                         .unwrap();
