@@ -1,6 +1,6 @@
 use libc::STDOUT_FILENO;
 use nix::sys::signal::{sigaction, SaFlags, SigAction, SigHandler, SigSet, SIGINT, SIGTERM};
-use std::ffi::{c_void, CStr, CString, OsStr};
+use std::ffi::{c_void};
 
 static mut SIGTERM_RECEIVED: bool = false;
 

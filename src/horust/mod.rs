@@ -1,22 +1,20 @@
 pub use self::error::HorustError;
 use self::error::Result;
 pub use self::formats::get_sample_service;
-use self::formats::{RestartStrategy, ServiceStatus};
+use self::formats::ServiceStatus;
 use crate::horust::service_handler::ServiceHandler;
 use formats::Service;
-use libc::STDOUT_FILENO;
 use libc::{prctl, PR_SET_CHILD_SUBREAPER};
 use nix::sys::signal::kill;
 use nix::sys::signal::SIGTERM;
 use nix::unistd::{fork, getppid, ForkResult};
 use nix::unistd::{getpid, Pid};
 use shlex;
-use std::ffi::{c_void, CStr, CString, OsStr};
+use std::ffi::{CStr, CString, OsStr};
 use std::fmt::Debug;
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
-use std::time::Instant;
 
 mod error;
 mod formats;
@@ -116,16 +114,31 @@ impl Horust {
                         let supervised_ref = Arc::clone(&self.supervised);
                         let service = service_handler.service().clone();
                         std::thread::spawn(move || {
-                            let pid = run_service(&service).expect("Failed spawning service!");
-                            supervised_ref
-                                .lock()
-                                .unwrap()
-                                .iter_mut()
-                                .filter(|sh| sh.name() == service.name)
-                                .for_each(|sh| {
-                                    debug!("Now it's starting!");
-                                    sh.set_pid(pid);
-                                });
+                            std::thread::sleep(service.start_delay);
+                            match spawn_process(&service) {
+                                Ok(pid) => {
+                                    supervised_ref
+                                        .lock()
+                                        .unwrap()
+                                        .iter_mut()
+                                        .filter(|sh| sh.name() == service.name)
+                                        .for_each(|sh| {
+                                            debug!("Now it's starting!");
+                                            sh.set_pid(pid);
+                                        });
+                                }
+                                Err(error) => {
+                                    error!("Failed spawning the process: {}", error);
+                                    supervised_ref
+                                        .lock()
+                                        .unwrap()
+                                        .iter_mut()
+                                        .filter(|sh| sh.name() == service.name)
+                                        .for_each(|sh| {
+                                            sh.set_status(ServiceStatus::Failed);
+                                        });
+                                }
+                            }
                         });
                     }
                     service_handler
@@ -185,11 +198,7 @@ where
         .collect::<Result<Vec<Service>>>()
 }
 
-fn run_service(service: &Service) -> Result<Pid> {
-    std::thread::sleep(service.start_delay);
-    spawn_process(service)
-}
-
+/// Fork the process
 fn spawn_process(service: &Service) -> Result<Pid> {
     match fork() {
         Ok(ForkResult::Child) => {

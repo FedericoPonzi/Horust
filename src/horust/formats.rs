@@ -104,8 +104,6 @@ pub enum ServiceStatus {
     InKilling,
     /// A finished service has done it's job and won't be restarted.
     Finished,
-    ///TODO: A failed service which won't be restarted.
-    FinishedFailed,
     /// A Failed service might be restarted if the restart policy demands so.
     Failed,
     /// This is the initial state: A service in Initial state is marked to be runnable:
