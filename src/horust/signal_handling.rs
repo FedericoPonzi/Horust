@@ -1,6 +1,6 @@
 use libc::STDOUT_FILENO;
 use nix::sys::signal::{sigaction, SaFlags, SigAction, SigHandler, SigSet, SIGINT, SIGTERM};
-use std::ffi::{c_void};
+use std::ffi::c_void;
 
 static mut SIGTERM_RECEIVED: bool = false;
 
@@ -8,13 +8,10 @@ pub(crate) fn is_sigterm_received() -> bool {
     unsafe { SIGTERM_RECEIVED }
 }
 
-struct SignalSafe;
-
-impl SignalSafe {
-    fn print(s: &str) {
-        unsafe {
-            libc::write(STDOUT_FILENO, s.as_ptr() as *const c_void, s.len());
-        }
+/// Signal safe print
+fn print(s: &str) {
+    unsafe {
+        libc::write(STDOUT_FILENO, s.as_ptr() as *const c_void, s.len());
     }
 }
 
@@ -33,7 +30,7 @@ pub(crate) fn init() {
     };
 }
 extern "C" fn handle_sigterm(_: libc::c_int) {
-    SignalSafe::print("Received SIGTERM.\n");
+    print("Received SIGTERM.\n");
     unsafe {
         SIGTERM_RECEIVED = true;
     }

@@ -54,6 +54,10 @@ impl ServiceHandler {
         self.status == ServiceStatus::ToBeRun
     }
 
+    pub fn is_failed(&self) -> bool {
+        self.status == ServiceStatus::Failed
+    }
+
     pub fn is_starting(&self) -> bool {
         self.status == ServiceStatus::Starting
     }

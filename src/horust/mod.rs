@@ -12,9 +12,10 @@ use nix::unistd::{getpid, Pid};
 use shlex;
 use std::ffi::{CStr, CString, OsStr};
 use std::fmt::Debug;
-use std::fs;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
+use std::time::Duration;
+use std::{fs, thread};
 
 mod error;
 mod formats;
@@ -144,11 +145,14 @@ impl Horust {
                     service_handler
                 })
                 .collect();
-            let all_finished = superv_services.iter().all(|sh| sh.is_finished());
+            let all_finished = superv_services
+                .iter()
+                .all(|sh| sh.is_finished() || sh.is_failed());
             if all_finished {
                 debug!("All services have finished, exiting...");
                 break;
             }
+            thread::sleep(Duration::from_millis(200));
         }
         Ok(())
     }
@@ -162,12 +166,17 @@ impl Horust {
             .iter_mut()
             .for_each(|service| {
                 if service.is_running() && service.pid().is_some() {
+                    debug!("Going to send SIGTERM signal to pid {:?}", service.pid());
                     kill(*service.pid().unwrap(), SIGTERM)
                         .map_err(|err| eprintln!("Error: {:?}", err))
                         .unwrap();
                     service.set_status(ServiceStatus::InKilling);
                 }
                 if service.is_initial() {
+                    debug!(
+                        "Never going to run {}, so setting it to finished.",
+                        service.name()
+                    );
                     service.set_status(ServiceStatus::Finished);
                 }
             });

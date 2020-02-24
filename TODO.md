@@ -3,6 +3,7 @@
 * signal rewriting
 * Per-service resource limits
 * Parameter to force death if any service is incorrect.
+* Implement RestartStrategies
 
 ## Long todo:
 * Supervised services: use a pointer instead of list of services names (for example, for easier dependencies management.)
