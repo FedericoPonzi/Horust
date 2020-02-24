@@ -1,5 +1,6 @@
 use crate::horust::formats::ServiceStatus;
-use crate::horust::{ServiceHandler, Services};
+use crate::horust::service_handler::ServiceHandler;
+use crate::horust::Services;
 #[cfg(feature = "http-healthcheck")]
 use reqwest::blocking::Client;
 
@@ -22,7 +23,7 @@ fn run_checks(services: &Services) {
         .unwrap()
         .iter_mut()
         .filter(|sh| sh.is_starting())
-        .filter(|sh| match sh.service.healthiness.as_ref() {
+        .filter(|sh| match sh.service().healthiness.as_ref() {
             Some(healthiness) => {
                 // Count of required checks:
                 let mut checks = 0;
@@ -59,7 +60,7 @@ fn run_checks(services: &Services) {
 
 /// Setup require for the service, before running the healthchecks and starting the service.
 pub(crate) fn prepare_service(service_handler: &ServiceHandler) -> Result<(), std::io::Error> {
-    if let Some(healthiness) = &service_handler.service.healthiness {
+    if let Some(healthiness) = &service_handler.service().healthiness {
         if let Some(file_path) = &healthiness.file_path {
             std::fs::remove_file(file_path)?;
         }

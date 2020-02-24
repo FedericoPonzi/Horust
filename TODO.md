@@ -1,4 +1,3 @@
-* Add "in-killing" state.
 * Add tests for http healthcheck.
 * Reload configuration via SIGHUP (or another signal because as of now it can be run in a terminal).
 * signal rewriting

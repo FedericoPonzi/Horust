@@ -2,11 +2,12 @@ pub use self::error::HorustError;
 use self::error::Result;
 pub use self::formats::get_sample_service;
 use self::formats::{RestartStrategy, ServiceStatus};
+use crate::horust::service_handler::ServiceHandler;
 use formats::Service;
 use libc::STDOUT_FILENO;
 use libc::{prctl, PR_SET_CHILD_SUBREAPER};
 use nix::sys::signal::kill;
-use nix::sys::signal::{sigaction, SaFlags, SigAction, SigHandler, SigSet, SIGINT, SIGTERM};
+use nix::sys::signal::SIGTERM;
 use nix::unistd::{fork, getppid, ForkResult};
 use nix::unistd::{getpid, Pid};
 use shlex;
@@ -21,122 +22,8 @@ mod error;
 mod formats;
 mod healthcheck;
 mod reaper;
-
-struct SignalSafe;
-
-impl SignalSafe {
-    fn print(s: &str) {
-        unsafe {
-            libc::write(STDOUT_FILENO, s.as_ptr() as *const c_void, s.len());
-        }
-    }
-}
-
-static mut SIGTERM_RECEIVED: bool = false;
-
-fn get_sigterm_received() -> bool {
-    unsafe { SIGTERM_RECEIVED }
-}
-
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub(crate) struct ServiceHandler {
-    service: Service,
-    status: ServiceStatus,
-    pid: Option<Pid>,
-    last_state_change: Option<Instant>,
-}
-
-impl From<Service> for ServiceHandler {
-    fn from(service: Service) -> Self {
-        ServiceHandler {
-            service,
-            status: ServiceStatus::Initial,
-            pid: None,
-            last_state_change: None,
-        }
-    }
-}
-
-impl From<ServiceHandler> for Service {
-    fn from(sh: ServiceHandler) -> Self {
-        sh.service
-    }
-}
-
-impl ServiceHandler {
-    fn start_after(&self) -> &Vec<String> {
-        self.service.start_after.as_ref()
-    }
-
-    fn name(&self) -> &str {
-        self.service.name.as_str()
-    }
-
-    fn set_pid(&mut self, pid: Pid) {
-        self.status = ServiceStatus::Starting;
-        self.pid = Some(pid);
-    }
-
-    /// TODO: set validation of the FSM.
-    fn set_status(&mut self, status: ServiceStatus) {
-        self.status = status;
-    }
-
-    pub fn is_to_be_run(&self) -> bool {
-        self.status == ServiceStatus::ToBeRun
-    }
-
-    pub fn is_starting(&self) -> bool {
-        self.status == ServiceStatus::Starting
-    }
-
-    pub fn is_initial(&self) -> bool {
-        self.status == ServiceStatus::Initial
-    }
-
-    pub fn is_running(&self) -> bool {
-        self.status == ServiceStatus::Running
-    }
-
-    pub fn is_finished(&self) -> bool {
-        ServiceStatus::Finished == self.status || self.status == ServiceStatus::Failed
-    }
-
-    pub fn set_status_by_exit_code(&mut self, exit_code: i32) {
-        let has_failed = exit_code != 0;
-        if has_failed {
-            error!(
-                "Service: {} has failed, exit code: {}",
-                self.name(),
-                exit_code
-            );
-        } else {
-            info!("Service: {} successfully exited.", self.name());
-        }
-        match self.service.restart.strategy {
-            RestartStrategy::Never => {
-                // Will never be restarted, even if failed:
-                self.status = if has_failed {
-                    ServiceStatus::Failed
-                } else {
-                    ServiceStatus::Finished
-                };
-            }
-            RestartStrategy::OnFailure => {
-                self.status = if has_failed {
-                    ServiceStatus::Initial
-                } else {
-                    ServiceStatus::Finished
-                };
-                debug!("Going to rerun the process because it failed!");
-            }
-            RestartStrategy::Always => {
-                self.status = ServiceStatus::Initial;
-            }
-        };
-        self.pid = None;
-    }
-}
+mod service_handler;
+mod signal_handling;
 
 type Services = Arc<Mutex<Vec<ServiceHandler>>>;
 
@@ -173,7 +60,7 @@ impl Horust {
         unsafe {
             prctl(PR_SET_CHILD_SUBREAPER, 1, 0, 0, 0);
         }
-        setup_signal_handling();
+        signal_handling::init();
 
         let supervised = Arc::clone(&self.supervised);
         std::thread::spawn(|| {
@@ -194,7 +81,7 @@ impl Horust {
         };
 
         loop {
-            if get_sigterm_received() && some_service_still_running() {
+            if signal_handling::is_sigterm_received() && some_service_still_running() {
                 println!("Going to stop all services..");
                 self.stop_all_services();
             }
@@ -227,7 +114,7 @@ impl Horust {
                         healthcheck::prepare_service(&service_handler).unwrap();
 
                         let supervised_ref = Arc::clone(&self.supervised);
-                        let service = service_handler.service.clone();
+                        let service = service_handler.service().clone();
                         std::thread::spawn(move || {
                             let pid = run_service(&service).expect("Failed spawning service!");
                             supervised_ref
@@ -261,8 +148,8 @@ impl Horust {
             .unwrap()
             .iter_mut()
             .for_each(|service| {
-                if service.is_running() && service.pid.is_some() {
-                    kill(service.pid.unwrap(), SIGTERM)
+                if service.is_running() && service.pid().is_some() {
+                    kill(*service.pid().unwrap(), SIGTERM)
                         .map_err(|err| eprintln!("Error: {:?}", err))
                         .unwrap();
                     service.set_status(ServiceStatus::InKilling);
@@ -303,25 +190,6 @@ fn run_service(service: &Service) -> Result<Pid> {
     spawn_process(service)
 }
 
-fn setup_signal_handling() {
-    // To allow auto restart on some syscalls,
-    // for example: `waitpid`.
-    let flags = SaFlags::SA_RESTART;
-    let sig_action = SigAction::new(SigHandler::Handler(handle_sigterm), flags, SigSet::empty());
-
-    if let Err(err) = unsafe { sigaction(SIGTERM, &sig_action) } {
-        panic!("sigaction() failed: {}", err);
-    };
-    if let Err(err) = unsafe { sigaction(SIGINT, &sig_action) } {
-        panic!("sigaction() failed: {}", err);
-    };
-}
-extern "C" fn handle_sigterm(_: libc::c_int) {
-    SignalSafe::print("Received SIGTERM.\n");
-    unsafe {
-        SIGTERM_RECEIVED = true;
-    }
-}
 fn spawn_process(service: &Service) -> Result<Pid> {
     match fork() {
         Ok(ForkResult::Child) => {
@@ -338,7 +206,7 @@ fn spawn_process(service: &Service) -> Result<Pid> {
     }
 }
 
-pub(crate) fn exec_service(service: &Service) {
+fn exec_service(service: &Service) {
     let default = PathBuf::from("/");
     let cwd = service.working_directory.as_ref().unwrap_or(&default);
     debug!("Set cwd: {:?}, ", cwd);
