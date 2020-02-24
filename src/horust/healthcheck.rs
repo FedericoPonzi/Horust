@@ -37,7 +37,6 @@ fn run_checks(services: &Services) {
                         0
                     };
                 }
-
                 #[cfg(feature = "http-healthcheck")]
                 {
                     if let Some(endpoint) = healthiness.http_endpoint.as_ref() {
@@ -48,7 +47,7 @@ fn run_checks(services: &Services) {
                 /*
                     Edge case: [healthcheck] header section is defined, but then it's empty. This should pass.
                 */
-                let res = checks == checks_res;
+                let res = checks <= checks_res;
                 let empty_section =
                     healthiness.file_path.is_some() || healthiness.http_endpoint.is_some();
                 res || !empty_section

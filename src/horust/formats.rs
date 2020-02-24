@@ -78,15 +78,21 @@ impl FromStr for Service {
 }
 
 /// Visualize: https://state-machine-cat.js.org/
-/// initial => Initial : "Will eventually be run";
-//Initial => ToBeRun : "All dependencies are running, a thread has spawned and will run the fork/exec the process";
-//ToBeRun => Starting : "The ServiceHandler has a pid";
-//Starting => Running : "The service has met healthiness policy";
-//Starting => Failed : "Service cannot be started";
-//Running => Finished : "Exit status = 0";
-//Running => Failed  : "Exit status != 0";
-//Finished => Initial : "restart = Always";
-//Failed => Initial : "restart = always|on-failure";
+/*
+initial => Initial : "Will eventually be run";
+Initial => ToBeRun : "All dependencies are running, a thread has spawned and will run the fork/exec the process";
+ToBeRun => Starting : "The ServiceHandler has a pid";
+Starting => Running : "The service has met healthiness policy";
+Starting => Failed : "Service cannot be started";
+Running => Finished : "Exit status = 0";
+Running => InKilling : "Shutdown request received";
+InKilling => Finished : "Succesfully killed";
+InKilling => Failed : "Forcefully killed (SIGKILL)";
+Running => Failed  : "Exit status != 0";
+Finished => Initial : "restart = Always";
+Failed => Initial : "restart = always|on-failure";
+*/
+
 #[derive(Serialize, Clone, Deserialize, Debug, Eq, PartialEq)]
 pub enum ServiceStatus {
     Starting,
@@ -94,6 +100,8 @@ pub enum ServiceStatus {
     ToBeRun,
     /// The service is up and healthy
     Running,
+    /// Signal sent, waiting for the process to terminate.
+    InKilling,
     /// A finished service has done it's job and won't be restarted.
     Finished,
     ///TODO: A failed service which won't be restarted.

@@ -252,19 +252,24 @@ impl Horust {
         }
         Ok(())
     }
+    /**
+    Send a kill signal to all the services in the "Running" state.
+    **/
     pub fn stop_all_services(&self) {
         self.supervised
             .lock()
             .unwrap()
             .iter_mut()
             .for_each(|service| {
-                if let Some(pid) = service.pid {
-                    kill(pid, SIGTERM)
+                if service.is_running() && service.pid.is_some() {
+                    kill(service.pid.unwrap(), SIGTERM)
                         .map_err(|err| eprintln!("Error: {:?}", err))
                         .unwrap();
+                    service.set_status(ServiceStatus::InKilling);
                 }
-                // Removes `Initial` and ToBeRun services.
-                service.set_status(ServiceStatus::Finished)
+                if service.is_initial() {
+                    service.set_status(ServiceStatus::Finished);
+                }
             });
     }
 }
