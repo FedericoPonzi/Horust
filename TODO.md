@@ -1,9 +1,12 @@
 * Add tests for http healthcheck.
+* Rename name -> description
+* Get name from the filename.
 * Reload configuration via SIGHUP (or another signal because as of now it can be run in a terminal).
 * signal rewriting
 * Per-service resource limits
 * Parameter to force death if any service is incorrect.
 * Implement RestartStrategies
+
 
 ## Long todo:
 * Supervised services: use a pointer instead of list of services names (for example, for easier dependencies management.)

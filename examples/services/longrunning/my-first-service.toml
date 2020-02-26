@@ -1,2 +1,2 @@
 name = "my-first-service"
-command = "/bin/bash -c 'while true ; do echo hello  ; sleep 1 ; done'"
+command = "/bin/bash /etc/horust/services/main.sh"
