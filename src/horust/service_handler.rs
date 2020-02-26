@@ -1,6 +1,9 @@
 use crate::horust::formats::{RestartStrategy, Service, ServiceStatus};
 use nix::unistd::Pid;
+use std::sync::{Arc, Mutex};
 use std::time::Instant;
+
+pub(crate) type Services = Arc<Mutex<Vec<ServiceHandler>>>;
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub(crate) struct ServiceHandler {

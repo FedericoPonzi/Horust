@@ -1,6 +1,6 @@
 use crate::horust::formats::ServiceStatus;
-use crate::horust::service_handler::ServiceHandler;
-use crate::horust::Services;
+use crate::horust::service_handler::{ServiceHandler, Services};
+
 #[cfg(feature = "http-healthcheck")]
 use reqwest::blocking::Client;
 
@@ -71,8 +71,10 @@ pub(crate) fn prepare_service(service_handler: &ServiceHandler) -> Result<(), st
 #[cfg(test)]
 mod test {
     use crate::horust::formats::{Healthness, Service, ServiceStatus};
-    use crate::horust::{get_sample_service, healthcheck, ServiceHandler, Services};
+    use crate::horust::service_handler::{ServiceHandler, Services};
+    use crate::horust::{get_sample_service, healthcheck};
     use std::sync::{Arc, Mutex};
+
     fn create_from_service(service: Service) -> Services {
         let services: Vec<Service> = vec![service];
         let services: Services = Arc::new(Mutex::new(
