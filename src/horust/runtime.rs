@@ -242,7 +242,8 @@ mod test {
         std::fs::write(tempdir.path().join("not-a-service"), "Hello world")?;
         let res = fetch_services(tempdir.path()).unwrap();
         assert_eq!(res.len(), 2);
-        let names: Vec<String> = res.into_iter().map(|serv| serv.name).collect();
+        let mut names: Vec<String> = res.into_iter().map(|serv| serv.name).collect();
+        names.sort();
         assert_eq!(vec!["a", "b"], names);
 
         Ok(())
