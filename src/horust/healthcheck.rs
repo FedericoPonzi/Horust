@@ -41,12 +41,19 @@ fn run_checks(services: &Services) {
                         0
                     };
                 }
-                #[cfg(feature = "http-healthcheck")]
-                {
-                    if let Some(endpoint) = healthiness.http_endpoint.as_ref() {
-                        checks += 1;
-                        checks_res += if check_http_endpoint(endpoint) { 1 } else { 0 };
-                    }
+                if let Some(endpoint) = healthiness.http_endpoint.as_ref() {
+                    let check_feature = |endpoint: &String| {
+                        #[cfg(not(feature = "http-healthcheck"))]
+                            {
+                                error!("There is an http based healthcheck for {}, but horust was built without the http-healthcheck feature (thus it will never pass these checks).", sh.name());
+                                return (1, 0);
+                            }
+                        #[cfg(feature = "http-healthcheck")]
+                        return (1, if check_http_endpoint(endpoint) { 1 } else { 0 });
+                    };
+                    let (check, res) = check_feature(endpoint);
+                    checks += check;
+                    checks_res += res
                 }
                 /*
                     Edge case: [healthcheck] header section is defined, but then it's empty. This should pass.
