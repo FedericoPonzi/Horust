@@ -74,20 +74,20 @@ pub(crate) fn prepare_service(service_handler: &ServiceHandler) -> Result<(), st
 #[cfg(test)]
 mod test {
     use crate::horust::formats::{Healthness, Service, ServiceStatus};
-    use crate::horust::service_handler::{ServiceHandler, ServiceRepository, Services};
+    use crate::horust::service_handler::{ServiceRepository, Services};
     use crate::horust::{get_sample_service, healthcheck};
-    use std::sync::{Arc, Mutex};
+    use std::sync::Arc;
 
-    fn create_from_service(service: Service) -> ServiceRepository {
+    fn create_from_service(service: Service) -> Services {
         let services: Vec<Service> = vec![service];
         let services: ServiceRepository = ServiceRepository::new(services);
         services.0.lock().unwrap().iter_mut().for_each(|sh| {
             sh.set_status(ServiceStatus::Starting);
         });
-        services
+        Arc::new(services)
     }
 
-    fn assert_status(services: &ServiceRepository, status: ServiceStatus) {
+    fn assert_status(services: &Services, status: ServiceStatus) {
         services
             .0
             .lock()
@@ -101,7 +101,7 @@ mod test {
         // _no_checks_needed
         let service = get_sample_service().parse().unwrap();
         let services = create_from_service(service);
-        healthcheck::run_checks(&Arc::new(services));
+        healthcheck::run_checks(&Arc::clone(&services));
         assert_status(&services, ServiceStatus::Running);
     }
 
@@ -116,10 +116,10 @@ mod test {
         let mut service: Service = get_sample_service().parse().unwrap();
         service.healthiness = Some(healthcheck);
         let services = create_from_service(service);
-        healthcheck::run_checks(&Arc::new(services));
+        healthcheck::run_checks(&Arc::clone(&services));
         assert_status(&services, ServiceStatus::Starting);
         std::fs::write(filepath, "Hello world!").unwrap();
-        healthcheck::run_checks(&Arc::new(services));
+        healthcheck::run_checks(&Arc::clone(&services));
         assert_status(&services, ServiceStatus::Running);
     }
 }
