@@ -73,73 +73,76 @@ impl Horust {
                 println!("Going to stop all services..");
                 self.stop_all_services();
             }
-
-            let mut superv_services = self.supervised.lock().unwrap();
-            *superv_services = superv_services
-                .iter()
-                .cloned()
-                .map(|mut service_handler| {
-                    // Check if all dependant services are either running or finished:
-                    let check_can_run = |dependencies: &Vec<String>| {
-                        let mut can_run = true;
-                        for service_name in dependencies {
-                            for service in superv_services.iter() {
-                                let is_started = service.name() == *service_name
-                                    && (service.is_running() || service.is_finished());
-                                if is_started {
-                                    can_run = true;
-                                    break;
+            // Before going to sleep, let's better release the lock!
+            {
+                let mut superv_services = self.supervised.lock().unwrap();
+                *superv_services = superv_services
+                    .iter()
+                    .cloned()
+                    .map(|mut service_handler| {
+                        // Check if all dependant services are either running or finished:
+                        let check_can_run = |dependencies: &Vec<String>| {
+                            let mut can_run = true;
+                            for service_name in dependencies {
+                                for service in superv_services.iter() {
+                                    let is_started = service.name() == *service_name
+                                        && (service.is_running() || service.is_finished());
+                                    if is_started {
+                                        can_run = true;
+                                        break;
+                                    }
                                 }
                             }
+                            can_run
+                        };
+
+                        if service_handler.is_initial()
+                            && check_can_run(service_handler.start_after())
+                        {
+                            service_handler.set_status(ServiceStatus::ToBeRun);
+                            //TODO: Handle.
+                            healthcheck::prepare_service(&service_handler).unwrap();
+
+                            let supervised_ref = Arc::clone(&self.supervised);
+                            let service = service_handler.service().clone();
+                            std::thread::spawn(move || {
+                                std::thread::sleep(service.start_delay);
+                                match spawn_process(&service) {
+                                    Ok(pid) => {
+                                        supervised_ref
+                                            .lock()
+                                            .unwrap()
+                                            .iter_mut()
+                                            .filter(|sh| sh.name() == service.name)
+                                            .for_each(|sh| {
+                                                debug!("Now it's starting!");
+                                                sh.set_pid(pid);
+                                            });
+                                    }
+                                    Err(error) => {
+                                        error!("Failed spawning the process: {}", error);
+                                        supervised_ref
+                                            .lock()
+                                            .unwrap()
+                                            .iter_mut()
+                                            .filter(|sh| sh.name() == service.name)
+                                            .for_each(|sh| {
+                                                sh.set_status(ServiceStatus::Failed);
+                                            });
+                                    }
+                                }
+                            });
                         }
-                        can_run
-                    };
-
-                    if service_handler.is_initial() && check_can_run(service_handler.start_after())
-                    {
-                        service_handler.set_status(ServiceStatus::ToBeRun);
-                        //TODO: Handle.
-                        healthcheck::prepare_service(&service_handler).unwrap();
-
-                        let supervised_ref = Arc::clone(&self.supervised);
-                        let service = service_handler.service().clone();
-                        std::thread::spawn(move || {
-                            std::thread::sleep(service.start_delay);
-                            match spawn_process(&service) {
-                                Ok(pid) => {
-                                    supervised_ref
-                                        .lock()
-                                        .unwrap()
-                                        .iter_mut()
-                                        .filter(|sh| sh.name() == service.name)
-                                        .for_each(|sh| {
-                                            debug!("Now it's starting!");
-                                            sh.set_pid(pid);
-                                        });
-                                }
-                                Err(error) => {
-                                    error!("Failed spawning the process: {}", error);
-                                    supervised_ref
-                                        .lock()
-                                        .unwrap()
-                                        .iter_mut()
-                                        .filter(|sh| sh.name() == service.name)
-                                        .for_each(|sh| {
-                                            sh.set_status(ServiceStatus::Failed);
-                                        });
-                                }
-                            }
-                        });
-                    }
-                    service_handler
-                })
-                .collect();
-            let all_finished = superv_services
-                .iter()
-                .all(|sh| sh.is_finished() || sh.is_failed());
-            if all_finished {
-                debug!("All services have finished, exiting...");
-                break;
+                        service_handler
+                    })
+                    .collect();
+                let all_finished = superv_services
+                    .iter()
+                    .all(|sh| sh.is_finished() || sh.is_failed());
+                if all_finished {
+                    debug!("All services have finished, exiting...");
+                    break;
+                }
             }
             thread::sleep(Duration::from_millis(200));
         }

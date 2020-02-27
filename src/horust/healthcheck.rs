@@ -5,6 +5,7 @@ use crate::horust::service_handler::{ServiceHandler, Services};
 use reqwest::blocking::Client;
 
 // TODO: this is not really healthiness check, but rather readiness check. please change.
+// TODO: If the healthcheck fails and status wasn't initial, set to failed.
 pub(crate) fn healthcheck_entrypoint(services: Services) {
     loop {
         run_checks(&services)
