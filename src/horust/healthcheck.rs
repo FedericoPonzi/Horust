@@ -6,11 +6,12 @@ use reqwest::blocking::Client;
 
 // TODO: this is not really healthiness check, but rather readiness check. please change.
 // TODO: If the healthcheck fails and status wasn't initial, set to failed.
-pub(crate) fn healthcheck_entrypoint(services: Services) {
-    loop {
+pub(crate) fn spawn(services: Services) {
+    std::thread::spawn(move || loop {
         run_checks(&services)
-    }
+    });
 }
+
 #[cfg(feature = "http-healthcheck")]
 fn check_http_endpoint(endpoint: &str) -> bool {
     let client = Client::new();
@@ -20,6 +21,7 @@ fn check_http_endpoint(endpoint: &str) -> bool {
 
 fn run_checks(services: &Services) {
     services
+        .0
         .lock()
         .unwrap()
         .iter_mut()
@@ -72,33 +74,34 @@ pub(crate) fn prepare_service(service_handler: &ServiceHandler) -> Result<(), st
 #[cfg(test)]
 mod test {
     use crate::horust::formats::{Healthness, Service, ServiceStatus};
-    use crate::horust::service_handler::{ServiceHandler, Services};
+    use crate::horust::service_handler::{ServiceHandler, ServiceRepository, Services};
     use crate::horust::{get_sample_service, healthcheck};
     use std::sync::{Arc, Mutex};
 
-    fn create_from_service(service: Service) -> Services {
+    fn create_from_service(service: Service) -> ServiceRepository {
         let services: Vec<Service> = vec![service];
-        let services: Services = Arc::new(Mutex::new(
-            services.into_iter().map(ServiceHandler::from).collect(),
-        ));
-        services.lock().unwrap().iter_mut().for_each(|sh| {
+        let services: ServiceRepository = ServiceRepository::new(services);
+        services.0.lock().unwrap().iter_mut().for_each(|sh| {
             sh.set_status(ServiceStatus::Starting);
         });
         services
     }
-    fn assert_status(services: &Services, status: ServiceStatus) {
+
+    fn assert_status(services: &ServiceRepository, status: ServiceStatus) {
         services
+            .0
             .lock()
             .unwrap()
             .iter()
             .for_each(|sh| assert_eq!(sh.status, status));
     }
+
     #[test]
     fn test_healthiness_checks() {
         // _no_checks_needed
         let service = get_sample_service().parse().unwrap();
         let services = create_from_service(service);
-        healthcheck::run_checks(&services);
+        healthcheck::run_checks(&Arc::new(services));
         assert_status(&services, ServiceStatus::Running);
     }
 
@@ -113,10 +116,10 @@ mod test {
         let mut service: Service = get_sample_service().parse().unwrap();
         service.healthiness = Some(healthcheck);
         let services = create_from_service(service);
-        healthcheck::run_checks(&services);
+        healthcheck::run_checks(&Arc::new(services));
         assert_status(&services, ServiceStatus::Starting);
         std::fs::write(filepath, "Hello world!").unwrap();
-        healthcheck::run_checks(&services);
+        healthcheck::run_checks(&Arc::new(services));
         assert_status(&services, ServiceStatus::Running);
     }
 }

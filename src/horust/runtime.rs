@@ -1,6 +1,6 @@
 use crate::horust::error::Result;
 use crate::horust::formats::{Service, ServiceStatus};
-use crate::horust::service_handler::{ServiceHandler, Services};
+use crate::horust::service_handler::{ServiceRepository, Services};
 use crate::horust::{healthcheck, reaper, signal_handling};
 use libc::{prctl, PR_SET_CHILD_SUBREAPER};
 use nix::sys::signal::kill;
@@ -11,7 +11,7 @@ use shlex;
 use std::ffi::{CStr, CString, OsStr};
 use std::fmt::Debug;
 use std::path::{Path, PathBuf};
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
 use std::time::Duration;
 use std::{fs, thread};
 
@@ -24,9 +24,7 @@ impl Horust {
     fn new(services: Vec<Service>) -> Self {
         Horust {
             //TODO: change to map [service_name: service]
-            supervised: Arc::new(Mutex::new(
-                services.into_iter().map(ServiceHandler::from).collect(),
-            )),
+            supervised: Arc::new(ServiceRepository::new(services)),
         }
     }
     pub fn from_command(command: String) -> Self {
@@ -42,6 +40,12 @@ impl Horust {
         debug!("Services found: {:?}", services);
         Ok(Horust::new(services))
     }
+    fn check_shutdown(&self) {
+        if signal_handling::is_sigterm_received() && self.supervised.is_any_service_running() {
+            println!("Going to stop all services..");
+            self.stop_all_services();
+        }
+    }
 
     /// Main entrypoint
     pub fn run(&mut self) -> Result<()> {
@@ -50,32 +54,17 @@ impl Horust {
         }
         signal_handling::init();
 
-        let supervised = Arc::clone(&self.supervised);
-        std::thread::spawn(|| {
-            healthcheck::healthcheck_entrypoint(supervised);
-        });
-        let supervised = Arc::clone(&self.supervised);
-        std::thread::spawn(|| {
-            reaper::supervisor_thread(supervised);
-        });
+        // Spawn helper threads:
+        healthcheck::spawn(Arc::clone(&self.supervised));
+        reaper::spawn(Arc::clone(&self.supervised));
 
-        debug!("Going to start services!");
-        let some_service_still_running = || {
-            self.supervised
-                .lock()
-                .unwrap()
-                .iter()
-                .any(|sh| sh.is_running())
-        };
+        debug!("Threads spawned, going to start running services now!");
 
         loop {
-            if signal_handling::is_sigterm_received() && some_service_still_running() {
-                println!("Going to stop all services..");
-                self.stop_all_services();
-            }
+            self.check_shutdown();
             // Before going to sleep, let's better release the lock!
             {
-                let mut superv_services = self.supervised.lock().unwrap();
+                let mut superv_services = self.supervised.0.lock().unwrap();
                 *superv_services = superv_services
                     .iter()
                     .cloned()
@@ -102,36 +91,10 @@ impl Horust {
                             service_handler.set_status(ServiceStatus::ToBeRun);
                             //TODO: Handle.
                             healthcheck::prepare_service(&service_handler).unwrap();
-
-                            let supervised_ref = Arc::clone(&self.supervised);
-                            let service = service_handler.service().clone();
-                            std::thread::spawn(move || {
-                                std::thread::sleep(service.start_delay);
-                                match spawn_process(&service) {
-                                    Ok(pid) => {
-                                        supervised_ref
-                                            .lock()
-                                            .unwrap()
-                                            .iter_mut()
-                                            .filter(|sh| sh.name() == service.name)
-                                            .for_each(|sh| {
-                                                debug!("Now it's starting!");
-                                                sh.set_pid(pid);
-                                            });
-                                    }
-                                    Err(error) => {
-                                        error!("Failed spawning the process: {}", error);
-                                        supervised_ref
-                                            .lock()
-                                            .unwrap()
-                                            .iter_mut()
-                                            .filter(|sh| sh.name() == service.name)
-                                            .for_each(|sh| {
-                                                sh.set_status(ServiceStatus::Failed);
-                                            });
-                                    }
-                                }
-                            });
+                            run_spawning_thread(
+                                service_handler.service().clone(),
+                                Arc::clone(&self.supervised),
+                            );
                         }
                         service_handler
                     })
@@ -153,6 +116,7 @@ impl Horust {
     **/
     pub fn stop_all_services(&self) {
         self.supervised
+            .0
             .lock()
             .unwrap()
             .iter_mut()
@@ -175,6 +139,23 @@ impl Horust {
                 }
             });
     }
+}
+
+/// Run another thread that will wait for the start delay, and handle the fork / exec.
+fn run_spawning_thread(service: Service, supervised: Services) {
+    std::thread::spawn(move || {
+        std::thread::sleep(service.start_delay);
+        match spawn_process(&service) {
+            Ok(pid) => {
+                debug!("Setting pid:{} for service: {}", pid, service.name);
+                supervised.set_pid(service.name, pid);
+            }
+            Err(error) => {
+                error!("Failed spawning the process: {}", error);
+                supervised.set_status(service.name, ServiceStatus::Failed);
+            }
+        }
+    });
 }
 
 /// Search for *.toml files in path, and deserialize them into Service.

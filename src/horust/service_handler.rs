@@ -3,7 +3,39 @@ use nix::unistd::Pid;
 use std::sync::{Arc, Mutex};
 use std::time::Instant;
 
-pub(crate) type Services = Arc<Mutex<Vec<ServiceHandler>>>;
+pub(crate) type Services = Arc<ServiceRepository>;
+
+#[derive(Debug)]
+pub(crate) struct ServiceRepository(pub Mutex<Vec<ServiceHandler>>);
+
+impl ServiceRepository {
+    pub(crate) fn new<T: Into<ServiceHandler>>(services: Vec<T>) -> Self {
+        ServiceRepository(Mutex::new(services.into_iter().map(Into::into).collect()))
+    }
+    pub(crate) fn set_pid(&self, service_name: String, pid: Pid) {
+        self.0
+            .lock()
+            .unwrap()
+            .iter_mut()
+            .filter(|sh| sh.name() == service_name)
+            .for_each(|sh| {
+                sh.set_pid(pid);
+            });
+    }
+    pub(crate) fn set_status(&self, service_name: String, status: ServiceStatus) {
+        self.0
+            .lock()
+            .unwrap()
+            .iter_mut()
+            .filter(|sh| sh.name() == service_name)
+            .for_each(|sh| {
+                sh.set_status(status.clone());
+            });
+    }
+    pub(crate) fn is_any_service_running(&self) -> bool {
+        self.0.lock().unwrap().iter().any(|sh| sh.is_running())
+    }
+}
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub(crate) struct ServiceHandler {
