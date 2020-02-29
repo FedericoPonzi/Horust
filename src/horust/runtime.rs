@@ -18,29 +18,32 @@ use std::{fs, thread};
 #[derive(Debug)]
 pub struct Horust {
     supervised: Services,
+    services_dir: Option<PathBuf>,
 }
 
 impl Horust {
-    fn new(services: Vec<Service>) -> Self {
+    fn new(services: Vec<Service>, services_dir: Option<PathBuf>) -> Self {
         Horust {
             //TODO: change to map [service_name: service]
             supervised: Arc::new(ServiceRepository::new(services)),
+            services_dir,
         }
     }
     pub fn from_command(command: String) -> Self {
-        Self::new(vec![Service::from_command(command)])
+        Self::new(vec![Service::from_command(command)], None)
     }
 
     /// Create a new horust instance from a path of services.
-    pub fn from_services_dir<P>(path: &P) -> Result<Horust>
+    pub fn from_services_dir<P>(path: &P) -> Result<Self>
     where
         P: AsRef<Path> + ?Sized + AsRef<OsStr> + Debug,
     {
         let services = fetch_services(path)?;
         debug!("Services found: {:?}", services);
-        Ok(Horust::new(services))
+        Ok(Horust::new(services, None))
     }
-    fn check_shutdown(&self) {
+
+    fn check_is_shutting_down(&self) {
         if signal_handling::is_sigterm_received() && self.supervised.is_any_service_running() {
             println!("Going to stop all services..");
             self.stop_all_services();
@@ -61,7 +64,7 @@ impl Horust {
         debug!("Threads spawned, going to start running services now!");
 
         loop {
-            self.check_shutdown();
+            self.check_is_shutting_down();
             // Before going to sleep, let's better release the lock!
             {
                 let mut superv_services = self.supervised.0.lock().unwrap();
@@ -71,18 +74,16 @@ impl Horust {
                     .map(|mut service_handler| {
                         // Check if all dependant services are either running or finished:
                         let check_can_run = |dependencies: &Vec<String>| {
-                            let mut can_run = true;
                             for service_name in dependencies {
                                 for service in superv_services.iter() {
                                     let is_started = service.name() == *service_name
                                         && (service.is_running() || service.is_finished());
                                     if is_started {
-                                        can_run = true;
-                                        break;
+                                        return true;
                                     }
                                 }
                             }
-                            can_run
+                            false
                         };
 
                         if service_handler.is_initial()
@@ -175,11 +176,17 @@ where
         path.is_file() && has_toml_extension(path)
     };
     let dir = fs::read_dir(path)?;
-    dir.filter_map(std::result::Result::ok)
+
+    //TODO: option to decide to not start if the deserialization of any service failed.
+
+    Ok(dir
+        .filter_map(std::result::Result::ok)
         .map(|dir_entry| dir_entry.path())
         .filter(is_toml_file)
         .map(Service::from_file)
-        .collect::<Result<Vec<Service>>>()
+        .filter(Result::is_ok)
+        .map(Result::unwrap)
+        .collect())
 }
 
 /// Fork the process
@@ -225,7 +232,6 @@ mod test {
     use std::io;
     use tempdir::TempDir;
 
-    //TODO
     fn create_test_dir() -> io::Result<TempDir> {
         let ret = TempDir::new("horust").unwrap();
         let a = Service::from_name("a");
