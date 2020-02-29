@@ -25,6 +25,8 @@ pub(crate) struct Service {
     pub healthiness: Option<Healthness>,
     #[serde()]
     pub signal_rewrite: Option<String>,
+    #[serde(skip)]
+    pub last_mtime_sec: i64,
 }
 
 #[derive(Serialize, Clone, Deserialize, Debug, Eq, PartialEq)]
@@ -65,6 +67,7 @@ impl Service {
             command,
             healthiness: None,
             signal_rewrite: None,
+            last_mtime_sec: 0,
         }
     }
 }
@@ -181,6 +184,7 @@ mod test {
                 command: "".to_string(),
                 healthiness: None,
                 signal_rewrite: None,
+                last_mtime_sec: 0,
             }
         }
 
