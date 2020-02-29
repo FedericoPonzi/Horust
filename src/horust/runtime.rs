@@ -74,16 +74,17 @@ impl Horust {
                     .map(|mut service_handler| {
                         // Check if all dependant services are either running or finished:
                         let check_can_run = |dependencies: &Vec<String>| {
+                            let mut check_run = false;
                             for service_name in dependencies {
                                 for service in superv_services.iter() {
                                     let is_started = service.name() == *service_name
                                         && (service.is_running() || service.is_finished());
                                     if is_started {
-                                        return true;
+                                        check_run = true;
                                     }
                                 }
                             }
-                            false
+                            check_run
                         };
 
                         if service_handler.is_initial()
@@ -242,6 +243,7 @@ mod test {
         std::fs::write(ret.path().join("my-second-service.toml"), b_str)?;
         Ok(ret)
     }
+
     #[test]
     fn test_fetch_services() -> io::Result<()> {
         let tempdir = create_test_dir()?;

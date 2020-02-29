@@ -69,6 +69,7 @@ impl ServiceHandler {
     pub(crate) fn service(&self) -> &Service {
         &self.service
     }
+    #[cfg(test)]
     pub(crate) fn status(&self) -> &ServiceStatus {
         &self.status
     }
