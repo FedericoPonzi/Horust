@@ -65,7 +65,7 @@ fn run_checks(services: &Services) {
             }
             None => true,
         })
-        .for_each(|sh| sh.status = ServiceStatus::Running);
+        .for_each(|sh| sh.set_status(ServiceStatus::Running));
 }
 
 /// Setup require for the service, before running the healthchecks and starting the service.
@@ -100,7 +100,7 @@ mod test {
             .lock()
             .unwrap()
             .iter()
-            .for_each(|sh| assert_eq!(sh.status, status));
+            .for_each(|sh| assert_eq!(*sh.status(), status));
     }
 
     #[test]

@@ -40,7 +40,7 @@ impl ServiceRepository {
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub(crate) struct ServiceHandler {
     service: Service,
-    pub(crate) status: ServiceStatus,
+    status: ServiceStatus,
     pid: Option<Pid>,
     last_state_change: Option<Instant>,
 }
@@ -68,6 +68,9 @@ impl ServiceHandler {
     }
     pub(crate) fn service(&self) -> &Service {
         &self.service
+    }
+    pub(crate) fn status(&self) -> &ServiceStatus {
+        &self.status
     }
     pub(crate) fn name(&self) -> &str {
         self.service.name.as_str()
