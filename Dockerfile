@@ -7,7 +7,7 @@ RUN echo "Running cargo build with params: $CARGO_PARAMS" && cargo build --relea
 
 FROM debian:buster-slim
 COPY --from=builder /usr/src/myapp/target/release/horust /usr/local/bin/horust
-RUN mkdir -p /etc/horust/services/ && apt-get update && apt install bash
+RUN mkdir -p /etc/horust/services/ && apt-get update && apt-get install bash
 ENV HORUST_LOG info
 ENTRYPOINT ["/usr/local/bin/horust"]
 CMD ["--services-path", "/etc/horust/services/"]
