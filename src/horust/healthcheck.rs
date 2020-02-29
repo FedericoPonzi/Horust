@@ -6,7 +6,7 @@ use reqwest::blocking::Client;
 
 // TODO: this is not really healthiness check, but rather readiness check. please change.
 // TODO: If the healthcheck fails and status wasn't initial, set to failed.
-pub(crate) fn spawn(services: Services) {
+pub fn spawn(services: Services) {
     std::thread::spawn(move || loop {
         run_checks(&services)
     });
@@ -69,7 +69,7 @@ fn run_checks(services: &Services) {
 }
 
 /// Setup require for the service, before running the healthchecks and starting the service.
-pub(crate) fn prepare_service(service_handler: &ServiceHandler) -> Result<(), std::io::Error> {
+pub fn prepare_service(service_handler: &ServiceHandler) -> Result<(), std::io::Error> {
     if let Some(healthiness) = &service_handler.service().healthiness {
         if let Some(file_path) = &healthiness.file_path {
             std::fs::remove_file(file_path)?;

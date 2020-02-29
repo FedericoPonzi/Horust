@@ -19,7 +19,8 @@ nix = "~0.16"
 humantime-serde = "~0.1"
 clap = { git = "https://github.com/clap-rs/clap/", rev = "28c46b5" }
 reqwest = { version = "0.10", features = ["blocking", "json"], optional = true, default-features = false }
-shlex = "0.1.1"
+shlex = "~0.1"
+crossbeam-channel = "~0.4"
 
 [features]
 default = ["http-healthcheck"]

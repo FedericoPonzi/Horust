@@ -1,4 +1,6 @@
+use crate::horust::service_handler::ServiceHandler;
 use crate::horust::HorustError;
+use crossbeam_channel::{unbounded, Receiver, Sender};
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 use std::str::FromStr;
@@ -6,9 +8,74 @@ use std::time::Duration;
 
 pub type ServiceName = String;
 
+/// Since I couldn't find any statisfying crate for broadcasting messages,
+/// I'm using this struct for distributing the messages among the queues.
+#[derive(Clone, Debug)]
+pub struct Dispatcher {
+    public_sender: Sender<Event>,
+    receiver: Receiver<Event>,
+    senders: Vec<Sender<Event>>,
+}
+
+impl Dispatcher {
+    pub fn new() -> Self {
+        let (pub_sx, rx) = unbounded();
+        Dispatcher {
+            public_sender: pub_sx,
+            receiver: rx,
+            senders: Vec::new(),
+        }
+    }
+
+    pub fn add_component(&mut self) -> UpdatesQueue {
+        let (mysx, rx) = unbounded();
+        self.senders.push(mysx);
+        UpdatesQueue::new(self.public_sender.clone(), rx)
+    }
+    pub fn dispatch(&mut self) {
+        loop {
+            self.receiver.iter().for_each(|el| {
+                self.senders
+                    .iter()
+                    .for_each(|sender| sender.send(el.clone()).unwrap())
+            });
+        }
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct UpdatesQueue {
+    pub sender: Sender<Event>,
+    pub receiver: Receiver<Event>,
+}
+impl UpdatesQueue {
+    pub fn new(s: Sender<Event>, r: Receiver<Event>) -> Self {
+        UpdatesQueue {
+            sender: s,
+            receiver: r,
+        }
+    }
+    fn send_update(&self, ev: Event) {
+        debug!("Going to send the following event: {:?}", ev);
+        self.sender.send(ev).expect("Failed sending update event!");
+    }
+    pub fn send_update_pid(&self, sh: &ServiceHandler) {
+        self.send_update(Event::PidChanged(sh.clone()));
+    }
+    pub fn send_updated_status(&self, sh: &ServiceHandler) {
+        self.send_update(Event::StatusChanged(sh.clone()));
+    }
+}
+#[derive(Debug, Clone)]
+pub enum Event {
+    StatusChanged(ServiceHandler),
+    PidChanged(ServiceHandler),
+    ServiceCreated(ServiceHandler),
+}
+
 #[derive(Serialize, Clone, Deserialize, Debug, Eq, PartialEq)]
 #[serde(rename_all = "kebab-case")]
-pub(crate) struct Service {
+pub struct Service {
     #[serde()]
     pub name: String,
     #[serde()]
@@ -116,9 +183,9 @@ pub enum ServiceStatus {
 
 #[derive(Serialize, Clone, Deserialize, Debug, Eq, PartialEq)]
 #[serde(rename_all = "kebab-case")]
-pub(crate) struct Restart {
+pub struct Restart {
     #[serde(default)]
-    pub(crate) strategy: RestartStrategy,
+    pub strategy: RestartStrategy,
     #[serde(default, with = "humantime_serde")]
     backoff: Duration,
     #[serde(default)]

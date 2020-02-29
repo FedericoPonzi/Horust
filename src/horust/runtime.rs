@@ -1,7 +1,7 @@
 use crate::horust::error::Result;
-use crate::horust::formats::{Service, ServiceStatus};
-use crate::horust::service_handler::{ServiceRepository, Services};
-use crate::horust::{healthcheck, reaper, signal_handling};
+use crate::horust::formats::{Dispatcher, Event, Service, ServiceStatus, UpdatesQueue};
+use crate::horust::service_handler::{ServiceHandler, ServiceRepository};
+use crate::horust::{reaper, signal_handling};
 use libc::{prctl, PR_SET_CHILD_SUBREAPER};
 use nix::sys::signal::kill;
 use nix::sys::signal::SIGTERM;
@@ -17,16 +17,18 @@ use std::{fs, thread};
 
 #[derive(Debug)]
 pub struct Horust {
-    supervised: Services,
+    service_repository: ServiceRepository,
     services_dir: Option<PathBuf>,
+    dispatcher: Dispatcher,
 }
 
 impl Horust {
     fn new(services: Vec<Service>, services_dir: Option<PathBuf>) -> Self {
+        let mut dispatcher = Dispatcher::new();
         Horust {
-            //TODO: change to map [service_name: service]
-            supervised: Arc::new(ServiceRepository::new(services)),
+            service_repository: ServiceRepository::new(services, dispatcher.add_component()),
             services_dir,
+            dispatcher,
         }
     }
     pub fn from_command(command: String) -> Self {
@@ -43,8 +45,10 @@ impl Horust {
         Ok(Horust::new(services, None))
     }
 
-    fn check_is_shutting_down(&self) {
-        if signal_handling::is_sigterm_received() && self.supervised.is_any_service_running() {
+    fn check_is_shutting_down(&mut self) {
+        if signal_handling::is_sigterm_received()
+            && self.service_repository.is_any_service_running()
+        {
             println!("Going to stop all services..");
             self.stop_all_services();
         }
@@ -56,58 +60,39 @@ impl Horust {
             prctl(PR_SET_CHILD_SUBREAPER, 1, 0, 0, 0);
         }
         signal_handling::init();
-
+        // Create a channel of unbounded capacity.
         // Spawn helper threads:
-        healthcheck::spawn(Arc::clone(&self.supervised));
-        reaper::spawn(Arc::clone(&self.supervised));
+        //healthcheck::spawn(updates_queue.clone());
+        let mut reaper_repo = ServiceRepository::new(
+            self.service_repository.services.clone(),
+            self.dispatcher.add_component(),
+        );
+        reaper::spawn(reaper_repo);
+        let mut dispatcher = self.dispatcher.clone();
+        std::thread::spawn(move || {
+            dispatcher.dispatch();
+        });
 
         debug!("Threads spawned, going to start running services now!");
 
         loop {
+            //TODO: a blocking update maybe? This loop should be executed onstatechange.
+            self.service_repository.update("runtime");
             self.check_is_shutting_down();
-            // Before going to sleep, let's better release the lock!
-            {
-                let mut superv_services = self.supervised.0.lock().unwrap();
-                *superv_services = superv_services
-                    .iter()
-                    .cloned()
-                    .map(|mut service_handler| {
-                        // Check if all dependant services are either running or finished:
-                        let check_can_run = |dependencies: &Vec<String>| {
-                            let mut check_run = false;
-                            for service_name in dependencies {
-                                for service in superv_services.iter() {
-                                    let is_started = service.name() == *service_name
-                                        && (service.is_running() || service.is_finished());
-                                    if is_started {
-                                        check_run = true;
-                                    }
-                                }
-                            }
-                            check_run
-                        };
-
-                        if service_handler.is_initial()
-                            && check_can_run(service_handler.start_after())
-                        {
-                            service_handler.set_status(ServiceStatus::ToBeRun);
-                            //TODO: Handle.
-                            healthcheck::prepare_service(&service_handler).unwrap();
-                            run_spawning_thread(
-                                service_handler.service().clone(),
-                                Arc::clone(&self.supervised),
-                            );
-                        }
-                        service_handler
-                    })
-                    .collect();
-                let all_finished = superv_services
-                    .iter()
-                    .all(|sh| sh.is_finished() || sh.is_failed());
-                if all_finished {
-                    debug!("All services have finished, exiting...");
-                    break;
-                }
+            let runnable_services = self.service_repository.get_runnable_services();
+            runnable_services.into_iter().for_each(|service_handler| {
+                self.service_repository
+                    .set_status(service_handler.name(), ServiceStatus::ToBeRun);
+                //healthcheck::prepare_service(&service_handler).unwrap();
+                run_spawning_thread(
+                    service_handler.service().clone(),
+                    self.service_repository.clone(),
+                );
+            });
+            if self.service_repository.all_finished() {
+                debug!("Result: {:?}", self.service_repository.services);
+                debug!("All services have finished, exiting...");
+                break;
             }
             thread::sleep(Duration::from_millis(200));
         }
@@ -116,13 +101,9 @@ impl Horust {
     /**
     Send a kill signal to all the services in the "Running" state.
     **/
-    pub fn stop_all_services(&self) {
-        self.supervised
-            .0
-            .lock()
-            .unwrap()
-            .iter_mut()
-            .for_each(|service| {
+    pub fn stop_all_services(&mut self) {
+        self.service_repository
+            .mutate_service_status(|mut service| {
                 if service.is_running() && service.pid().is_some() {
                     debug!("Going to send SIGTERM signal to pid {:?}", service.pid());
                     // TODO: It might happen that we try to kill something which in the meanwhile has exited.
@@ -131,6 +112,7 @@ impl Horust {
                         .map_err(|err| eprintln!("Error: {:?}", err))
                         .unwrap();
                     service.set_status(ServiceStatus::InKilling);
+                    return Some(service);
                 }
                 if service.is_initial() {
                     debug!(
@@ -138,23 +120,25 @@ impl Horust {
                         service.name()
                     );
                     service.set_status(ServiceStatus::Finished);
+                    return Some(service);
                 }
+                None
             });
     }
 }
 
 /// Run another thread that will wait for the start delay, and handle the fork / exec.
-fn run_spawning_thread(service: Service, supervised: Services) {
+fn run_spawning_thread(service: Service, mut service_repository: ServiceRepository) {
     std::thread::spawn(move || {
         std::thread::sleep(service.start_delay);
         match spawn_process(&service) {
             Ok(pid) => {
                 debug!("Setting pid:{} for service: {}", pid, service.name);
-                supervised.set_pid(service.name, pid);
+                service_repository.set_pid(service.name, pid);
             }
             Err(error) => {
                 error!("Failed spawning the process: {}", error);
-                supervised.set_status(service.name, ServiceStatus::Failed);
+                service_repository.set_status(service.name.as_ref(), ServiceStatus::Failed);
             }
         }
     });
