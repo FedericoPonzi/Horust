@@ -41,41 +41,9 @@ https://github.com/OpenRC/openrc/blob/master/supervise-daemon-guide.md
 What happens to dependant process, if a dependency process fails?
 
 ## Services
-You can create new services by creating a toml file. Check the documentation below for a description of each field.
-Bootstrap the creation of a new service, by using `horust --sample-service > new_service.toml`.
- 
-### Service section
-* **`name` = `string`**: Name of the service. If not defined, it will use the filename instead.
-* **`command` = `string`**: Specify a command to run, or a full path. You can also add arguments. If a full path is not provided, the binary will be searched using the $PATH env variable.
-* **`working_directory` = `string`**: will use this value as current working directory for the service.
+You can create new services by creating a toml file. Check the [documentation](https://github.com/FedericoPonzi/Horust/blob/master/DOCUMENTATION.md) for a complete reference.
 
-#### Restart section
-* **`strategy` = `always|on-failure|never`**: Defines the restart strategy.
-* **`backoff`** = `string`: Use this time before retrying restarting the service. 
-* **`attempts`** = `number`: How many attempts before considering the service as Failed.
-
-The delay between attempts is calculated as: `backoff * attempts_made + start-delay`. For instance, using:
-* backoff = 1s
-* attempts = 3
-* start-delay = 1s"
-
-Will wait 1 second and then start the service. If it doesn't start:
-* 1st attempt will start after 1*1 + 1 = 2 seconds.
-* 2nd attempt will start after 1*2 + 1 = 3 seconds.
-* 3th and last attempt will start after 1*3 +1 = 4 seconds. 
-
-If this fails, the service will be considered FailedFinished and won't be restarted.
-
-The attempt count is reset as soon as the service's state changes from starting to running (healthcheck passes).
-
-#### Readiness
-* **`readiness` = `health`**: If not present, the service will be considered ready as soon as has been spawned. Otherwise, use:
-    * **`health`**: Use the same strategy defined in the health configuration, 
-    * **`custom command`**: If the custom command is successful then your service is ready.
-
-### Healthiness Check
- * You can check the healthiness of your system using an http endpoint.
- * You can use the enforce dependency to kill every dependent system.
+* Bootstrap the creation of a new service, by using `horust --sample-service > new_service.toml`.
 
 ```toml
 [service]
@@ -90,6 +58,7 @@ required = false
 signal_rewrite = "15:3,5:10"
 
 [failure]
+# By default
 exit_code = "10,20"
 # Shut down the system if this service fails.
 strategy = "kill-all"
