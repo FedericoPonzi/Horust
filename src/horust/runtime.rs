@@ -1,5 +1,5 @@
 use crate::horust::error::Result;
-use crate::horust::formats::{Dispatcher, Event, Service, ServiceStatus, UpdatesQueue};
+use crate::horust::formats::{Event, Service, ServiceStatus, UpdatesQueue};
 use crate::horust::service_handler::{ServiceHandler, ServiceRepository};
 use crate::horust::{healthcheck, reaper, signal_handling};
 use libc::{prctl, PR_SET_CHILD_SUBREAPER};
@@ -15,33 +15,19 @@ use std::time::Duration;
 use std::{fs, thread};
 
 #[derive(Debug)]
-pub struct Horust {
+pub struct Runtime {
     service_repository: ServiceRepository,
-    services_dir: Option<PathBuf>,
-    dispatcher: Dispatcher,
 }
 
-impl Horust {
-    fn new(services: Vec<Service>, services_dir: Option<PathBuf>) -> Self {
-        let mut dispatcher = Dispatcher::new();
-        Horust {
-            service_repository: ServiceRepository::new(services, dispatcher.add_component()),
-            services_dir,
-            dispatcher,
-        }
-    }
-    pub fn from_command(command: String) -> Self {
-        Self::new(vec![Service::from_command(command)], None)
-    }
+pub fn spawn(repo: ServiceRepository) {
+    thread::spawn(move || Runtime::new(repo).run());
+}
 
-    /// Create a new horust instance from a path of services.
-    pub fn from_services_dir<P>(path: &P) -> Result<Self>
-    where
-        P: AsRef<Path> + ?Sized + AsRef<OsStr> + Debug,
-    {
-        let services = fetch_services(path)?;
-        debug!("Services found: {:?}", services);
-        Ok(Horust::new(services, None))
+impl Runtime {
+    fn new(repo: ServiceRepository) -> Self {
+        Self {
+            service_repository: repo,
+        }
     }
 
     fn check_is_shutting_down(&mut self) {
@@ -54,31 +40,7 @@ impl Horust {
     }
 
     /// Main entrypoint
-    pub fn run(&mut self) -> Result<()> {
-        unsafe {
-            prctl(PR_SET_CHILD_SUBREAPER, 1, 0, 0, 0);
-        }
-
-        signal_handling::init();
-
-        // Spawn helper threads:
-        let reaper_repo = ServiceRepository::new(
-            self.service_repository.services.clone(),
-            self.dispatcher.add_component(),
-        );
-        reaper::spawn(reaper_repo);
-
-        let healthcheck_repo = ServiceRepository::new(
-            self.service_repository.services.clone(),
-            self.dispatcher.add_component(),
-        );
-
-        healthcheck::spawn(healthcheck_repo);
-
-        self.dispatcher.clone().spawn();
-
-        debug!("Threads spawned, going to start running services now!");
-
+    pub fn run(&mut self) {
         loop {
             //TODO: a blocking update maybe? This loop should be executed onstatechange.
             self.service_repository.ingest("runtime");
@@ -100,7 +62,7 @@ impl Horust {
             }
             thread::sleep(Duration::from_millis(200));
         }
-        Ok(())
+        std::process::exit(0);
     }
     /**
     Send a kill signal to all the services in the "Running" state.
@@ -148,36 +110,6 @@ fn run_spawning_thread(service: Service, mut service_repository: ServiceReposito
     });
 }
 
-/// Search for *.toml files in path, and deserialize them into Service.
-fn fetch_services<P>(path: &P) -> Result<Vec<Service>>
-where
-    P: AsRef<Path> + ?Sized + AsRef<OsStr> + Debug,
-{
-    debug!("Fetching services from : {:?}", path);
-    let is_toml_file = |path: &PathBuf| {
-        let has_toml_extension = |path: &PathBuf| {
-            path.extension()
-                .unwrap_or_else(|| "".as_ref())
-                .to_str()
-                .unwrap()
-                .ends_with("toml")
-        };
-        path.is_file() && has_toml_extension(path)
-    };
-    let dir = fs::read_dir(path)?;
-
-    //TODO: option to decide to not start if the deserialization of any service failed.
-
-    Ok(dir
-        .filter_map(std::result::Result::ok)
-        .map(|dir_entry| dir_entry.path())
-        .filter(is_toml_file)
-        .map(Service::from_file)
-        .filter(Result::is_ok)
-        .map(Result::unwrap)
-        .collect())
-}
-
 /// Fork the process
 fn spawn_process(service: &Service) -> Result<Pid> {
     match fork() {
@@ -212,36 +144,4 @@ fn exec_service(service: &Service) {
     let arg_cptr: Vec<&CStr> = arg_cstrings.iter().map(|c| c.as_c_str()).collect();
     // TODO: clear signal mask if needed.
     nix::unistd::execvp(program_name.as_ref(), arg_cptr.as_ref()).expect("Execvp() failed: ");
-}
-
-#[cfg(test)]
-mod test {
-    use crate::horust::formats::Service;
-    use crate::horust::runtime::fetch_services;
-    use std::io;
-    use tempdir::TempDir;
-
-    fn create_test_dir() -> io::Result<TempDir> {
-        let ret = TempDir::new("horust").unwrap();
-        let a = Service::from_name("a");
-        let b = Service::start_after("b", vec!["a"]);
-        let a_str = toml::to_string(&a).unwrap();
-        let b_str = toml::to_string(&b).unwrap();
-        std::fs::write(ret.path().join("my-first-service.toml"), a_str)?;
-        std::fs::write(ret.path().join("my-second-service.toml"), b_str)?;
-        Ok(ret)
-    }
-
-    #[test]
-    fn test_fetch_services() -> io::Result<()> {
-        let tempdir = create_test_dir()?;
-        std::fs::write(tempdir.path().join("not-a-service"), "Hello world")?;
-        let res = fetch_services(tempdir.path()).unwrap();
-        assert_eq!(res.len(), 2);
-        let mut names: Vec<String> = res.into_iter().map(|serv| serv.name).collect();
-        names.sort();
-        assert_eq!(vec!["a", "b"], names);
-
-        Ok(())
-    }
 }

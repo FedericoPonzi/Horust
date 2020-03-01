@@ -52,5 +52,6 @@ fn main() -> Result<(), horust::HorustError> {
         Horust::from_services_dir(&opts.services_path)?
     };
 
-    horust.run()
+    horust.run();
+    Ok(())
 }
