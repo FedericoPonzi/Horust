@@ -1,8 +1,51 @@
-use crate::horust::formats::{
-    Event, EventKind, RestartStrategy, Service, ServiceStatus, UpdatesQueue,
-};
+use crate::horust::formats::{RestartStrategy, Service, ServiceStatus};
+use crossbeam_channel::{Receiver, Sender};
 use nix::unistd::Pid;
 use std::time::Instant;
+
+#[derive(Debug, Clone)]
+pub struct UpdatesQueue {
+    sender: Sender<Event>,
+    receiver: Receiver<Event>,
+}
+impl UpdatesQueue {
+    pub fn new(s: Sender<Event>, r: Receiver<Event>) -> Self {
+        UpdatesQueue {
+            sender: s,
+            receiver: r,
+        }
+    }
+    fn send_update(&self, ev: Event) {
+        debug!("Going to send the following event: {:?}", ev);
+        self.sender.send(ev).expect("Failed sending update event!");
+    }
+    pub fn send_update_pid(&self, sh: &ServiceHandler) {
+        self.send_update(Event::new(sh.clone(), EventKind::PidChanged));
+    }
+    pub fn send_updated_status(&self, sh: &ServiceHandler) {
+        self.send_update(Event::new(sh.clone(), EventKind::StatusChanged));
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct Event {
+    pub(crate) service_handler: ServiceHandler,
+    pub(crate) kind: EventKind,
+}
+impl Event {
+    pub fn new(service_handler: ServiceHandler, kind: EventKind) -> Self {
+        Event {
+            service_handler,
+            kind,
+        }
+    }
+}
+#[derive(Debug, Clone)]
+pub enum EventKind {
+    StatusChanged,
+    PidChanged,
+    //ServiceCreated(ServiceHandler),
+}
 
 /// This struct hides the internal datastructures and operations on the service handlers.
 /// It also handle the communication channel with the updates queue, by sending out all the change requests.
@@ -170,10 +213,6 @@ impl ServiceHandler {
     pub fn service(&self) -> &Service {
         &self.service
     }
-    #[cfg(test)]
-    pub fn status(&self) -> &ServiceStatus {
-        &self.status
-    }
     pub fn name(&self) -> &str {
         self.service.name.as_str()
     }
@@ -215,7 +254,7 @@ impl ServiceHandler {
     }
 
     pub fn set_status_by_exit_code(&mut self, exit_code: i32) {
-        let has_failed = exit_code != 0;
+        let has_failed = self.service.failure.exit_code.contains(&exit_code);
         if has_failed {
             error!(
                 "Service: {} has failed, exit code: {}",

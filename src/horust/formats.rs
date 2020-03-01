@@ -1,56 +1,10 @@
-use crate::horust::service_handler::ServiceHandler;
 use crate::horust::HorustError;
-use crossbeam_channel::{Receiver, Sender};
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 use std::str::FromStr;
 use std::time::Duration;
 
 pub type ServiceName = String;
-
-#[derive(Debug, Clone)]
-pub struct UpdatesQueue {
-    pub sender: Sender<Event>,
-    pub receiver: Receiver<Event>,
-}
-impl UpdatesQueue {
-    pub fn new(s: Sender<Event>, r: Receiver<Event>) -> Self {
-        UpdatesQueue {
-            sender: s,
-            receiver: r,
-        }
-    }
-    fn send_update(&self, ev: Event) {
-        debug!("Going to send the following event: {:?}", ev);
-        self.sender.send(ev).expect("Failed sending update event!");
-    }
-    pub fn send_update_pid(&self, sh: &ServiceHandler) {
-        self.send_update(Event::new(sh.clone(), EventKind::PidChanged));
-    }
-    pub fn send_updated_status(&self, sh: &ServiceHandler) {
-        self.send_update(Event::new(sh.clone(), EventKind::StatusChanged));
-    }
-}
-
-#[derive(Debug, Clone)]
-pub struct Event {
-    pub(crate) service_handler: ServiceHandler,
-    pub(crate) kind: EventKind,
-}
-impl Event {
-    pub fn new(service_handler: ServiceHandler, kind: EventKind) -> Self {
-        Event {
-            service_handler,
-            kind,
-        }
-    }
-}
-#[derive(Debug, Clone)]
-pub enum EventKind {
-    StatusChanged,
-    PidChanged,
-    //ServiceCreated(ServiceHandler),
-}
 
 #[derive(Serialize, Clone, Deserialize, Debug, Eq, PartialEq)]
 #[serde(rename_all = "kebab-case")]
@@ -73,6 +27,8 @@ pub struct Service {
     pub signal_rewrite: Option<String>,
     #[serde(skip)]
     pub last_mtime_sec: i64,
+    #[serde(default)]
+    pub failure: Failure,
 }
 
 #[derive(Serialize, Clone, Deserialize, Debug, Eq, PartialEq)]
@@ -83,7 +39,8 @@ pub struct Healthness {
 }
 
 pub fn get_sample_service() -> String {
-    r#"name = "my-cool-service"
+    r#"# The name of your service, must be unique. It's optional, will use the filename as name.
+name = "my-cool-service"
 command = "/bin/bash -c 'echo hello world'"
 working-directory = "/tmp/"
 start-delay = "2s"
@@ -93,8 +50,12 @@ backoff = "0s"
 attempts = 0
 [healthiness]
 http_endpoint = "http://localhost:8080/healthcheck"
-file_path = "/var/myservice/up""#
-        .to_string()
+file_path = "/var/myservice/up"
+[failure]
+exit_code = [ 1, 2, 3]
+strategy = "ignore"
+"#
+    .to_string()
 }
 
 impl Service {
@@ -114,6 +75,7 @@ impl Service {
             healthiness: None,
             signal_rewrite: None,
             last_mtime_sec: 0,
+            failure: Default::default(),
         }
     }
 }
@@ -212,6 +174,51 @@ impl From<&str> for RestartStrategy {
     }
 }
 
+#[derive(Serialize, Clone, Deserialize, Debug, Eq, PartialEq)]
+#[serde(rename_all = "kebab-case")]
+pub struct Failure {
+    #[serde(default = "default_failure_exit_code")]
+    pub exit_code: Vec<i32>,
+    pub strategy: FailureStrategy,
+}
+
+fn default_failure_exit_code() -> Vec<i32> {
+    (1..).take(255).collect()
+}
+
+#[derive(Serialize, Clone, Deserialize, Debug, Eq, PartialEq)]
+#[serde(rename_all = "kebab-case")]
+pub enum FailureStrategy {
+    KillAll,
+    KillDepdency,
+    Ignore,
+}
+impl Default for Failure {
+    fn default() -> Self {
+        Failure {
+            exit_code: default_failure_exit_code(),
+            strategy: FailureStrategy::Ignore,
+        }
+    }
+}
+
+impl From<String> for FailureStrategy {
+    fn from(strategy: String) -> Self {
+        strategy.as_str().into()
+    }
+}
+
+impl From<&str> for FailureStrategy {
+    fn from(strategy: &str) -> Self {
+        match strategy.to_lowercase().as_str() {
+            "kill-depdency" => FailureStrategy::KillDepdency,
+            "kill-all" => FailureStrategy::KillAll,
+            "ignore" => FailureStrategy::Ignore,
+            _ => FailureStrategy::Ignore,
+        }
+    }
+}
+
 #[cfg(test)]
 mod test {
     use crate::horust::formats::Service;
@@ -231,6 +238,7 @@ mod test {
                 healthiness: None,
                 signal_rewrite: None,
                 last_mtime_sec: 0,
+                failure: Default::default(),
             }
         }
 
@@ -241,6 +249,6 @@ mod test {
     #[test]
     fn test_should_correctly_deserialize_sample() {
         let service = Service::from_str(get_sample_service().as_str());
-        assert!(service.is_ok());
+        service.expect("error on deserializing the manifest");
     }
 }

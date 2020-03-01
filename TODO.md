@@ -1,7 +1,6 @@
 * Fix healthcheck to be real healthchecks.
 * Implement RestartStrategies
 * Add tests for http healthcheck.
-* Get name from the filename.
 * Per-service resource limits
 * Parameter to force death if any service is incorrect.
 * Reload configuration via SIGHUP (or another signal because as of now it can be run in a terminal).

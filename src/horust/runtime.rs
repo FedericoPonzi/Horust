@@ -63,6 +63,7 @@ impl Runtime {
         }
         std::process::exit(0);
     }
+    
     /**
     Send a kill signal to all the services in the "Running" state.
     **/

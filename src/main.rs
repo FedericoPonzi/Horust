@@ -1,10 +1,8 @@
-use crate::horust::Horust;
-
-use clap::Clap;
-
-use std::path::PathBuf;
-
 mod horust;
+
+use crate::horust::Horust;
+use clap::Clap;
+use std::path::PathBuf;
 
 #[macro_use]
 extern crate log;
@@ -49,6 +47,10 @@ fn main() -> Result<(), horust::HorustError> {
                 .fold(String::new(), |acc, w| format!("{} {}", acc, w)),
         )
     } else {
+        debug!(
+            "Going to load services from directory: {}",
+            opts.services_path.display()
+        );
         Horust::from_services_dir(&opts.services_path)?
     };
 
