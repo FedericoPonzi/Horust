@@ -1,13 +1,12 @@
 use crate::horust::service_handler::ServiceHandler;
 use crate::horust::HorustError;
-use crossbeam_channel::{unbounded, Receiver, Sender};
+use crossbeam_channel::{Receiver, Sender};
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 use std::str::FromStr;
 use std::time::Duration;
 
 pub type ServiceName = String;
-
 
 #[derive(Debug, Clone)]
 pub struct UpdatesQueue {
@@ -26,17 +25,31 @@ impl UpdatesQueue {
         self.sender.send(ev).expect("Failed sending update event!");
     }
     pub fn send_update_pid(&self, sh: &ServiceHandler) {
-        self.send_update(Event::PidChanged(sh.clone()));
+        self.send_update(Event::new(sh.clone(), EventKind::PidChanged));
     }
     pub fn send_updated_status(&self, sh: &ServiceHandler) {
-        self.send_update(Event::StatusChanged(sh.clone()));
+        self.send_update(Event::new(sh.clone(), EventKind::StatusChanged));
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct Event {
+    pub(crate) service_handler: ServiceHandler,
+    pub(crate) kind: EventKind,
+}
+impl Event {
+    pub fn new(service_handler: ServiceHandler, kind: EventKind) -> Self {
+        Event {
+            service_handler,
+            kind,
+        }
     }
 }
 #[derive(Debug, Clone)]
-pub enum Event {
-    StatusChanged(ServiceHandler),
-    PidChanged(ServiceHandler),
-    ServiceCreated(ServiceHandler),
+pub enum EventKind {
+    StatusChanged,
+    PidChanged,
+    //ServiceCreated(ServiceHandler),
 }
 
 #[derive(Serialize, Clone, Deserialize, Debug, Eq, PartialEq)]

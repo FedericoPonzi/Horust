@@ -1,18 +1,17 @@
 use crate::horust::error::Result;
-use crate::horust::formats::{Event, Service, ServiceStatus, UpdatesQueue};
-use crate::horust::service_handler::{ServiceHandler, ServiceRepository};
-use crate::horust::{healthcheck, reaper, signal_handling};
-use libc::{prctl, PR_SET_CHILD_SUBREAPER};
+use crate::horust::formats::{Service, ServiceStatus};
+use crate::horust::service_handler::ServiceRepository;
+use crate::horust::{healthcheck, signal_handling};
 use nix::sys::signal::kill;
 use nix::sys::signal::SIGTERM;
 use nix::unistd::{fork, getppid, ForkResult};
 use nix::unistd::{getpid, Pid};
 use shlex;
-use std::ffi::{CStr, CString, OsStr};
+use std::ffi::{CStr, CString};
 use std::fmt::Debug;
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
+use std::thread;
 use std::time::Duration;
-use std::{fs, thread};
 
 #[derive(Debug)]
 pub struct Runtime {
@@ -49,7 +48,7 @@ impl Runtime {
             runnable_services.into_iter().for_each(|service_handler| {
                 self.service_repository
                     .update_status(service_handler.name(), ServiceStatus::ToBeRun);
-                //healthcheck::prepare_service(&service_handler).unwrap();
+                healthcheck::prepare_service(&service_handler).unwrap();
                 run_spawning_thread(
                     service_handler.service().clone(),
                     self.service_repository.clone(),
@@ -68,28 +67,27 @@ impl Runtime {
     Send a kill signal to all the services in the "Running" state.
     **/
     pub fn stop_all_services(&mut self) {
-        self.service_repository
-            .mutate_service_status(|mut service| {
-                if service.is_running() && service.pid().is_some() {
-                    debug!("Going to send SIGTERM signal to pid {:?}", service.pid());
-                    // TODO: It might happen that we try to kill something which in the meanwhile has exited.
-                    // Thus here we should handle Error: Sys(ESRCH)
-                    kill(*service.pid().unwrap(), SIGTERM)
-                        .map_err(|err| eprintln!("Error: {:?}", err))
-                        .unwrap();
-                    service.set_status(ServiceStatus::InKilling);
-                    return Some(service);
-                }
-                if service.is_initial() {
-                    debug!(
-                        "Never going to run {}, so setting it to finished.",
-                        service.name()
-                    );
-                    service.set_status(ServiceStatus::Finished);
-                    return Some(service);
-                }
-                None
-            });
+        self.service_repository.mutate_service_status(|service| {
+            if service.is_running() && service.pid().is_some() {
+                debug!("Going to send SIGTERM signal to pid {:?}", service.pid());
+                // TODO: It might happen that we try to kill something which in the meanwhile has exited.
+                // Thus here we should handle Error: Sys(ESRCH)
+                kill(service.pid().unwrap(), SIGTERM)
+                    .map_err(|err| eprintln!("Error: {:?}", err))
+                    .unwrap();
+                service.set_status(ServiceStatus::InKilling);
+                return Some(service);
+            }
+            if service.is_initial() {
+                debug!(
+                    "Never going to run {}, so setting it to finished.",
+                    service.name()
+                );
+                service.set_status(ServiceStatus::Finished);
+                return Some(service);
+            }
+            None
+        });
     }
 }
 

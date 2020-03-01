@@ -1,4 +1,4 @@
-use crate::horust::service_handler::{ServiceHandler, ServiceRepository};
+use crate::horust::service_handler::ServiceRepository;
 use nix::sys::wait::{waitpid, WaitStatus};
 use nix::unistd::Pid;
 use std::collections::HashMap;
@@ -32,7 +32,7 @@ pub(crate) fn supervisor_thread(mut service_repository: ServiceRepository) {
         // It might happen that before supervised was updated, the process was already started, executed,
         // and exited. Thus we're trying to reaping it, but there is still no map Pid -> Service.
         reapable.retain(|pid, exit_code| {
-            let result = service_repository.update_status_by_exit_code(pid, *exit_code);
+            let result = service_repository.update_status_by_exit_code(*pid, *exit_code);
             // If is a grandchildren, we don't care about it:
             // is grandchildren =
             result || service_repository.is_any_service_to_be_run()

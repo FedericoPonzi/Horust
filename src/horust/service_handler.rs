@@ -1,7 +1,7 @@
-use crate::horust::formats::{Event, RestartStrategy, Service, ServiceStatus, UpdatesQueue};
+use crate::horust::formats::{
+    Event, EventKind, RestartStrategy, Service, ServiceStatus, UpdatesQueue,
+};
 use nix::unistd::Pid;
-use std::sync::{Arc, Mutex};
-
 use std::time::Instant;
 
 /// This struct hides the internal datastructures and operations on the service handlers.
@@ -24,49 +24,40 @@ impl ServiceRepository {
     /// Process all the received services changes.
     pub fn ingest(&mut self, name: &str) {
         let mut updates: Vec<Event> = self.updates_queue.receiver.try_iter().collect();
-        //debug!("Received the following updatees: {:?}", updates);
+        debug!("{}: Received the following updatees: {:?}", name, updates);
         self.services.iter_mut().for_each(|sh| {
             updates = updates
                 .clone()
                 .into_iter()
-                .filter_map(|event| {
-                    match &event {
-                        Event::StatusChanged(changed) => {
-                            if changed.name() == sh.name() {
-                                sh.status = changed.status.clone();
-                                return None;
+                .filter(|ev| {
+                    let to_consume = sh.name() == ev.service_handler.name();
+                    if to_consume {
+                        match &ev.kind {
+                            EventKind::StatusChanged => {
+                                sh.status = ev.service_handler.status.clone();
+                            }
+                            EventKind::PidChanged => {
+                                sh.pid = ev.service_handler.pid;
                             }
                         }
-                        Event::PidChanged(changed) => {
-                            debug!("{}: Received changed pid for: {:?}", name, changed);
-                            if changed.name() == sh.name() {
-                                sh.pid = changed.pid;
-                                return None;
-                            } else {
-                                println!("It looks like {} !== {}", changed.name(), sh.name());
-                            }
-                        }
-                        _ => return Some(event),
                     }
-                    Some(event)
+                    // If this event has been consumed (e.g. shname == ev.service_name) thne I can just throw it away..
+                    !to_consume
                 })
                 .collect();
         });
     }
 
-    pub fn update_status_by_exit_code(&mut self, pid: &Pid, exit_code: i32) -> bool {
+    pub fn update_status_by_exit_code(&mut self, pid: Pid, exit_code: i32) -> bool {
         let queues = &self.updates_queue;
-        let result = self
-            .services
-            .iter_mut()
-            .skip_while(|sh| sh.pid() != Some(pid))
-            .take(1)
-            .map(|sh| {
-                sh.set_status_by_exit_code(exit_code);
-                queues.send_updated_status(sh);
-            })
-            .count();
-        result == 1
+        for service in self.services.iter_mut() {
+            if service.pid() == Some(pid) {
+                service.set_status_by_exit_code(exit_code);
+                queues.send_updated_status(service);
+                return true;
+            }
+        }
+        false
     }
 
     pub fn update_pid(&mut self, service_name: String, pid: Pid) {
@@ -89,14 +80,6 @@ impl ServiceRepository {
                 sh.set_status(status.clone());
                 queue.send_updated_status(sh);
             });
-    }
-
-    pub fn find_by_pid(&mut self, pid: &Pid) -> Option<&mut ServiceHandler> {
-        self.services
-            .iter_mut()
-            .skip_while(|sh| sh.pid() != Some(pid))
-            .take(1)
-            .last()
     }
 
     pub fn is_any_service_running(&self) -> bool {
@@ -190,8 +173,8 @@ impl ServiceHandler {
     pub fn name(&self) -> &str {
         self.service.name.as_str()
     }
-    pub fn pid(&self) -> Option<&Pid> {
-        self.pid.as_ref()
+    pub fn pid(&self) -> Option<Pid> {
+        self.pid
     }
     pub fn set_pid(&mut self, pid: Pid) {
         self.status = ServiceStatus::Starting;
