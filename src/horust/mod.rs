@@ -1,5 +1,6 @@
 mod error;
 mod formats;
+mod healthcheck;
 mod reaper;
 mod runtime;
 mod service_handler;

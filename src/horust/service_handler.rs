@@ -20,32 +20,9 @@ impl ServiceRepository {
             updates_queue,
         }
     }
-    pub fn update_status_by_exit_code(&mut self, pid: &Pid, exit_code: i32) -> bool {
-        let queues = &self.updates_queue;
-        let result = self
-            .services
-            .iter_mut()
-            .skip_while(|sh| sh.pid() != Some(pid))
-            .take(1)
-            .map(|sh| {
-                println!("Found!");
-                sh.set_status_by_exit_code(exit_code);
-                queues.send_updated_status(sh);
-            })
-            .count();
-        println!("Result: {}", result);
-        result == 1
-    }
-    pub fn find_by_pid(&mut self, pid: &Pid) -> Option<&mut ServiceHandler> {
-        self.services
-            .iter_mut()
-            .skip_while(|sh| sh.pid() != Some(pid))
-            .take(1)
-            .last()
-    }
 
     /// Process all the received services changes.
-    pub fn update(&mut self, name: &str) {
+    pub fn ingest(&mut self, name: &str) {
         let mut updates: Vec<Event> = self.updates_queue.receiver.try_iter().collect();
         //debug!("Received the following updatees: {:?}", updates);
         self.services.iter_mut().for_each(|sh| {
@@ -77,8 +54,22 @@ impl ServiceRepository {
         });
     }
 
-    // TODO: update to send update
-    pub fn set_pid(&mut self, service_name: String, pid: Pid) {
+    pub fn update_status_by_exit_code(&mut self, pid: &Pid, exit_code: i32) -> bool {
+        let queues = &self.updates_queue;
+        let result = self
+            .services
+            .iter_mut()
+            .skip_while(|sh| sh.pid() != Some(pid))
+            .take(1)
+            .map(|sh| {
+                sh.set_status_by_exit_code(exit_code);
+                queues.send_updated_status(sh);
+            })
+            .count();
+        result == 1
+    }
+
+    pub fn update_pid(&mut self, service_name: String, pid: Pid) {
         let queue = &self.updates_queue;
         self.services
             .iter_mut()
@@ -88,13 +79,24 @@ impl ServiceRepository {
                 queue.send_update_pid(sh);
             });
     }
-    pub fn set_status(&mut self, service_name: &str, status: ServiceStatus) {
+
+    pub fn update_status(&mut self, service_name: &str, status: ServiceStatus) {
+        let queue = &self.updates_queue;
         self.services
             .iter_mut()
             .filter(|sh| sh.name() == service_name)
             .for_each(|sh| {
                 sh.set_status(status.clone());
+                queue.send_updated_status(sh);
             });
+    }
+
+    pub fn find_by_pid(&mut self, pid: &Pid) -> Option<&mut ServiceHandler> {
+        self.services
+            .iter_mut()
+            .skip_while(|sh| sh.pid() != Some(pid))
+            .take(1)
+            .last()
     }
 
     pub fn is_any_service_running(&self) -> bool {
@@ -117,7 +119,7 @@ impl ServiceRepository {
                 return true;
             }
             let mut check_run = false;
-            for service_name in &sh.service.start_after {
+            for service_name in sh.start_after() {
                 for service in self.services.iter() {
                     let is_started = service.name() == service_name
                         && (service.is_running() || service.is_finished());

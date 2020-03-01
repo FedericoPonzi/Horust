@@ -1,7 +1,7 @@
 use crate::horust::error::Result;
 use crate::horust::formats::{Dispatcher, Event, Service, ServiceStatus, UpdatesQueue};
 use crate::horust::service_handler::{ServiceHandler, ServiceRepository};
-use crate::horust::{reaper, signal_handling};
+use crate::horust::{healthcheck, reaper, signal_handling};
 use libc::{prctl, PR_SET_CHILD_SUBREAPER};
 use nix::sys::signal::kill;
 use nix::sys::signal::SIGTERM;
@@ -11,7 +11,6 @@ use shlex;
 use std::ffi::{CStr, CString, OsStr};
 use std::fmt::Debug;
 use std::path::{Path, PathBuf};
-use std::sync::Arc;
 use std::time::Duration;
 use std::{fs, thread};
 
@@ -59,30 +58,35 @@ impl Horust {
         unsafe {
             prctl(PR_SET_CHILD_SUBREAPER, 1, 0, 0, 0);
         }
+
         signal_handling::init();
-        // Create a channel of unbounded capacity.
+
         // Spawn helper threads:
-        //healthcheck::spawn(updates_queue.clone());
-        let mut reaper_repo = ServiceRepository::new(
+        let reaper_repo = ServiceRepository::new(
             self.service_repository.services.clone(),
             self.dispatcher.add_component(),
         );
         reaper::spawn(reaper_repo);
-        let mut dispatcher = self.dispatcher.clone();
-        std::thread::spawn(move || {
-            dispatcher.dispatch();
-        });
+
+        let healthcheck_repo = ServiceRepository::new(
+            self.service_repository.services.clone(),
+            self.dispatcher.add_component(),
+        );
+
+        healthcheck::spawn(healthcheck_repo);
+
+        self.dispatcher.clone().spawn();
 
         debug!("Threads spawned, going to start running services now!");
 
         loop {
             //TODO: a blocking update maybe? This loop should be executed onstatechange.
-            self.service_repository.update("runtime");
+            self.service_repository.ingest("runtime");
             self.check_is_shutting_down();
             let runnable_services = self.service_repository.get_runnable_services();
             runnable_services.into_iter().for_each(|service_handler| {
                 self.service_repository
-                    .set_status(service_handler.name(), ServiceStatus::ToBeRun);
+                    .update_status(service_handler.name(), ServiceStatus::ToBeRun);
                 //healthcheck::prepare_service(&service_handler).unwrap();
                 run_spawning_thread(
                     service_handler.service().clone(),
@@ -134,11 +138,11 @@ fn run_spawning_thread(service: Service, mut service_repository: ServiceReposito
         match spawn_process(&service) {
             Ok(pid) => {
                 debug!("Setting pid:{} for service: {}", pid, service.name);
-                service_repository.set_pid(service.name, pid);
+                service_repository.update_pid(service.name, pid);
             }
             Err(error) => {
                 error!("Failed spawning the process: {}", error);
-                service_repository.set_status(service.name.as_ref(), ServiceStatus::Failed);
+                service_repository.update_status(service.name.as_ref(), ServiceStatus::Failed);
             }
         }
     });

@@ -1,4 +1,4 @@
-use crate::horust::service_handler::{ServiceHandler, ServiceRepository, Services};
+use crate::horust::service_handler::{ServiceHandler, ServiceRepository};
 use nix::sys::wait::{waitpid, WaitStatus};
 use nix::unistd::Pid;
 use std::collections::HashMap;
@@ -14,7 +14,7 @@ pub(crate) fn spawn(service_repository: ServiceRepository) {
 pub(crate) fn supervisor_thread(mut service_repository: ServiceRepository) {
     let mut reapable = HashMap::new();
     loop {
-        service_repository.update("reaper");
+        service_repository.ingest("reaper");
         debug!("Reaper :D");
         match waitpid(Pid::from_raw(-1), None) {
             Ok(wait_status) => {

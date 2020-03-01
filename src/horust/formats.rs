@@ -26,6 +26,11 @@ impl Dispatcher {
             senders: Vec::new(),
         }
     }
+    pub fn spawn(mut self) {
+        std::thread::spawn(move || {
+            self.dispatch();
+        });
+    }
 
     pub fn add_component(&mut self) -> UpdatesQueue {
         let (mysx, rx) = unbounded();
