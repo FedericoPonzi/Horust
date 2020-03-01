@@ -24,28 +24,30 @@ impl ServiceRepository {
     /// Process all the received services changes.
     pub fn ingest(&mut self, name: &str) {
         let mut updates: Vec<Event> = self.updates_queue.receiver.try_iter().collect();
-        debug!("{}: Received the following updatees: {:?}", name, updates);
-        self.services.iter_mut().for_each(|sh| {
-            updates = updates
-                .clone()
-                .into_iter()
-                .filter(|ev| {
-                    let to_consume = sh.name() == ev.service_handler.name();
-                    if to_consume {
-                        match &ev.kind {
-                            EventKind::StatusChanged => {
-                                sh.status = ev.service_handler.status.clone();
-                            }
-                            EventKind::PidChanged => {
-                                sh.pid = ev.service_handler.pid;
+        if !updates.is_empty() {
+            debug!("{}: Received the following updatees: {:?}", name, updates);
+            self.services.iter_mut().for_each(|sh| {
+                updates = updates
+                    .clone()
+                    .into_iter()
+                    .filter(|ev| {
+                        let to_consume = sh.name() == ev.service_handler.name();
+                        if to_consume {
+                            match &ev.kind {
+                                EventKind::StatusChanged => {
+                                    sh.status = ev.service_handler.status.clone();
+                                }
+                                EventKind::PidChanged => {
+                                    sh.pid = ev.service_handler.pid;
+                                }
                             }
                         }
-                    }
-                    // If this event has been consumed (e.g. shname == ev.service_name) thne I can just throw it away..
-                    !to_consume
-                })
-                .collect();
-        });
+                        // If this event has been consumed (e.g. shname == ev.service_name) thne I can just throw it away..
+                        !to_consume
+                    })
+                    .collect();
+            });
+        }
     }
 
     pub fn update_status_by_exit_code(&mut self, pid: Pid, exit_code: i32) -> bool {

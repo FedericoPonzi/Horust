@@ -3,12 +3,14 @@ use crate::horust::service_handler::{ServiceHandler, ServiceRepository};
 
 #[cfg(feature = "http-healthcheck")]
 use reqwest::blocking::Client;
+use std::time::Duration;
 
 // TODO: this is not really healthiness check, but rather readiness check. please change.
 // TODO: If the healthcheck fails and status wasn't initial, set to failed.
 pub fn spawn(mut services: ServiceRepository) {
     std::thread::spawn(move || loop {
-        run_checks(&mut services)
+        run_checks(&mut services);
+        std::thread::sleep(Duration::from_millis(200));
     });
 }
 
