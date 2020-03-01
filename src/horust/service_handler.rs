@@ -50,6 +50,7 @@ impl ServiceRepository {
         }
     }
 
+    // True if the update was applied, false otherwise.
     pub fn update_status_by_exit_code(&mut self, pid: Pid, exit_code: i32) -> bool {
         let queues = &self.updates_queue;
         for service in self.services.iter_mut() {
@@ -61,7 +62,7 @@ impl ServiceRepository {
         }
         false
     }
-
+    // Adds a pid to a service, and sends an update to other components
     pub fn update_pid(&mut self, service_name: String, pid: Pid) {
         let queue = &self.updates_queue;
         self.services
@@ -73,6 +74,7 @@ impl ServiceRepository {
             });
     }
 
+    // Changes the status of a services, and sends an update to other components
     pub fn update_status(&mut self, service_name: &str, status: ServiceStatus) {
         let queue = &self.updates_queue;
         self.services

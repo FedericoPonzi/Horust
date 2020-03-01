@@ -89,7 +89,16 @@ where
         .filter_map(std::result::Result::ok)
         .map(|dir_entry| dir_entry.path())
         .filter(is_toml_file)
-        .map(Service::from_file)
+        .map(|file| {
+            let res = Service::from_file(&file);
+            res.map(|mut service| {
+                if service.name == "" {
+                    let filename = file.file_name().unwrap().to_str().unwrap().to_owned();
+                    service.name = filename;
+                }
+                service
+            })
+        })
         .filter(Result::is_ok)
         .map(Result::unwrap)
         .collect())

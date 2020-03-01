@@ -55,7 +55,7 @@ pub enum EventKind {
 #[derive(Serialize, Clone, Deserialize, Debug, Eq, PartialEq)]
 #[serde(rename_all = "kebab-case")]
 pub struct Service {
-    #[serde()]
+    #[serde(default)]
     pub name: String,
     #[serde()]
     pub command: String,
@@ -98,7 +98,7 @@ file_path = "/var/myservice/up""#
 }
 
 impl Service {
-    pub fn from_file(path: PathBuf) -> Result<Self, HorustError> {
+    pub fn from_file(path: &PathBuf) -> Result<Self, HorustError> {
         let content = std::fs::read_to_string(path)?;
         toml::from_str::<Service>(content.as_str()).map_err(HorustError::from)
     }

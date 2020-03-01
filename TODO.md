@@ -1,7 +1,6 @@
 * Fix healthcheck to be real healthchecks.
 * Implement RestartStrategies
 * Add tests for http healthcheck.
-* Rename name -> description
 * Get name from the filename.
 * Per-service resource limits
 * Parameter to force death if any service is incorrect.

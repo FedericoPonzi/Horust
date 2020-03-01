@@ -42,7 +42,7 @@ fn run_checks(services: &mut ServiceRepository) {
                 let check_feature = |endpoint: &String| {
                     #[cfg(not(feature = "http-healthcheck"))]
                     {
-                        error!("There is an http based healthcheck for {}, but horust was built without the http-healthcheck feature (thus it will never pass these checks).", sh.name());
+                        error!("There is an http based healthcheck for {}, requesting: {} , but horust was built without the http-healthcheck feature (thus it will never pass these checks).", sh.name(), endpoint);
                         return (1, 0);
                     }
                     #[cfg(feature = "http-healthcheck")]
