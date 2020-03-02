@@ -5,12 +5,13 @@ use crate::horust::service_handler::{ServiceHandler, ServiceRepository};
 use reqwest::blocking::Client;
 use std::time::Duration;
 
-// TODO: this is not really healthiness check, but rather readiness check. please change.
-// TODO: If the healthcheck fails and status wasn't initial, set to failed.
+// TODO:
+// * Tunable healthchecks in horust's config
+// * If there are no checks to run, just exit the thread. or go sleep until an "service created" event is received.
 pub fn spawn(mut services: ServiceRepository) {
     std::thread::spawn(move || loop {
         run_checks(&mut services);
-        std::thread::sleep(Duration::from_millis(200));
+        std::thread::sleep(Duration::from_millis(1000));
     });
 }
 
@@ -63,8 +64,12 @@ fn run_checks(services: &mut ServiceRepository) {
         None => true,
     };
     services.mutate_service_status(|sh| {
-        if sh.is_starting() && healthchecks(sh) {
+        let is_healthy = healthchecks(sh);
+        if sh.is_starting() && is_healthy {
             sh.set_status(ServiceStatus::Running);
+            Some(sh)
+        } else if sh.is_running() && !is_healthy {
+            sh.set_status(ServiceStatus::Failed);
             Some(sh)
         } else {
             None
