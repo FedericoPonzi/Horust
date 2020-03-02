@@ -224,7 +224,6 @@ impl ServiceHandler {
         self.pid = Some(pid);
     }
 
-    /// TODO: set validation of the FSM.
     pub fn set_status(&mut self, status: ServiceStatus) {
         self.status = status;
     }

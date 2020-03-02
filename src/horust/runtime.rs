@@ -3,7 +3,6 @@ use crate::horust::formats::{Service, ServiceStatus};
 use crate::horust::service_handler::ServiceRepository;
 use crate::horust::{healthcheck, signal_handling};
 use nix::sys::signal::kill;
-use nix::sys::signal::SIGTERM;
 use nix::unistd::{fork, getppid, ForkResult};
 use nix::unistd::{getpid, Pid};
 use shlex;
@@ -68,24 +67,24 @@ impl Runtime {
     Send a kill signal to all the services in the "Running" state.
     **/
     pub fn stop_all_services(&mut self) {
-        self.service_repository.mutate_service_status(|service| {
-            if service.is_running() && service.pid().is_some() {
-                debug!("Going to send SIGTERM signal to pid {:?}", service.pid());
+        self.service_repository.mutate_service_status(|sh| {
+            if sh.is_running() && sh.pid().is_some() {
+                debug!("Going to send SIGTERM signal to pid {:?}", sh.pid());
                 // TODO: It might happen that we try to kill something which in the meanwhile has exited.
                 // Thus here we should handle Error: Sys(ESRCH)
-                kill(service.pid().unwrap(), SIGTERM)
+                kill(sh.pid().unwrap(), sh.service().termination.signal.into())
                     .map_err(|err| eprintln!("Error: {:?}", err))
                     .unwrap();
-                service.set_status(ServiceStatus::InKilling);
-                return Some(service);
+                sh.set_status(ServiceStatus::InKilling);
+                return Some(sh);
             }
-            if service.is_initial() {
+            if sh.is_initial() {
                 debug!(
                     "Never going to run {}, so setting it to finished.",
-                    service.name()
+                    sh.name()
                 );
-                service.set_status(ServiceStatus::Finished);
-                return Some(service);
+                sh.set_status(ServiceStatus::Finished);
+                return Some(sh);
             }
             None
         });

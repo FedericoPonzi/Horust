@@ -48,5 +48,14 @@ strategy = "kill-all"
 * **exit_code** = **\<int>[,\<int>]**: A comma separated list of exit code. Usually a program is considered failed if its exit code is different than zero. But not all fails are the same. By using this parameter, you can specify which exit codes will make this service considered failed.
 * **strategy** = **kill-all|kill-dependency|ignore': We might want to kill the whole system, or part of it, if some service fails. By default the failure won't trigger anything.
 
+### Termination section
+```toml
+[termination]
+signal = "TERM"
+wait = "10s"
+```
+* **signal** = **"TERM|HUP|INT|QUIT|KILL|USR1|USR2"** signal used for shutting down the process.
+* **wait** = **"time"** how much time to wait before sending a SIGKILL after `signal` has been sent.
+
 ---
 ## Plugins

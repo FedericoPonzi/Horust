@@ -1,4 +1,6 @@
 use crate::horust::HorustError;
+use nix::sys::signal::Signal;
+use nix::sys::signal::{SIGHUP, SIGINT, SIGKILL, SIGQUIT, SIGTERM, SIGUSR1, SIGUSR2};
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 use std::str::FromStr;
@@ -29,6 +31,8 @@ pub struct Service {
     pub last_mtime_sec: i64,
     #[serde(default)]
     pub failure: Failure,
+    #[serde(default)]
+    pub termination: Termination,
 }
 
 #[derive(Serialize, Clone, Deserialize, Debug, Eq, PartialEq)]
@@ -54,6 +58,9 @@ file_path = "/var/myservice/up"
 [failure]
 exit_code = [ 1, 2, 3]
 strategy = "ignore"
+[termination]
+signal = "TERM"
+wait = "10s"
 "#
     .to_string()
 }
@@ -76,6 +83,7 @@ impl Service {
             signal_rewrite: None,
             last_mtime_sec: 0,
             failure: Default::default(),
+            termination: Default::default(),
         }
     }
 }
@@ -177,15 +185,15 @@ impl From<&str> for RestartStrategy {
 #[derive(Serialize, Clone, Deserialize, Debug, Eq, PartialEq)]
 #[serde(rename_all = "kebab-case")]
 pub struct Failure {
-    #[serde(default = "default_failure_exit_code")]
+    #[serde(default = "Failure::default_exit_code")]
     pub exit_code: Vec<i32>,
     pub strategy: FailureStrategy,
 }
-
-fn default_failure_exit_code() -> Vec<i32> {
-    (1..).take(255).collect()
+impl Failure {
+    fn default_exit_code() -> Vec<i32> {
+        (1..).take(255).collect()
+    }
 }
-
 #[derive(Serialize, Clone, Deserialize, Debug, Eq, PartialEq)]
 #[serde(rename_all = "kebab-case")]
 pub enum FailureStrategy {
@@ -196,7 +204,7 @@ pub enum FailureStrategy {
 impl Default for Failure {
     fn default() -> Self {
         Failure {
-            exit_code: default_failure_exit_code(),
+            exit_code: Self::default_exit_code(),
             strategy: FailureStrategy::Ignore,
         }
     }
@@ -215,6 +223,59 @@ impl From<&str> for FailureStrategy {
             "kill-all" => FailureStrategy::KillAll,
             "ignore" => FailureStrategy::Ignore,
             _ => FailureStrategy::Ignore,
+        }
+    }
+}
+
+#[derive(Serialize, Clone, Deserialize, Debug, Eq, PartialEq)]
+#[serde(rename_all = "kebab-case")]
+pub struct Termination {
+    pub(crate) signal: TerminationSignal,
+    #[serde(default = "Termination::default_wait", with = "humantime_serde")]
+    wait: Duration,
+}
+
+impl Termination {
+    fn default_wait() -> Duration {
+        Duration::from_secs(5)
+    }
+}
+
+impl Default for Termination {
+    fn default() -> Self {
+        Termination {
+            signal: Default::default(),
+            wait: Self::default_wait(),
+        }
+    }
+}
+
+#[derive(Serialize, Clone, Deserialize, Debug, Eq, PartialEq)]
+pub enum TerminationSignal {
+    TERM,
+    HUP,
+    INT,
+    QUIT,
+    KILL,
+    USR1,
+    USR2,
+}
+
+impl Default for TerminationSignal {
+    fn default() -> Self {
+        TerminationSignal::TERM
+    }
+}
+impl Into<Signal> for TerminationSignal {
+    fn into(self) -> Signal {
+        match self {
+            TerminationSignal::TERM => SIGTERM,
+            TerminationSignal::HUP => SIGHUP,
+            TerminationSignal::INT => SIGINT,
+            TerminationSignal::QUIT => SIGQUIT,
+            TerminationSignal::KILL => SIGKILL,
+            TerminationSignal::USR1 => SIGUSR1,
+            TerminationSignal::USR2 => SIGUSR2,
         }
     }
 }
@@ -239,6 +300,7 @@ mod test {
                 signal_rewrite: None,
                 last_mtime_sec: 0,
                 failure: Default::default(),
+                termination: Default::default(),
             }
         }
 
