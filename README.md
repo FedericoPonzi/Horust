@@ -58,10 +58,8 @@ required = false
 signal_rewrite = "15:3,5:10"
 
 [failure]
-# By default
 exit_code = "10,20"
-# Shut down the system if this service fails.
-strategy = "kill-all"
+strategy = "ignore"
 
 [restart]
 strategy = "always"
@@ -89,6 +87,7 @@ Horust itself can be tuned and modified by using the following shiny parameters:
 web-server = false
 # How much time to wait after sending a `sigterm` to a process before sending a SIGKILL.
 timeout-before-sigkill = "10s"
+
 ```
 
 ## LICENSE

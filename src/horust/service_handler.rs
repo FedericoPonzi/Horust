@@ -81,6 +81,7 @@ impl ServiceRepository {
                                     sh.status = ev.service_handler.status.clone();
                                 }
                                 EventKind::PidChanged => {
+                                    sh.status = ev.service_handler.status.clone();
                                     sh.pid = ev.service_handler.pid;
                                 }
                             }
@@ -127,10 +128,6 @@ impl ServiceRepository {
                 sh.set_status(status.clone());
                 queue.send_updated_status(sh);
             });
-    }
-
-    pub fn is_any_service_running(&self) -> bool {
-        self.services.iter().any(|sh| sh.is_running())
     }
 
     pub fn is_any_service_to_be_run(&self) -> bool {
@@ -184,7 +181,7 @@ impl ServiceRepository {
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct ServiceHandler {
     service: Service,
-    status: ServiceStatus,
+    pub(crate) status: ServiceStatus,
     pid: Option<Pid>,
     last_state_change: Option<Instant>,
 }
@@ -224,7 +221,6 @@ impl ServiceHandler {
         self.pid = Some(pid);
     }
 
-    /// TODO: set validation of the FSM.
     pub fn set_status(&mut self, status: ServiceStatus) {
         self.status = status;
     }
@@ -236,7 +232,9 @@ impl ServiceHandler {
     pub fn is_failed(&self) -> bool {
         self.status == ServiceStatus::Failed
     }
-
+    pub fn is_in_killing(&self) -> bool {
+        self.status == ServiceStatus::InKilling
+    }
     pub fn is_starting(&self) -> bool {
         self.status == ServiceStatus::Starting
     }
