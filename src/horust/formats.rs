@@ -1,6 +1,8 @@
 use crate::horust::HorustError;
 use nix::sys::signal::Signal;
 use nix::sys::signal::{SIGHUP, SIGINT, SIGKILL, SIGQUIT, SIGTERM, SIGUSR1, SIGUSR2};
+use serde::export::fmt::Error;
+use serde::export::Formatter;
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 use std::str::FromStr;
@@ -129,7 +131,19 @@ pub enum ServiceStatus {
     /// it will be run as soon as possible.
     Initial,
 }
-
+impl std::fmt::Display for ServiceStatus {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), Error> {
+        f.write_str(match self {
+            ServiceStatus::Starting => "Starting",
+            ServiceStatus::ToBeRun => "ToBeRun",
+            ServiceStatus::Running => "Running",
+            ServiceStatus::InKilling => "InKilling",
+            ServiceStatus::Finished => "Finished",
+            ServiceStatus::Failed => "Failed",
+            ServiceStatus::Initial => "Initial",
+        })
+    }
+}
 #[derive(Serialize, Clone, Deserialize, Debug, Eq, PartialEq)]
 #[serde(rename_all = "kebab-case")]
 pub struct Restart {
@@ -232,7 +246,7 @@ impl From<&str> for FailureStrategy {
 pub struct Termination {
     pub(crate) signal: TerminationSignal,
     #[serde(default = "Termination::default_wait", with = "humantime_serde")]
-    wait: Duration,
+    pub wait: Duration,
 }
 
 impl Termination {
@@ -260,14 +274,8 @@ pub enum TerminationSignal {
     USR1,
     USR2,
 }
-
-impl Default for TerminationSignal {
-    fn default() -> Self {
-        TerminationSignal::TERM
-    }
-}
-impl Into<Signal> for TerminationSignal {
-    fn into(self) -> Signal {
+impl TerminationSignal {
+    pub(crate) fn as_signal(&self) -> Signal {
         match self {
             TerminationSignal::TERM => SIGTERM,
             TerminationSignal::HUP => SIGHUP,
@@ -277,6 +285,11 @@ impl Into<Signal> for TerminationSignal {
             TerminationSignal::USR1 => SIGUSR1,
             TerminationSignal::USR2 => SIGUSR2,
         }
+    }
+}
+impl Default for TerminationSignal {
+    fn default() -> Self {
+        TerminationSignal::TERM
     }
 }
 
