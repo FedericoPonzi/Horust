@@ -1,4 +1,4 @@
-use crate::horust::formats::{RestartStrategy, Service, ServiceStatus};
+use crate::horust::formats::{RestartStrategy, Service, ServiceName, ServiceStatus};
 use crossbeam_channel::{Receiver, Sender};
 use nix::unistd::Pid;
 use std::time::Instant;
@@ -107,11 +107,11 @@ impl ServiceRepository {
         false
     }
     // Adds a pid to a service, and sends an update to other components
-    pub fn update_pid(&mut self, service_name: String, pid: Pid) {
+    pub fn update_pid(&mut self, service_name: ServiceName, pid: Pid) {
         let queue = &self.updates_queue;
         self.services
             .iter_mut()
-            .filter(|sh| sh.name() == service_name)
+            .filter(|sh| *sh.name() == *service_name)
             .for_each(|sh| {
                 sh.set_pid(pid);
                 queue.send_update_pid(sh);
@@ -207,15 +207,19 @@ impl ServiceHandler {
     pub fn start_after(&self) -> &Vec<String> {
         self.service.start_after.as_ref()
     }
+
     pub fn service(&self) -> &Service {
         &self.service
     }
-    pub fn name(&self) -> &str {
-        self.service.name.as_str()
+
+    pub fn name(&self) -> &ServiceName {
+        &self.service.name
     }
+
     pub fn pid(&self) -> Option<Pid> {
         self.pid
     }
+
     pub fn set_pid(&mut self, pid: Pid) {
         self.status = ServiceStatus::Starting;
         self.pid = Some(pid);
@@ -232,9 +236,11 @@ impl ServiceHandler {
     pub fn is_failed(&self) -> bool {
         self.status == ServiceStatus::Failed
     }
+
     pub fn is_in_killing(&self) -> bool {
         self.status == ServiceStatus::InKilling
     }
+
     pub fn is_starting(&self) -> bool {
         self.status == ServiceStatus::Starting
     }

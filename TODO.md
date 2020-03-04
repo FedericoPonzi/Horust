@@ -8,6 +8,8 @@
 * Create another binary for getting the status of the services.
 * Create another binary for validating the config file.
 * Benchmark startup time
+* Setup build and release on github
+    * Include git hash in version
 
 On service statuses:
 * killed? After a sigkill

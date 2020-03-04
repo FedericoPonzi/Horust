@@ -141,7 +141,7 @@ fn run_spawning_thread(service: Service, mut service_repository: ServiceReposito
             }
             Err(error) => {
                 error!("Failed spawning the process: {}", error);
-                service_repository.update_status(service.name.as_ref(), ServiceStatus::Failed);
+                service_repository.update_status(&service.name, ServiceStatus::Failed);
             }
         }
     });

@@ -14,7 +14,7 @@ pub type ServiceName = String;
 #[serde(rename_all = "kebab-case")]
 pub struct Service {
     #[serde(default)]
-    pub name: String,
+    pub name: ServiceName,
     #[serde()]
     pub command: String,
     #[serde()]
