@@ -68,7 +68,7 @@ impl ServiceRepository {
     pub fn ingest(&mut self, name: &str) {
         let mut updates: Vec<Event> = self.updates_queue.receiver.try_iter().collect();
         if !updates.is_empty() {
-            debug!("{}: Received the following updatees: {:?}", name, updates);
+            debug!("{}: Received the following updates: {:?}", name, updates);
             self.services.iter_mut().for_each(|sh| {
                 updates = updates
                     .clone()

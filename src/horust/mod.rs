@@ -98,6 +98,10 @@ where
                 }
                 service
             })
+            .map_err(|error| {
+                error!("Error loading toml file: {}", error);
+                error
+            })
         })
         .filter(Result::is_ok)
         .map(Result::unwrap)

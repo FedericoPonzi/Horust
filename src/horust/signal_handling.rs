@@ -29,8 +29,10 @@ pub(crate) fn init() {
         panic!("sigaction() failed: {}", err);
     };
 }
-extern "C" fn handle_sigterm(_: libc::c_int) {
-    print("Received SIGTERM.\n");
+
+extern "C" fn handle_sigterm(signal: libc::c_int) {
+    let s = format!("Received signal: {} (SIGTERM | SIGINT)\n", signal);
+    print(s.as_str());
     unsafe {
         SIGTERM_RECEIVED = true;
     }

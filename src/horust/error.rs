@@ -18,7 +18,12 @@ pub struct HorustError {
 
 impl Display for HorustError {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::result::Result<(), fmt::Error> {
-        write!(f, "HorustError")
+        match &self.kind {
+            ErrorKind::Io(error) => write!(f, "IoError: {}", error),
+            ErrorKind::Nix(error) => write!(f, "NixError: {}", error),
+            ErrorKind::NullError(error) => write!(f, "NullError: {}", error),
+            ErrorKind::SerDe(error) => write!(f, "Deserialization error(Serde): {}", error),
+        }
     }
 }
 

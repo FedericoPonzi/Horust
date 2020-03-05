@@ -244,6 +244,7 @@ impl From<&str> for FailureStrategy {
 #[derive(Serialize, Clone, Deserialize, Debug, Eq, PartialEq)]
 #[serde(rename_all = "kebab-case")]
 pub struct Termination {
+    #[serde(default)]
     pub(crate) signal: TerminationSignal,
     #[serde(default = "Termination::default_wait", with = "humantime_serde")]
     pub wait: Duration,

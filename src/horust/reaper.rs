@@ -15,7 +15,6 @@ pub(crate) fn supervisor_thread(mut service_repository: ServiceRepository) {
     let mut reapable = HashMap::new();
     loop {
         service_repository.ingest("reaper");
-        debug!("Reaper :D");
         match waitpid(Pid::from_raw(-1), None) {
             Ok(wait_status) => {
                 if let WaitStatus::Exited(pid, exit_code) = wait_status {
