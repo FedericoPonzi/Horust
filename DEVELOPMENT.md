@@ -29,7 +29,9 @@ Just a small collection of useful links:
 * https://github.com/fpco/pid1
 * https://github.com/krallin/tini/
 * https://github.com/OpenRC/openrc
+* https://github.com/OpenRC/openrc/blob/master/supervise-daemon-guide.md
 
+### Useful man pages:
 man runlevel
 man 8 init
 man getty

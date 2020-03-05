@@ -1,13 +1,11 @@
-# Horust
-[![GHA Build Status](https://github.com/FedericoPonzi/horust/workflows/CI/badge.svg)](https://github.com/FedericoPonzi/horust/actions?query=workflow%3ACI)
-[![MIT licensed](https://img.shields.io/badge/license-MIT-blue.svg)](./LICENSE)
+# Horust [![GHA Build Status](https://github.com/FedericoPonzi/horust/workflows/CI/badge.svg)](https://github.com/FedericoPonzi/horust/actions?query=workflow%3ACI) [![MIT licensed](https://img.shields.io/badge/license-MIT-blue.svg)](./LICENSE)
 
 Horust is an supervisor system written in rust and designed to be run in containers. 
 
 # Table of contents
 * Goals
+* Status
 * Usage
-* Maintaier
 * Contributing
 * License
 
@@ -21,7 +19,7 @@ Horust is an supervisor system written in rust and designed to be run in contain
 At this point, this should be considered Alpha software. 
 Check [Contributing](CONTRIBUTING.md) if you want to join the development.
 
-## How to use it
+## Usage
 1. Create a directory with your services. `/etc/horust/services/`.
 An example service:
 ```toml
@@ -32,18 +30,8 @@ start-delay = "10s"
 start-after = "my-other-service.toml"
 ``` 
 
-### Related:
-http://supervisord.org/installing.html
-https://skarnet.org/software/s6/
-https://github.com/OpenRC/openrc/blob/master/supervise-daemon-guide.md
-
-### FAQs:
-What happens to dependant process, if a dependency process fails?
-
-## Services
-You can create new services by creating a toml file. Check the [documentation](https://github.com/FedericoPonzi/Horust/blob/master/DOCUMENTATION.md) for a complete reference.
-
-* Bootstrap the creation of a new service, by using `horust --sample-service > new_service.toml`.
+Check the [documentation](https://github.com/FedericoPonzi/Horust/blob/master/DOCUMENTATION.md) for a complete reference.
+You can also bootstrap the creation of a new service, by using `horust --sample-service > new_service.toml`.
 
 ```toml
 [service]
@@ -83,20 +71,18 @@ file = "/var/myservice/up"
 ## Horust configuration
 Horust itself can be tuned and modified by using the following shiny parameters:
 ```toml
-# A web interface for managing horust.
-web-server = false
-# How much time to wait after sending a `sigterm` to a process before sending a SIGKILL.
+# Default time to wait after sending a `sigterm` to a process before sending a SIGKILL.
 timeout-before-sigkill = "10s"
-
 ```
-
-## LICENSE
-TBD
 
 ## Contributing
 Thanks for considering contributing to horust! 
 [Github Issue](https://github.com/FedericoPonzi/horust/issues) are a good place for getting started. 
+You can also search the code for `TODO`s.
 
-If you're planning to add new features, it's super awesome but please, let's discuss it via an [issue](https://github.com/FedericoPonzi/Horust/issues/new) before you start working on it.
+If you're planning to add new features, it's super awesome but please open an [issue](https://github.com/FedericoPonzi/Horust/issues/new) describing your proposal before you start working on it.
 
-Have a look on [DEVELOPMENT.md](https://github.com/FedericoPonzi/Horust/blob/master/DEVELOPMENT.md) for more info on how to get started.
+Have a look on [DEVELOPMENT.md](https://github.com/FedericoPonzi/Horust/blob/master/DEVELOPMENT.md) for more info on how to get started hacking on horust.
+
+## LICENSE
+TBD
