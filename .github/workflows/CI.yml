@@ -54,7 +54,10 @@ jobs:
           toolchain: ${{ matrix.rust || 'stable' }}
           profile: minimal
           override: true
-
+      -name: Build debug
+        uses: actions-rs/cargo@v1
+        with:
+          command: build
       - name: Test
         uses: actions-rs/cargo@v1
         with:
