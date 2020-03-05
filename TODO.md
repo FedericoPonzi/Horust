@@ -1,6 +1,8 @@
 * Add tests for http healthcheck.
 * Per-service resource limits
 * Parameter to force death if any service is incorrect.
+* after loaded services, check if dependant services exists
+
 ## Long todo:
 * Supervised services: use a pointer instead of list of services names (for example, for easier dependencies management.)
 * Try to load config, if config is not deserializable, run the system with some sane defaults.

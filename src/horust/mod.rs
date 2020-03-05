@@ -21,7 +21,7 @@ use std::path::{Path, PathBuf};
 
 #[derive(Debug)]
 pub struct Horust {
-    services: Vec<Service>,
+    pub services: Vec<Service>,
     services_dir: Option<PathBuf>,
 }
 
@@ -32,6 +32,7 @@ impl Horust {
             services_dir,
         }
     }
+
     pub fn from_command(command: String) -> Self {
         Self::new(vec![Service::from_command(command)], None)
     }
@@ -42,7 +43,6 @@ impl Horust {
         P: AsRef<Path> + ?Sized + AsRef<OsStr> + Debug,
     {
         let services = fetch_services(&path)?;
-        debug!("Services found: {:?}", services);
         Ok(Horust::new(services, Some(PathBuf::from(path))))
     }
 

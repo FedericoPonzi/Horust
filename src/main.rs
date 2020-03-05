@@ -1,7 +1,5 @@
-mod horust;
-
-use crate::horust::Horust;
 use clap::Clap;
+use horust::Horust;
 use std::path::PathBuf;
 
 #[macro_use]

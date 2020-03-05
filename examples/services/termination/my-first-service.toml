@@ -1,2 +1,0 @@
-name = "my-first-service"
-command = "/bin/bash /home/isaacisback/dev/rust/horust/examples/services/termination/main.sh"

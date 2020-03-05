@@ -63,23 +63,11 @@ fn pid_from_id(id: u32) -> Pid {
     Pid::from_raw(id)
 }
 
-pub fn list_files<P: AsRef<std::path::Path>>(path: P) -> std::io::Result<Vec<std::path::PathBuf>> {
-    let mut paths = std::fs::read_dir(path)?;
-    paths.try_fold(vec![], |mut ret, p| match p {
-        Ok(entry) => {
-            ret.push(entry.path());
-            Ok(ret)
-        }
-        Err(err) => Err(err),
-    })
-}
-
 // Test termination section
 #[test]
 fn test_termination() {
     let (mut cmd, temp_dir) = get_cli();
     store_service(temp_dir.path());
-    println!("{:?}", list_files(temp_dir.path()));
 
     let mut child = cmd
         .args(vec![

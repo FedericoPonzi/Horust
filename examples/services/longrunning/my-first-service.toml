@@ -1,2 +1,0 @@
-name = "my-first-service"
-command = "/bin/bash /etc/horust/services/main.sh"
