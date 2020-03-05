@@ -19,11 +19,6 @@ fn get_cli() -> (Command, TempDir) {
         .stderr(Stdio::from(fs::File::create("/tmp/stderr").unwrap()));
     (cmd, temp_dir)
 }
-// `horust` with no args should exit with a non-zero code.
-#[test]
-fn client_cli_no_args() {
-    get_cli().0.assert().success();
-}
 
 #[test]
 fn test_cli_help() {
