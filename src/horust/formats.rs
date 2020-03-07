@@ -11,6 +11,35 @@ use std::time::Duration;
 
 pub type ServiceName = String;
 
+pub fn get_sample_service() -> String {
+    r#"# The name of your service, must be unique. It's optional, will use the filename as name.
+name = "my-cool-service"
+command = "/bin/bash -c 'echo hello world'"
+working-directory = "/tmp/"
+start-delay = "2s"
+start-after = ["another.toml", "second.toml"]
+user = "root"
+
+[restart]
+strategy = "never"
+backoff = "0s"
+attempts = 0
+
+[healthiness]
+http_endpoint = "http://localhost:8080/healthcheck"
+file_path = "/var/myservice/up"
+
+[failure]
+exit_code = [ 1, 2, 3]
+strategy = "ignore"
+
+[termination]
+signal = "TERM"
+wait = "10s"
+"#
+    .to_string()
+}
+
 #[derive(Serialize, Clone, Deserialize, Debug, Eq, PartialEq)]
 #[serde(rename_all = "kebab-case")]
 pub struct Service {
@@ -45,29 +74,6 @@ pub struct Service {
 pub struct Healthness {
     pub http_endpoint: Option<String>,
     pub file_path: Option<PathBuf>,
-}
-
-pub fn get_sample_service() -> String {
-    r#"# The name of your service, must be unique. It's optional, will use the filename as name.
-name = "my-cool-service"
-command = "/bin/bash -c 'echo hello world'"
-working-directory = "/tmp/"
-start-delay = "2s"
-[restart]
-strategy = "never"
-backoff = "0s"
-attempts = 0
-[healthiness]
-http_endpoint = "http://localhost:8080/healthcheck"
-file_path = "/var/myservice/up"
-[failure]
-exit_code = [ 1, 2, 3]
-strategy = "ignore"
-[termination]
-signal = "TERM"
-wait = "10s"
-"#
-    .to_string()
 }
 
 impl Service {
@@ -127,7 +133,7 @@ impl User {
         match &self {
             //TODO: getpwuid_r is not available in unistd.
             User::Name(name) => unistd::User::from_name(name).unwrap().unwrap().uid,
-            User::Uid(uid) => unistd::Uid::from_raw(uid.clone()),
+            User::Uid(uid) => unistd::Uid::from_raw(*uid),
         }
     }
 }
