@@ -169,6 +169,7 @@ fn exec_service(service: &Service) {
     let cwd = service.working_directory.as_ref().unwrap_or(&default);
     debug!("Set cwd: {:?}, ", cwd);
     std::env::set_current_dir(cwd).unwrap();
+    nix::unistd::setsid().unwrap();
     let chunks: Vec<String> = shlex::split(service.command.as_ref()).unwrap();
     let program_name = CString::new(chunks.get(0).unwrap().as_str()).unwrap();
     let arg_cstrings = chunks
@@ -179,6 +180,5 @@ fn exec_service(service: &Service) {
     //arg_cstrings.insert(0, program_name.clone());
     debug!("args: {:?}", arg_cstrings);
     let arg_cptr: Vec<&CStr> = arg_cstrings.iter().map(|c| c.as_c_str()).collect();
-    // TODO: clear signal mask if needed.
     nix::unistd::execvp(program_name.as_ref(), arg_cptr.as_ref()).expect("Execvp() failed: ");
 }
