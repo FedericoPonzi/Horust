@@ -58,7 +58,6 @@ impl Runtime {
                 );
             });
             if self.service_repository.all_finished() {
-                debug!("Result: {:?}", self.service_repository.services);
                 debug!("All services have finished, exiting...");
                 break;
             }
@@ -159,6 +158,7 @@ fn exec_service(service: &Service) {
     debug!("Set cwd: {:?}, ", cwd);
     std::env::set_current_dir(cwd).unwrap();
     nix::unistd::setsid().unwrap();
+    nix::unistd::setuid(service.user.get_uid()).unwrap();
     let chunks: Vec<String> = shlex::split(service.command.as_ref()).unwrap();
     let program_name = CString::new(chunks.get(0).unwrap().as_str()).unwrap();
     let arg_cstrings = chunks

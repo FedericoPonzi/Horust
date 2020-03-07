@@ -1,4 +1,4 @@
-use crate::horust::service_handler::{Event, EventKind, ServiceHandler, UpdatesQueue};
+use crate::horust::service_handler::{Event, EventKind, ServiceHandler};
 use crossbeam_channel::{unbounded, Receiver, Sender};
 
 /// Since I couldn't find any statisfying crate for broadcasting messages,
@@ -54,7 +54,7 @@ impl UpdatesQueue {
     }
 
     fn send_update(&self, ev: Event) {
-        debug!("Going to send the following event: {:?}", ev);
+        //debug!("Going to send the following event: {:?}", ev);
         self.sender.send(ev).expect("Failed sending update event!");
     }
 

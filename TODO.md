@@ -4,7 +4,6 @@
 * Per-service resource limits
 * Parameter to force death if any service is incorrect.
 * after loaded services, check if dependant services exists
-* Run a service as another user
 * Store timestamp when starting a new process (for knowing uptime)
 * should print something if no services are found.
 

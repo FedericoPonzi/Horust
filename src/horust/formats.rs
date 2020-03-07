@@ -1,6 +1,7 @@
 use crate::horust::HorustError;
 use nix::sys::signal::Signal;
 use nix::sys::signal::{SIGHUP, SIGINT, SIGKILL, SIGQUIT, SIGTERM, SIGUSR1, SIGUSR2};
+use nix::unistd;
 use serde::export::fmt::Error;
 use serde::export::Formatter;
 use serde::{Deserialize, Serialize};
@@ -17,6 +18,8 @@ pub struct Service {
     pub name: ServiceName,
     #[serde()]
     pub command: String,
+    #[serde(default)]
+    pub user: User,
     #[serde()]
     pub working_directory: Option<PathBuf>,
     #[serde(default, with = "humantime_serde")]
@@ -77,6 +80,7 @@ impl Service {
         Service {
             name: command.clone(),
             start_after: Default::default(),
+            user: Default::default(),
             working_directory: Some("/".into()),
             restart: Default::default(),
             start_delay: Duration::from_secs(0),
@@ -95,6 +99,36 @@ impl FromStr for Service {
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         toml::from_str::<Service>(s).map_err(HorustError::from)
+    }
+}
+
+/// A user in the system.
+/// It can be either a uuid or a username (available in passwd)
+#[derive(Serialize, Clone, Deserialize, Debug, Eq, PartialEq)]
+#[serde(untagged)]
+pub enum User {
+    Uid(u32),
+    Name(String),
+}
+
+impl From<unistd::Uid> for User {
+    fn from(uid: unistd::Uid) -> Self {
+        User::Uid(uid.as_raw())
+    }
+}
+
+impl Default for User {
+    fn default() -> Self {
+        unistd::getuid().into()
+    }
+}
+impl User {
+    pub(crate) fn get_uid(&self) -> unistd::Uid {
+        match &self {
+            //TODO: getpwuid_r is not available in unistd.
+            User::Name(name) => unistd::User::from_name(name).unwrap().unwrap().uid,
+            User::Uid(uid) => unistd::Uid::from_raw(uid.clone()),
+        }
     }
 }
 
@@ -307,6 +341,7 @@ mod test {
                 name: name.to_owned(),
                 start_after: start_after.into_iter().map(|v| v.into()).collect(),
                 working_directory: Some("".into()),
+                user: Default::default(),
                 restart: Default::default(),
                 start_delay: Duration::from_secs(0),
                 command: "".to_string(),
