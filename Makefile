@@ -1,6 +1,7 @@
 NAME = "horust"
 VERSION = "v0.0.1"
 DOCKER_REPO = "horust"
+REPO_HOME := $(shell git rev-parse --show-toplevel)
 
 .PHONY: help
 
@@ -21,7 +22,7 @@ build-nc: ## Build the container without caching
 	docker build --no-cache -t $(NAME) .
 
 run: ## Run container on port configured in `config.env`
-	docker run -it --rm --env HORUST_LOG=debug -v /home/isaacisback/dev/rust/horust/examples/services/longrunning/:/etc/horust/services/ --name="$(NAME)" $(NAME):$(VERSION)
+	docker run -it --rm --env HORUST_LOG=debug -v $(REPO_HOME)/examples/services/longrunning/:/etc/horust/services/ --name="$(NAME)" $(NAME):$(VERSION)
 
 stop: ## Stop and remove a running container
 	docker stop $(NAME)

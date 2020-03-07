@@ -98,34 +98,23 @@ impl Runtime {
 
         self.service_repository.mutate_service_status(|sh| {
             // If after termination.wait time the service has not yet exited, then we will use the force:
-            if sh.is_in_killing()
-                && shutting_down_elapsed_secs > sh.service().termination.wait.clone().as_secs()
-            {
+            let should_force_kill =
+                shutting_down_elapsed_secs > sh.service().termination.wait.clone().as_secs();
+
+            if sh.is_in_killing() && should_force_kill {
                 kill(sh, Signal::SIGKILL);
-                sh.set_status(ServiceStatus::Finished)
-            } else {
-                debug!(
-                    "Service: {}, Status: {}. Elapse: {}, waiting: {}",
-                    sh.name(),
-                    sh.status,
-                    shutting_down_elapsed_secs,
-                    sh.service().termination.wait.clone().as_secs()
-                )
-            }
-            if sh.is_running() && sh.pid().is_some() {
+                sh.set_status(ServiceStatus::Finished);
+                Some(sh)
+            } else if sh.is_running() && sh.pid().is_some() {
                 kill(sh, sh.service().termination.signal.as_signal());
                 sh.set_status(ServiceStatus::InKilling);
-                return Some(sh);
-            }
-            if sh.is_initial() {
-                debug!(
-                    "Never going to run {}, so setting it to finished.",
-                    sh.name()
-                );
+                Some(sh)
+            } else if sh.is_initial() {
                 sh.set_status(ServiceStatus::Finished);
-                return Some(sh);
+                Some(sh)
+            } else {
+                None
             }
-            None
         });
     }
 }

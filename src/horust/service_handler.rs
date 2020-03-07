@@ -1,31 +1,7 @@
+use crate::horust::dispatcher::UpdatesQueue;
 use crate::horust::formats::{RestartStrategy, Service, ServiceName, ServiceStatus};
-use crossbeam_channel::{Receiver, Sender};
 use nix::unistd::Pid;
 use std::time::Instant;
-
-#[derive(Debug, Clone)]
-pub struct UpdatesQueue {
-    sender: Sender<Event>,
-    receiver: Receiver<Event>,
-}
-impl UpdatesQueue {
-    pub fn new(s: Sender<Event>, r: Receiver<Event>) -> Self {
-        UpdatesQueue {
-            sender: s,
-            receiver: r,
-        }
-    }
-    fn send_update(&self, ev: Event) {
-        debug!("Going to send the following event: {:?}", ev);
-        self.sender.send(ev).expect("Failed sending update event!");
-    }
-    pub fn send_update_pid(&self, sh: &ServiceHandler) {
-        self.send_update(Event::new(sh.clone(), EventKind::PidChanged));
-    }
-    pub fn send_updated_status(&self, sh: &ServiceHandler) {
-        self.send_update(Event::new(sh.clone(), EventKind::StatusChanged));
-    }
-}
 
 #[derive(Debug, Clone)]
 pub struct Event {
@@ -65,10 +41,10 @@ impl ServiceRepository {
     }
 
     /// Process all the received services changes.
-    pub fn ingest(&mut self, name: &str) {
-        let mut updates: Vec<Event> = self.updates_queue.receiver.try_iter().collect();
+    pub fn ingest(&mut self, _name: &str) {
+        let mut updates: Vec<Event> = self.updates_queue.try_get_events();
         if !updates.is_empty() {
-            debug!("{}: Received the following updates: {:?}", name, updates);
+            //debug!("{}: Received the following updates: {:?}", name, updates);
             self.services.iter_mut().for_each(|sh| {
                 updates = updates
                     .clone()
