@@ -54,7 +54,7 @@ impl Horust {
 
         let mut dispatcher = Dispatcher::new();
         let mut new_service_repo =
-            || ServiceRepository::new(self.services.clone(), dispatcher.add_component());
+            || ServiceRepository::new(self.services.clone(), dispatcher.join_bus());
         debug!("Services: {:?}", self.services);
         // Spawn helper threads:
         debug!("Going to spawn threads:, going to start running services now!");

@@ -11,7 +11,7 @@ categories = ["command-line-utilities"]
 
 [dependencies]
 clap = { git = "https://github.com/clap-rs/clap/", rev = "28c46b5" }
-crossbeam-channel = "~0.4"
+crossbeam = "~0.7"
 env_logger = "~0.7"
 humantime-serde = "~0.1"
 libc = "~0.2"

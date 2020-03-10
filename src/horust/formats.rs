@@ -5,6 +5,7 @@ use nix::unistd;
 use serde::export::fmt::Error;
 use serde::export::Formatter;
 use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
 use std::path::PathBuf;
 use std::str::FromStr;
 use std::time::Duration;
@@ -49,7 +50,7 @@ pub struct Service {
     pub command: String,
     #[serde(default)]
     pub user: User,
-    #[serde()]
+    pub environment: Option<Environment>,
     pub working_directory: Option<PathBuf>,
     #[serde(default, with = "humantime_serde")]
     pub start_delay: Duration,
@@ -57,9 +58,7 @@ pub struct Service {
     pub start_after: Vec<ServiceName>,
     #[serde(default)]
     pub restart: Restart,
-    #[serde()]
     pub healthiness: Option<Healthness>,
-    #[serde()]
     pub signal_rewrite: Option<String>,
     #[serde(skip)]
     pub last_mtime_sec: i64,
@@ -67,6 +66,13 @@ pub struct Service {
     pub failure: Failure,
     #[serde(default)]
     pub termination: Termination,
+}
+
+#[derive(Serialize, Clone, Deserialize, Debug, Eq, PartialEq)]
+#[serde(rename_all = "kebab-case")]
+pub struct Environment {
+    #[serde(flatten)]
+    pub key_val: HashMap<String, String>,
 }
 
 #[derive(Serialize, Clone, Deserialize, Debug, Eq, PartialEq)]
@@ -82,11 +88,52 @@ impl Service {
         toml::from_str::<Service>(content.as_str()).map_err(HorustError::from)
     }
 
+    /// Create the environment K=V variables, used for exec into the new process.
+    /// User defined environment variables overwrite the predefined variables.
+    pub fn get_environment(&self) -> Vec<String> {
+        let mut additional = self
+            .environment
+            .clone()
+            .map(|env| env.key_val)
+            .unwrap_or_else(HashMap::new);
+        let get_env = |name: &str, default: &str| {
+            (
+                name.to_string(),
+                std::env::var(name).unwrap_or_else(|_| default.to_string()),
+            )
+        };
+        let hostname = get_env("HOSTNAME", "localhost");
+        let path = get_env(
+            "PATH",
+            "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin",
+        );
+        let user = ("USER".to_string(), self.user.get_name());
+        let home = (
+            "HOME".to_string(),
+            self.user.get_home().display().to_string(),
+        );
+        let env: HashMap<String, String> = vec![hostname, path, user, home].into_iter().collect();
+        env.into_iter().for_each(|(k, v)| {
+            additional.entry(k).or_insert(v);
+        });
+
+        // Since I don't know a sane default:
+        if let Ok(term) = std::env::var("TERM") {
+            additional.insert("TERM".into(), term);
+        }
+
+        additional
+            .into_iter()
+            .map(|(k, v)| format!("{}={}", k, v))
+            .collect()
+    }
+
     pub fn from_command(command: String) -> Self {
         Service {
             name: command.clone(),
             start_after: Default::default(),
             user: Default::default(),
+            environment: None,
             working_directory: Some("/".into()),
             restart: Default::default(),
             start_delay: Duration::from_secs(0),
@@ -131,10 +178,21 @@ impl Default for User {
 impl User {
     pub(crate) fn get_uid(&self) -> unistd::Uid {
         match &self {
-            //TODO: getpwuid_r is not available in unistd.
             User::Name(name) => unistd::User::from_name(name).unwrap().unwrap().uid,
             User::Uid(uid) => unistd::Uid::from_raw(*uid),
         }
+    }
+
+    fn get_raw_user(&self) -> unistd::User {
+        unistd::User::from_uid(self.get_uid()).unwrap().unwrap()
+    }
+
+    fn get_home(&self) -> PathBuf {
+        self.get_raw_user().dir
+    }
+
+    fn get_name(&self) -> String {
+        self.get_raw_user().name
     }
 }
 
@@ -353,6 +411,7 @@ mod test {
                 command: "".to_string(),
                 healthiness: None,
                 signal_rewrite: None,
+                environment: None,
                 last_mtime_sec: 0,
                 failure: Default::default(),
                 termination: Default::default(),

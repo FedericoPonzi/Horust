@@ -12,6 +12,11 @@ Pass args to horust via cargo:
 HORUST_LOG=debug cargo run -- --sample-service
 ```
 
+Run a single command
+```bash
+HORUST_LOG=debug cargo run -- /bin/bash
+```
+
 ### Useful Links:
 Just a small collection of useful links:
 * https://www.youtube.com/watch?v=gZqIEstv5lM

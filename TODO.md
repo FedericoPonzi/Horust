@@ -1,11 +1,13 @@
-* "One shot" services aka init services.
+* "One shot" services aka init services aka one shot calls.
 * Permission changer format.
+* Add tests for environment.
 * Add tests for http healthcheck.
 * Per-service resource limits
 * Parameter to force death if any service is incorrect.
 * after loaded services, check if dependant services exists
 * Store timestamp when starting a new process (for knowing uptime)
 * should print something if no services are found.
+* If running via command, should just proxy signals instead of shutting down the system.
 
 ## Long todo:
 * Supervised services: use a pointer instead of list of services names (for example, for easier dependencies management.)

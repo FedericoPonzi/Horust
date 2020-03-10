@@ -156,18 +156,25 @@ fn exec_service(service: &Service) {
     let default = PathBuf::from("/");
     let cwd = service.working_directory.as_ref().unwrap_or(&default);
     debug!("Set cwd: {:?}, ", cwd);
+
     std::env::set_current_dir(cwd).unwrap();
     nix::unistd::setsid().unwrap();
     nix::unistd::setuid(service.user.get_uid()).unwrap();
     let chunks: Vec<String> = shlex::split(service.command.as_ref()).unwrap();
     let program_name = CString::new(chunks.get(0).unwrap().as_str()).unwrap();
-    let arg_cstrings = chunks
-        .into_iter()
-        .map(|arg| CString::new(arg).map_err(Into::into))
-        .collect::<Result<Vec<_>>>()
-        .unwrap();
-    //arg_cstrings.insert(0, program_name.clone());
-    debug!("args: {:?}", arg_cstrings);
+    let to_cstring = |s: Vec<String>| {
+        s.into_iter()
+            .map(|arg| CString::new(arg).map_err(Into::into))
+            .collect::<Result<Vec<_>>>()
+            .unwrap()
+    };
+    let arg_cstrings = to_cstring(chunks);
     let arg_cptr: Vec<&CStr> = arg_cstrings.iter().map(|c| c.as_c_str()).collect();
-    nix::unistd::execvp(program_name.as_ref(), arg_cptr.as_ref()).expect("Execvp() failed: ");
+
+    let env_cstrings = to_cstring(service.get_environment());
+    let env_cptr: Vec<&CStr> = env_cstrings.iter().map(|c| c.as_c_str()).collect();
+
+    //arg_cstrings.insert(0, program_name.clone());
+    nix::unistd::execvpe(program_name.as_ref(), arg_cptr.as_ref(), env_cptr.as_ref())
+        .expect("Execvp() failed: ");
 }
