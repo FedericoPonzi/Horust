@@ -31,7 +31,7 @@ impl Dispatcher {
         self.senders.push(mysx);
         UpdatesQueue::new(self.public_sender.clone(), rx)
     }
-    
+
     // Infinite dispatching loop.
     // TODO: handle error or try_send or send_timeout
     pub fn dispatch(&mut self) {
