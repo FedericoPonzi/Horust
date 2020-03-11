@@ -9,7 +9,7 @@ mod signal_handling;
 
 pub use self::error::HorustError;
 pub use self::formats::get_sample_service;
-use crate::horust::dispatcher::Dispatcher;
+use crate::horust::dispatcher::Bus;
 use crate::horust::error::Result;
 use crate::horust::formats::Service;
 use crate::horust::service_handler::ServiceRepository;
@@ -52,7 +52,7 @@ impl Horust {
         }
         signal_handling::init();
 
-        let mut dispatcher = Dispatcher::new();
+        let mut dispatcher = Bus::new();
         let mut new_service_repo =
             || ServiceRepository::new(self.services.clone(), dispatcher.join_bus());
         debug!("Services: {:?}", self.services);
@@ -84,8 +84,7 @@ where
     let dir = fs::read_dir(path)?;
 
     //TODO: option to decide to not start if the deserialization of any service failed.
-
-    Ok(dir
+    let services = dir
         .filter_map(std::result::Result::ok)
         .map(|dir_entry| dir_entry.path())
         .filter(is_toml_file)
@@ -105,7 +104,11 @@ where
         })
         .filter(Result::is_ok)
         .map(Result::unwrap)
-        .collect())
+        .collect::<Vec<Service>>();
+    if services.is_empty() {
+        println!("Horust: No services found in: {:?}.", path);
+    }
+    Ok(services)
 }
 
 #[cfg(test)]

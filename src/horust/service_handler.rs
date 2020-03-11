@@ -1,4 +1,4 @@
-use crate::horust::dispatcher::UpdatesQueue;
+use crate::horust::dispatcher::BusConnector;
 use crate::horust::formats::{RestartStrategy, Service, ServiceName, ServiceStatus};
 use nix::unistd::Pid;
 use std::time::Instant;
@@ -31,44 +31,47 @@ pub enum EventKind {
 #[derive(Debug, Clone)]
 pub struct ServiceRepository {
     pub services: Vec<ServiceHandler>,
-    updates_queue: UpdatesQueue,
+    updates_queue: BusConnector,
 }
 
 impl ServiceRepository {
-    pub fn new<T: Into<ServiceHandler>>(services: Vec<T>, updates_queue: UpdatesQueue) -> Self {
+    pub fn new<T: Into<ServiceHandler>>(services: Vec<T>, updates_queue: BusConnector) -> Self {
         ServiceRepository {
             services: services.into_iter().map(Into::into).collect(),
             updates_queue,
         }
     }
-
-    /// Process all the received services changes.
-    pub fn ingest(&mut self, _name: &str) {
-        let mut updates: Vec<Event> = self.updates_queue.try_get_events();
-        if !updates.is_empty() {
-            //debug!("{}: Received the following updates: {:?}", name, updates);
-            self.services.iter_mut().for_each(|sh| {
-                updates = updates
-                    .clone()
-                    .into_iter()
-                    .filter(|ev| {
-                        let to_consume = sh.name() == ev.service_handler.name();
-                        if to_consume {
-                            match &ev.kind {
-                                EventKind::StatusChanged => {
-                                    sh.status = ev.service_handler.status.clone();
-                                }
-                                EventKind::PidChanged => {
-                                    sh.status = ev.service_handler.status.clone();
-                                    sh.pid = ev.service_handler.pid;
-                                }
+    fn update_from_events(&mut self, mut events: Vec<Event>) {
+        self.services.iter_mut().for_each(|sh| {
+            events = events
+                .clone()
+                .into_iter()
+                .filter(|ev| {
+                    let to_consume = sh.name() == ev.service_handler.name();
+                    if to_consume {
+                        match &ev.kind {
+                            EventKind::StatusChanged => {
+                                sh.status = ev.service_handler.status.clone();
+                            }
+                            EventKind::PidChanged => {
+                                sh.status = ev.service_handler.status.clone();
+                                sh.pid = ev.service_handler.pid;
                             }
                         }
-                        // If this event has been consumed (e.g. shname == ev.service_name) thne I can just throw it away..
-                        !to_consume
-                    })
-                    .collect();
-            });
+                    }
+                    // If this event has been consumed (e.g. shname == ev.service_name) thne I can just throw it away..
+                    !to_consume
+                })
+                .collect();
+        });
+    }
+
+    /// Process all the received services changes. Non-blocking
+    pub fn ingest(&mut self, _name: &str) {
+        let updates: Vec<Event> = self.updates_queue.try_get_events();
+        if !updates.is_empty() {
+            //debug!("{}: Received the following updates: {:?}", name, updates);
+            self.update_from_events(updates);
         }
     }
 

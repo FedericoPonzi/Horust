@@ -1,19 +1,19 @@
 use crate::horust::service_handler::{Event, EventKind, ServiceHandler};
 use crossbeam::channel::{unbounded, Receiver, Sender};
 
-/// Since I couldn't find any statisfying crate for broadcasting messages,
+/// Since I couldn't find any satisfying crate for broadcasting messages,
 /// I'm using this struct for distributing the messages among the queues - read: bus.
 #[derive(Debug)]
-pub struct Dispatcher {
+pub struct Bus {
     public_sender: Sender<Event>,
     receiver: Receiver<Event>,
     senders: Vec<Sender<Event>>,
 }
 
-impl Dispatcher {
+impl Bus {
     pub fn new() -> Self {
         let (pub_sx, rx) = unbounded();
-        Dispatcher {
+        Bus {
             public_sender: pub_sx,
             receiver: rx,
             senders: Vec::new(),
@@ -26,10 +26,10 @@ impl Dispatcher {
     }
 
     // Add another component to the bus
-    pub fn join_bus(&mut self) -> UpdatesQueue {
+    pub fn join_bus(&mut self) -> BusConnector {
         let (mysx, rx) = unbounded();
         self.senders.push(mysx);
-        UpdatesQueue::new(self.public_sender.clone(), rx)
+        BusConnector::new(self.public_sender.clone(), rx)
     }
 
     // Infinite dispatching loop.
@@ -46,13 +46,13 @@ impl Dispatcher {
 }
 
 #[derive(Debug, Clone)]
-pub struct UpdatesQueue {
+pub struct BusConnector {
     sender: Sender<Event>,
     receiver: Receiver<Event>,
 }
-impl UpdatesQueue {
+impl BusConnector {
     pub fn new(sender: Sender<Event>, receiver: Receiver<Event>) -> Self {
-        UpdatesQueue { sender, receiver }
+        BusConnector { sender, receiver }
     }
 
     fn send_update(&self, ev: Event) {
