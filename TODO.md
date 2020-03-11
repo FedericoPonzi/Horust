@@ -1,6 +1,5 @@
 * "One shot" services aka init services aka one shot calls.
 * Permission changer format.
-* Add tests for environment.
 * Add tests for http healthcheck.
 * Per-service resource limits
 * Parameter to force death if any service is incorrect.

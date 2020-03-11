@@ -8,6 +8,7 @@ pub struct Event {
     pub(crate) service_handler: ServiceHandler,
     pub(crate) kind: EventKind,
 }
+
 impl Event {
     pub fn new(service_handler: ServiceHandler, kind: EventKind) -> Self {
         Event {
@@ -16,6 +17,7 @@ impl Event {
         }
     }
 }
+
 #[derive(Debug, Clone)]
 pub enum EventKind {
     StatusChanged,

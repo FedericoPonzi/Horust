@@ -30,3 +30,4 @@ http-healthcheck = ["reqwest"]
 assert_cmd = "~0.11"
 predicates = "~1.0"
 tempdir = "~0.3"
+rand = "~0.7"
