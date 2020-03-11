@@ -3,7 +3,6 @@
 * Add tests for http healthcheck.
 * Per-service resource limits
 * Parameter to force death if any service is incorrect.
-* after loaded services, check if dependant services exists
 * Store timestamp when starting a new process (for knowing uptime)
 * If running via command, should just proxy signals instead of shutting down the system.
 

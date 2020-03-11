@@ -1,4 +1,3 @@
-use std::ffi::NulError;
 use std::fmt::{self, Display, Formatter};
 
 pub type Result<T> = std::result::Result<T, HorustError>;
@@ -9,6 +8,7 @@ pub enum ErrorKind {
     SerDe(toml::de::Error),
     NullError(std::ffi::NulError),
     Nix(nix::Error),
+    ValidationError(Vec<ValidationError>),
 }
 
 #[derive(Debug)]
@@ -23,6 +23,7 @@ impl Display for HorustError {
             ErrorKind::Nix(error) => write!(f, "NixError: {}", error),
             ErrorKind::NullError(error) => write!(f, "NullError: {}", error),
             ErrorKind::SerDe(error) => write!(f, "Deserialization error(Serde): {}", error),
+            ErrorKind::ValidationError(error) => write!(f, "ValidationErrors: {:?}", error),
         }
     }
 }
@@ -60,9 +61,45 @@ impl From<nix::Error> for HorustError {
 }
 
 impl From<std::ffi::NulError> for HorustError {
-    fn from(err: NulError) -> Self {
+    fn from(err: std::ffi::NulError) -> Self {
         HorustError {
             kind: ErrorKind::NullError(err),
         }
+    }
+}
+
+impl From<Vec<ValidationError>> for HorustError {
+    fn from(err: Vec<ValidationError>) -> Self {
+        HorustError {
+            kind: ErrorKind::ValidationError(err),
+        }
+    }
+}
+
+#[derive(Debug)]
+pub struct ValidationError {
+    kind: ValidationErrorKind,
+    context: String,
+}
+
+#[derive(Debug)]
+pub enum ValidationErrorKind {
+    MissingDependency,
+}
+
+impl std::error::Error for ValidationError {}
+
+impl ValidationError {
+    pub fn new(context: &str, kind: ValidationErrorKind) -> Self {
+        Self {
+            context: context.to_string(),
+            kind,
+        }
+    }
+}
+
+impl fmt::Display for ValidationError {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::result::Result<(), fmt::Error> {
+        write!(f, "{}", self.context)
     }
 }

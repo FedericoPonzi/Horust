@@ -1,3 +1,4 @@
+use crate::horust::error::{ValidationError, ValidationErrorKind};
 use crate::horust::HorustError;
 use nix::sys::signal::Signal;
 use nix::sys::signal::{SIGHUP, SIGINT, SIGKILL, SIGQUIT, SIGTERM, SIGUSR1, SIGUSR2};
@@ -392,9 +393,37 @@ impl Default for TerminationSignal {
     }
 }
 
+/// Runs some validation checks on the services.
+pub fn validate(services: Vec<Service>) -> Result<Vec<Service>, Vec<ValidationError>> {
+    let mut errors = vec![];
+    services.iter().for_each(|service| {
+        if !service.start_after.is_empty() {
+            debug!(
+                "Checking if all depedencies of '{}' exists, deps: {:?}",
+                service.name, service.start_after
+            );
+        }
+        service
+            .start_after
+            .iter()
+            .for_each(|name| {
+                let passed = services.iter().any(|s| s.name == *name);
+                if !passed {
+                    let err = format!("Service '{}', should start after '{}', but there is no service with such name.", service.name, name);
+                    errors.push(ValidationError::new(err.as_str(), ValidationErrorKind::MissingDependency));
+                }
+            });
+    });
+    if errors.is_empty() {
+        Ok(services)
+    } else {
+        Err(errors)
+    }
+}
+
 #[cfg(test)]
 mod test {
-    use crate::horust::formats::Service;
+    use crate::horust::formats::{validate, Service};
     use crate::horust::get_sample_service;
     use std::str::FromStr;
     use std::time::Duration;
@@ -426,5 +455,18 @@ mod test {
     fn test_should_correctly_deserialize_sample() {
         let service = Service::from_str(get_sample_service().as_str());
         service.expect("error on deserializing the manifest");
+    }
+    #[test]
+    fn test_validate() {
+        // Service does not exists:
+        let services = vec![Service::start_after("a", vec!["b"])];
+        validate(services).unwrap_err();
+
+        // Should pass validation:
+        let services = vec![
+            Service::from_name("b"),
+            Service::start_after("a", vec!["b"]),
+        ];
+        validate(services).unwrap();
     }
 }

@@ -11,7 +11,7 @@ pub use self::error::HorustError;
 pub use self::formats::get_sample_service;
 use crate::horust::dispatcher::Bus;
 use crate::horust::error::Result;
-use crate::horust::formats::Service;
+use crate::horust::formats::{validate, Service};
 use crate::horust::service_handler::ServiceRepository;
 use libc::{prctl, PR_SET_CHILD_SUBREAPER};
 use std::ffi::OsStr;
@@ -43,7 +43,9 @@ impl Horust {
         P: AsRef<Path> + ?Sized + AsRef<OsStr> + Debug,
     {
         let services = fetch_services(&path)?;
-        Ok(Horust::new(services, Some(PathBuf::from(path))))
+        validate(services)
+            .map_err(Into::into)
+            .map(|services| Horust::new(services, Some(PathBuf::from(path))))
     }
 
     pub fn run(&mut self) {
