@@ -11,8 +11,8 @@ use std;
 use std::path::Path;
 use std::process::{Command, Stdio};
 use std::sync::mpsc;
+use std::thread;
 use std::time::Duration;
-use std::{fs, thread};
 use tempdir::TempDir;
 
 /// Creates script and service file, and stores them in dir.
@@ -96,7 +96,9 @@ sleep 1
 done 
 # Wait so the script doesn't exit.
 "#;
-    store_service(temp_dir.path(), script, None, None);
+    let service = r#"[termination]
+wait = "500ms""#;
+    store_service(temp_dir.path(), script, Some(service), None);
 
     let mut child = cmd.stdin(Stdio::null()).spawn().unwrap();
     thread::sleep(Duration::from_millis(500));
@@ -110,7 +112,7 @@ done
     });
 
     kill(pid, Signal::SIGINT).unwrap();
-    thread::sleep(Duration::from_secs(3));
+    thread::sleep(Duration::from_secs(2));
     receiver.try_recv().unwrap();
 }
 
