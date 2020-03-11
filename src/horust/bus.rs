@@ -1,4 +1,4 @@
-use crate::horust::service_handler::{Event, EventKind, ServiceHandler};
+use crate::horust::formats::{Event, EventKind, ServiceHandler};
 use crossbeam::channel::{unbounded, Receiver, Sender};
 
 /// Since I couldn't find any satisfying crate for broadcasting messages,

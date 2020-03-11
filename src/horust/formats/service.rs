@@ -11,8 +11,6 @@ use std::path::PathBuf;
 use std::str::FromStr;
 use std::time::Duration;
 
-pub type ServiceName = String;
-
 pub fn get_sample_service() -> String {
     r#"# The name of your service, must be unique. It's optional, will use the filename as name.
 name = "my-cool-service"
@@ -32,7 +30,7 @@ http_endpoint = "http://localhost:8080/healthcheck"
 file_path = "/var/myservice/up"
 
 [failure]
-exit_code = [ 1, 2, 3]
+successfull_exit_code = [ 0, 1, 255]
 strategy = "ignore"
 
 [termination]
@@ -41,6 +39,8 @@ wait = "10s"
 "#
     .to_string()
 }
+
+pub type ServiceName = String;
 
 #[derive(Serialize, Clone, Deserialize, Debug, Eq, PartialEq)]
 #[serde(rename_all = "kebab-case")]
@@ -298,26 +298,29 @@ impl From<&str> for RestartStrategy {
 #[derive(Serialize, Clone, Deserialize, Debug, Eq, PartialEq)]
 #[serde(rename_all = "kebab-case")]
 pub struct Failure {
-    #[serde(default = "Failure::default_exit_code")]
-    pub exit_code: Vec<i32>,
+    #[serde(default = "Failure::default_successfull_exit_code")]
+    pub successfull_exit_code: Vec<i32>,
     pub strategy: FailureStrategy,
 }
+
 impl Failure {
-    fn default_exit_code() -> Vec<i32> {
-        (1..).take(255).collect()
+    fn default_successfull_exit_code() -> Vec<i32> {
+        vec![0]
     }
 }
+
 #[derive(Serialize, Clone, Deserialize, Debug, Eq, PartialEq)]
 #[serde(rename_all = "kebab-case")]
 pub enum FailureStrategy {
     KillAll,
-    KillDepdency,
+    KillDepdencies,
     Ignore,
 }
+
 impl Default for Failure {
     fn default() -> Self {
         Failure {
-            exit_code: Self::default_exit_code(),
+            successfull_exit_code: Self::default_successfull_exit_code(),
             strategy: FailureStrategy::Ignore,
         }
     }
@@ -332,7 +335,7 @@ impl From<String> for FailureStrategy {
 impl From<&str> for FailureStrategy {
     fn from(strategy: &str) -> Self {
         match strategy.to_lowercase().as_str() {
-            "kill-depdency" => FailureStrategy::KillDepdency,
+            "kill-depdency" => FailureStrategy::KillDepdencies,
             "kill-all" => FailureStrategy::KillAll,
             "ignore" => FailureStrategy::Ignore,
             _ => FailureStrategy::Ignore,

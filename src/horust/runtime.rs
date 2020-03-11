@@ -1,6 +1,6 @@
 use crate::horust::error::Result;
-use crate::horust::formats::{Service, ServiceStatus};
-use crate::horust::service_handler::{ServiceHandler, ServiceRepository};
+use crate::horust::formats::{FailureStrategy, Service, ServiceHandler, ServiceStatus};
+use crate::horust::repository::ServiceRepository;
 use crate::horust::{healthcheck, signal_handling};
 use nix::sys::signal::kill;
 use nix::sys::signal::Signal;
@@ -33,7 +33,13 @@ impl Runtime {
     }
 
     fn check_is_shutting_down(&mut self) {
-        if signal_handling::is_sigterm_received() {
+        // If any failed service has the kill-all strategy, then shut everything down.
+        let should_shut_down = self
+            .service_repository
+            .get_failed()
+            .any(|sh| sh.service().failure.strategy == FailureStrategy::KillAll);
+
+        if signal_handling::is_sigterm_received() || should_shut_down {
             if self.shutting_down_start.is_none() {
                 self.shutting_down_start = Some(Instant::now());
             }
@@ -47,16 +53,33 @@ impl Runtime {
             //TODO: a blocking update maybe? This loop should be executed onstatechange.
             self.service_repository.ingest("runtime");
             self.check_is_shutting_down();
-            let runnable_services = self.service_repository.get_runnable_services();
-            runnable_services.into_iter().for_each(|service_handler| {
+            /*           self.service_repository
+            .get_failed()
+            .filter(|sh| sh.service().failure.strategy == FailureStrategy::KillDepdencies)
+            .for_each(|sh| {
                 self.service_repository
-                    .update_status(service_handler.name(), ServiceStatus::ToBeRun);
-                healthcheck::prepare_service(&service_handler).unwrap();
-                run_spawning_thread(
-                    service_handler.service().clone(),
-                    self.service_repository.clone(),
-                );
-            });
+                    .get_dependencies(sh.name().into())
+                    .iter()
+                    .filter(|sh| !sh.is_in_killing())
+                    .for_each(|sh| {
+                        if sh.status != ServiceStatus::InKilling {
+
+                        }
+                    })
+            });*/
+
+            self.service_repository
+                .get_runnable_services()
+                .into_iter()
+                .for_each(|service_handler| {
+                    self.service_repository
+                        .update_status(service_handler.name(), ServiceStatus::ToBeRun);
+                    healthcheck::prepare_service(&service_handler).unwrap();
+                    run_spawning_thread(
+                        service_handler.service().clone(),
+                        self.service_repository.clone(),
+                    );
+                });
             if self.service_repository.all_finished() {
                 debug!("All services have finished, exiting...");
                 break;

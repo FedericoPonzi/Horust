@@ -1,5 +1,5 @@
-use crate::horust::formats::ServiceStatus;
-use crate::horust::service_handler::{ServiceHandler, ServiceRepository};
+use crate::horust::formats::{ServiceHandler, ServiceStatus};
+use crate::horust::repository::ServiceRepository;
 
 #[cfg(feature = "http-healthcheck")]
 use reqwest::blocking::Client;

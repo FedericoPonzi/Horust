@@ -1,29 +1,6 @@
-use crate::horust::dispatcher::BusConnector;
-use crate::horust::formats::{RestartStrategy, Service, ServiceName, ServiceStatus};
+use crate::horust::bus::BusConnector;
+use crate::horust::formats::{Event, EventKind, ServiceHandler, ServiceName, ServiceStatus};
 use nix::unistd::Pid;
-use std::time::Instant;
-
-#[derive(Debug, Clone)]
-pub struct Event {
-    pub(crate) service_handler: ServiceHandler,
-    pub(crate) kind: EventKind,
-}
-
-impl Event {
-    pub fn new(service_handler: ServiceHandler, kind: EventKind) -> Self {
-        Event {
-            service_handler,
-            kind,
-        }
-    }
-}
-
-#[derive(Debug, Clone)]
-pub enum EventKind {
-    StatusChanged,
-    PidChanged,
-    //ServiceCreated(ServiceHandler),
-}
 
 /// This struct hides the internal datastructures and operations on the service handlers.
 /// It also handle the communication channel with the updates queue, by sending out all the change requests.
@@ -41,6 +18,12 @@ impl ServiceRepository {
             updates_queue,
         }
     }
+
+    //TODO: probably this should be failedfinished.
+    pub(crate) fn get_failed(&self) -> impl Iterator<Item = &ServiceHandler> {
+        self.services.iter().filter(|sh| sh.is_failed())
+    }
+
     fn update_from_events(&mut self, mut events: Vec<Event>) {
         self.services.iter_mut().for_each(|sh| {
             events = events
@@ -54,8 +37,7 @@ impl ServiceRepository {
                                 sh.status = ev.service_handler.status.clone();
                             }
                             EventKind::PidChanged => {
-                                sh.status = ev.service_handler.status.clone();
-                                sh.pid = ev.service_handler.pid;
+                                sh.set_pid(ev.service_handler.pid().unwrap());
                             }
                         }
                     }
@@ -120,7 +102,13 @@ impl ServiceRepository {
             .iter()
             .all(|sh| sh.is_finished() || sh.is_failed())
     }
-
+    /* still TODO:
+    pub fn get_dependencies(&self, name: ServiceName) -> Vec<&ServiceHandler> {
+        self.services
+            .iter()
+            .filter(|sh| sh.service().start_after.contains(&name))
+            .collect()
+    }*/
     pub fn get_runnable_services(&self) -> Vec<ServiceHandler> {
         let check_can_run = |sh: &ServiceHandler| {
             if sh.is_initial() {
@@ -138,6 +126,7 @@ impl ServiceRepository {
             }
             check_run
         };
+
         self.services
             .iter()
             .cloned()
@@ -156,120 +145,5 @@ impl ServiceRepository {
             .map(fun)
             .filter_map(|v| v)
             .for_each(|val| queues.send_updated_status(val))
-    }
-}
-
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub struct ServiceHandler {
-    service: Service,
-    pub(crate) status: ServiceStatus,
-    pid: Option<Pid>,
-    last_state_change: Option<Instant>,
-}
-
-impl From<Service> for ServiceHandler {
-    fn from(service: Service) -> Self {
-        ServiceHandler {
-            service,
-            status: ServiceStatus::Initial,
-            pid: None,
-            last_state_change: None,
-        }
-    }
-}
-
-impl From<ServiceHandler> for Service {
-    fn from(sh: ServiceHandler) -> Self {
-        sh.service
-    }
-}
-
-impl ServiceHandler {
-    pub fn start_after(&self) -> &Vec<String> {
-        self.service.start_after.as_ref()
-    }
-
-    pub fn service(&self) -> &Service {
-        &self.service
-    }
-
-    pub fn name(&self) -> &ServiceName {
-        &self.service.name
-    }
-
-    pub fn pid(&self) -> Option<Pid> {
-        self.pid
-    }
-
-    pub fn set_pid(&mut self, pid: Pid) {
-        self.status = ServiceStatus::Starting;
-        self.pid = Some(pid);
-    }
-
-    pub fn set_status(&mut self, status: ServiceStatus) {
-        self.status = status;
-    }
-
-    pub fn is_to_be_run(&self) -> bool {
-        self.status == ServiceStatus::ToBeRun
-    }
-
-    pub fn is_failed(&self) -> bool {
-        self.status == ServiceStatus::Failed
-    }
-
-    pub fn is_in_killing(&self) -> bool {
-        self.status == ServiceStatus::InKilling
-    }
-
-    pub fn is_starting(&self) -> bool {
-        self.status == ServiceStatus::Starting
-    }
-
-    pub fn is_initial(&self) -> bool {
-        self.status == ServiceStatus::Initial
-    }
-
-    pub fn is_running(&self) -> bool {
-        self.status == ServiceStatus::Running
-    }
-
-    pub fn is_finished(&self) -> bool {
-        ServiceStatus::Finished == self.status || self.status == ServiceStatus::Failed
-    }
-
-    pub fn set_status_by_exit_code(&mut self, exit_code: i32) {
-        let has_failed = self.service.failure.exit_code.contains(&exit_code);
-        if has_failed {
-            error!(
-                "Service: {} has failed, exit code: {}",
-                self.name(),
-                exit_code
-            );
-        } else {
-            info!("Service: {} successfully exited.", self.name());
-        }
-        match self.service.restart.strategy {
-            RestartStrategy::Never => {
-                // Will never be restarted, even if failed:
-                self.status = if has_failed {
-                    ServiceStatus::Failed
-                } else {
-                    ServiceStatus::Finished
-                };
-            }
-            RestartStrategy::OnFailure => {
-                self.status = if has_failed {
-                    ServiceStatus::Initial
-                } else {
-                    ServiceStatus::Finished
-                };
-                debug!("Going to rerun the process because it failed!");
-            }
-            RestartStrategy::Always => {
-                self.status = ServiceStatus::Initial;
-            }
-        };
-        self.pid = None;
     }
 }

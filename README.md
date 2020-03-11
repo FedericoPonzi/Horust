@@ -16,8 +16,7 @@ Horust is an supervisor system written in rust and designed to be run in contain
 * Rock solid: You should be able to trust your favorite egyptian God.
 
 ## Status
-At this point, this should be considered Alpha software. 
-Check [Contributing](CONTRIBUTING.md) if you want to join the development.
+At this point, this should be considered Alpha software.
 
 ## Usage
 1. Create a directory with your services. `/etc/horust/services/`.
@@ -34,38 +33,29 @@ Check the [documentation](https://github.com/FedericoPonzi/Horust/blob/master/DO
 You can also bootstrap the creation of a new service, by using `horust --sample-service > new_service.toml`.
 
 ```toml
-[service]
 name = "my-cool-service"
-command = "curl google.com"
-working_directory = "/tmp/"
-# If service cannot be started, bring the system down.
-# Useful if you have some critical service you want to be sure it's running.
-# default: false
-required = false
-# Rewrite incoming signals before proxying them:
-signal_rewrite = "15:3,5:10"
-
-[failure]
-exit_code = "10,20"
-strategy = "ignore"
+command = "/bin/bash -c 'echo hello world'"
+working-directory = "/tmp/"
+start-delay = "2s"
+start-after = ["another.toml", "second.toml"]
+user = "root"
 
 [restart]
-strategy = "always"
-backoff = "10s"
-trials = 3
+strategy = "never"
+backoff = "0s"
+attempts = 0
 
 [healthiness]
-http_endpoint = "http://localhost:2020/healthcheck"
-file = "/var/myservice/up"
-# Future:
-# use a unix domain socket:
-# http_endpoint = "/var/run/my_cool_service.uds"
-# [environment]
-# clear = true
-# load = "/etc/my_db/env"
-# Define directly in here:
-# DATABASE_NAME = "My_DB"
-# DATABASE_URI = "mysql@localhost"
+http_endpoint = "http://localhost:8080/healthcheck"
+file_path = "/var/myservice/up"
+
+[failure]
+exit_code = [ 1, 2, 3]
+strategy = "ignore"
+
+[termination]
+signal = "TERM"
+wait = "10s"
 ```
 
 ## Horust configuration

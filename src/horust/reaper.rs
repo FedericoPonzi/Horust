@@ -1,4 +1,4 @@
-use crate::horust::service_handler::ServiceRepository;
+use crate::horust::repository::ServiceRepository;
 use nix::sys::wait::{waitpid, WaitStatus};
 use nix::unistd::Pid;
 use std::collections::HashMap;
