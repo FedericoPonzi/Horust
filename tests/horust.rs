@@ -97,7 +97,7 @@ done
 # Wait so the script doesn't exit.
 "#;
     let service = r#"[termination]
-wait = "500ms""#;
+wait = "1s""#;
     store_service(temp_dir.path(), script, Some(service), None);
 
     let mut child = cmd.stdin(Stdio::null()).spawn().unwrap();
@@ -112,7 +112,7 @@ wait = "500ms""#;
     });
 
     kill(pid, Signal::SIGINT).unwrap();
-    thread::sleep(Duration::from_secs(2));
+    thread::sleep(Duration::from_secs(3));
     receiver.try_recv().unwrap();
 }
 

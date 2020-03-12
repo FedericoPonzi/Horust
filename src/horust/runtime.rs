@@ -20,6 +20,7 @@ pub struct Runtime {
     shutting_down_start: Option<Instant>,
 }
 
+// Spawns and runs this component in a new thread.
 pub fn spawn(repo: ServiceRepository) {
     thread::spawn(move || Runtime::new(repo).run());
 }
@@ -47,7 +48,7 @@ impl Runtime {
         }
     }
 
-    /// Main entrypoint
+    // Blocking call
     pub fn run(&mut self) {
         loop {
             //TODO: a blocking update maybe? This loop should be executed onstatechange.
