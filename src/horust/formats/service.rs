@@ -312,8 +312,8 @@ impl Failure {
 #[derive(Serialize, Clone, Deserialize, Debug, Eq, PartialEq)]
 #[serde(rename_all = "kebab-case")]
 pub enum FailureStrategy {
-    KillAll,
-    KillDepdencies,
+    Shutdown,
+    KillDependents,
     Ignore,
 }
 
@@ -335,8 +335,8 @@ impl From<String> for FailureStrategy {
 impl From<&str> for FailureStrategy {
     fn from(strategy: &str) -> Self {
         match strategy.to_lowercase().as_str() {
-            "kill-depdency" => FailureStrategy::KillDepdencies,
-            "kill-all" => FailureStrategy::KillAll,
+            "kill-dependents" => FailureStrategy::KillDependents,
+            "kill-all" => FailureStrategy::Shutdown,
             "ignore" => FailureStrategy::Ignore,
             _ => FailureStrategy::Ignore,
         }
@@ -470,6 +470,6 @@ mod test {
             Service::from_name("b"),
             Service::start_after("a", vec!["b"]),
         ];
-        validate(services).unwrap();
+        validate(services).expect("Validation failed");
     }
 }

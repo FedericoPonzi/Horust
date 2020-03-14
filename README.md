@@ -1,6 +1,6 @@
 # Horust [![GHA Build Status](https://github.com/FedericoPonzi/horust/workflows/CI/badge.svg)](https://github.com/FedericoPonzi/horust/actions?query=workflow%3ACI) [![MIT licensed](https://img.shields.io/badge/license-MIT-blue.svg)](./LICENSE)
 
-Horust is an supervisor system written in rust and designed to be run in containers. 
+Horust is a supervisor system written in rust and designed to be run in containers. 
 
 # Table of contents
 * Goals
@@ -74,5 +74,5 @@ If you're planning to add new features, it's super awesome but please open an [i
 
 Have a look on [DEVELOPMENT.md](https://github.com/FedericoPonzi/Horust/blob/master/DEVELOPMENT.md) for more info on how to get started hacking on horust.
 
-## LICENSE
-TBD
+## License
+horust is provided under the MIT license. Please read the attached [license](https://github.com/FedericoPonzi/horust/blob/master/LICENSE) file.

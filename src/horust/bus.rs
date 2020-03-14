@@ -39,7 +39,7 @@ impl Bus {
             self.receiver.iter().for_each(|el| {
                 self.senders
                     .iter()
-                    .for_each(|sender| sender.send(el.clone()).unwrap())
+                    .for_each(|sender| sender.send(el.clone()).expect("Failed sending message"))
             });
         }
     }

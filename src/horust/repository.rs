@@ -20,8 +20,12 @@ impl ServiceRepository {
     }
 
     //TODO: probably this should be failedfinished.
-    pub(crate) fn get_failed(&self) -> impl Iterator<Item = &ServiceHandler> {
-        self.services.iter().filter(|sh| sh.is_failed())
+    pub(crate) fn get_failed(&self) -> Vec<ServiceHandler> {
+        self.services
+            .iter()
+            .filter(|sh| sh.is_failed())
+            .cloned()
+            .collect()
     }
 
     fn update_from_events(&mut self, mut events: Vec<Event>) {
@@ -37,7 +41,8 @@ impl ServiceRepository {
                                 sh.status = ev.service_handler.status.clone();
                             }
                             EventKind::PidChanged => {
-                                sh.set_pid(ev.service_handler.pid().unwrap());
+                                sh.pid = ev.service_handler.pid.clone();
+                                sh.status = ev.service_handler.status.clone()
                             }
                         }
                     }
@@ -102,42 +107,46 @@ impl ServiceRepository {
             .iter()
             .all(|sh| sh.is_finished() || sh.is_failed())
     }
-    /* still TODO:
-    pub fn get_dependencies(&self, name: ServiceName) -> Vec<&ServiceHandler> {
+
+    pub fn get_dependents(&self, name: ServiceName) -> Vec<ServiceHandler> {
         self.services
             .iter()
             .filter(|sh| sh.service().start_after.contains(&name))
+            .cloned()
             .collect()
-    }*/
+    }
+    pub fn get_in_killing_services(&self) -> Vec<ServiceHandler> {
+        self.services
+            .iter()
+            .filter(|v| v.is_in_killing())
+            .cloned()
+            .collect()
+    }
     pub fn get_runnable_services(&self) -> Vec<ServiceHandler> {
         let check_can_run = |sh: &ServiceHandler| {
-            if sh.is_initial() {
-                return true;
-            }
-            let mut check_run = false;
+            let mut check_run = true;
             for service_name in sh.start_after() {
                 for service in self.services.iter() {
                     let is_started = service.name() == service_name
                         && (service.is_running() || service.is_finished());
-                    if is_started {
-                        check_run = true;
-                    }
+                    // if not started, then cannot run!
+                    check_run = !is_started;
                 }
             }
-            check_run
+            sh.is_initial() && check_run
         };
 
         self.services
             .iter()
+            .filter(|v| check_can_run(*v))
             .cloned()
-            .filter(|v| check_can_run(v))
             .collect()
     }
 
-    //
-    pub fn mutate_service_status<F>(&mut self, fun: F)
+    // apply a function to all services, and send an update on the bus for the changed services.
+    pub fn mutate_service_status_apply<F>(&mut self, fun: F)
     where
-        F: FnMut(&mut ServiceHandler) -> Option<&mut ServiceHandler>,
+        F: FnMut(&mut ServiceHandler) -> Option<&ServiceHandler>,
     {
         let queues = &self.updates_queue;
         self.services
@@ -145,5 +154,20 @@ impl ServiceRepository {
             .map(fun)
             .filter_map(|v| v)
             .for_each(|val| queues.send_updated_status(val))
+    }
+
+    // apply a function to all services, and send an update on the bus for the changed service.
+    pub fn mutate_service_status(&mut self, modified: Option<&ServiceHandler>) {
+        let queues = &self.updates_queue;
+        if let Some(val) = modified {
+            self.services = self
+                .services
+                .clone()
+                .into_iter()
+                .filter(|sh| sh.name() != val.name())
+                .chain(vec![val.clone()])
+                .collect();
+            queues.send_updated_status(val)
+        }
     }
 }

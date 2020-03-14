@@ -1,16 +1,19 @@
 [package]
 name = "horust"
-version = "0.0.1"
+version = "0.1.0"
 authors = ["Federico Ponzi <federico.ponzi92@gmail.com>"]
 description = "A complete supervisor and init system, designed for running in containers."
 edition = "2018"
+license = "MIT"
 repository = "https://github.com/FedericoPonzi/horust"
+homepage = "https://github.com/FedericoPonzi/horust"
 readme = "README.md"
 keywords = ["init", "container", "supervisor"]
 categories = ["command-line-utilities"]
 
 [dependencies]
-clap = { git = "https://github.com/clap-rs/clap/", rev = "28c46b5" }
+structopt = "~0.3"
+# Still not released: clap = { git = "https://github.com/clap-rs/clap/", rev = "28c46b5", version = "3.0.0-beta.1" }
 crossbeam = "~0.7"
 env_logger = "~0.7"
 humantime-serde = "~0.1"

@@ -6,8 +6,9 @@ use std::time::Instant;
 pub struct ServiceHandler {
     service: Service,
     pub(crate) status: ServiceStatus,
-    pid: Option<Pid>,
-    last_state_change: Option<Instant>,
+    pub(crate) pid: Option<Pid>,
+    /// Instant representing at which time we received a shutdown request. Will be used for comparing Service.termination.wait
+    pub(crate) shutting_down_start: Option<Instant>,
 }
 
 impl From<Service> for ServiceHandler {
@@ -16,7 +17,7 @@ impl From<Service> for ServiceHandler {
             service,
             status: ServiceStatus::Initial,
             pid: None,
-            last_state_change: None,
+            shutting_down_start: None,
         }
     }
 }
@@ -81,7 +82,12 @@ impl ServiceHandler {
         ServiceStatus::Finished == self.status || self.status == ServiceStatus::Failed
     }
 
+    pub fn shutting_down_started(&mut self) {
+        self.shutting_down_start = Some(Instant::now());
+    }
+
     pub fn set_status_by_exit_code(&mut self, exit_code: i32) {
+        self.shutting_down_start = None;
         let has_failed = !self
             .service
             .failure

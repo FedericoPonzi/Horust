@@ -67,12 +67,24 @@ impl Horust {
     }
 }
 
+pub fn list_files<P: AsRef<std::path::Path>>(path: P) -> std::io::Result<Vec<std::path::PathBuf>> {
+    let mut paths = std::fs::read_dir(path)?;
+    paths.try_fold(vec![], |mut ret, p| match p {
+        Ok(entry) => {
+            ret.push(entry.path());
+            Ok(ret)
+        }
+        Err(err) => Err(err),
+    })
+}
+
 /// Search for *.toml files in path, and deserialize them into Service.
 fn fetch_services<P>(path: &P) -> Result<Vec<Service>>
 where
     P: AsRef<Path> + ?Sized + AsRef<OsStr> + Debug,
 {
     debug!("Fetching services from : {:?}", path);
+    debug!("Files: {:?}", list_files(path));
     let is_toml_file = |path: &PathBuf| {
         let has_toml_extension = |path: &PathBuf| {
             path.extension()

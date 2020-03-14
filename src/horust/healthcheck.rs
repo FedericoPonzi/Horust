@@ -63,7 +63,7 @@ fn run_checks(services: &mut ServiceRepository) {
         }
         None => true,
     };
-    services.mutate_service_status(|sh| {
+    services.mutate_service_status_apply(|sh| {
         let is_healthy = healthchecks(sh);
         if sh.is_starting() && is_healthy {
             sh.set_status(ServiceStatus::Running);

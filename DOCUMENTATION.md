@@ -45,11 +45,11 @@ To drop a signal entirely, you can rewrite it to the special number 0.
 ### Failure section
 ```toml
 [failure]
-exit_code = "10,20"
-strategy = "kill-all"
+successfull_exit_code = ["0", "1", "255"]
+strategy = "ignore"
 ```
-* **exit_code** = **\<int>[,\<int>]**: A comma separated list of exit code. Usually a program is considered failed if its exit code is different than zero. But not all fails are the same. By using this parameter, you can specify which exit codes will make this service considered failed.
-* **strategy** = **kill-all|kill-dependency|ignore': We might want to kill the whole system, or part of it, if some service fails. By default the failure won't trigger anything.
+* **exit_code = \<int>[,\<int>]**: A comma separated list of exit code. Usually a program is considered failed if its exit code is different than zero. But not all fails are the same. By using this parameter, you can specify which exit codes will make this service considered failed.
+* **strategy = `shutdown|kill-dependents|ignore`**': We might want to kill the whole system, or part of it, if some service fails. By default the failure won't trigger anything.
 
 ### Termination section
 ```toml

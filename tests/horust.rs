@@ -9,7 +9,7 @@ use rand::distributions::Alphanumeric;
 use rand::{thread_rng, Rng};
 use std;
 use std::path::Path;
-use std::process::{Command, Stdio};
+use std::process::Command;
 use std::sync::mpsc;
 use std::thread;
 use std::time::Duration;
@@ -24,20 +24,12 @@ fn store_service(
     service: Option<&str>,
     service_name: Option<&str>,
 ) -> String {
-    let rnd_name = || {
-        thread_rng()
-            .sample_iter(&Alphanumeric)
-            .take(5)
-            .collect::<String>()
-    };
-    let service_name = format!(
-        "{}{}.toml",
-        service_name
-            .map(|name| format!("{}-", name))
-            .unwrap_or_else(|| "".into()),
-        rnd_name()
-    );
-    let script_name = rnd_name();
+    let rnd_name = thread_rng()
+        .sample_iter(&Alphanumeric)
+        .take(5)
+        .collect::<String>();
+    let service_name = format!("{}.toml", service_name.unwrap_or_else(|| rnd_name.as_str()));
+    let script_name = format!("{}.sh", rnd_name);
     let script_path = dir.join(script_name);
     std::fs::write(&script_path, script).unwrap();
     let service = format!(
@@ -57,9 +49,27 @@ fn get_cli() -> (Command, TempDir) {
         "--services-path",
         temp_dir.path().display().to_string().as_str(),
     ]);
-    //.stdout(Stdio::from(fs::File::create("/tmp/stdout").unwrap()))
-    //.stderr(Stdio::from(fs::File::create("/tmp/stderr").unwrap()));
+    //.stdout(Stdio::from(std::fs::File::create("/tmp/stdout").unwrap()))
+    //.stderr(Stdio::from(std::fs::File::create("/tmp/stderr").unwrap()));
     (cmd, temp_dir)
+}
+
+/// Run the cmd and send a message on receiver when it's done.
+/// This allows for ensuring termination of a test.
+fn run_async(mut cmd: Command, should_succeed: bool) -> (mpsc::Receiver<()>, Pid) {
+    let mut child = cmd.spawn().unwrap();
+    thread::sleep(Duration::from_millis(500));
+
+    let pid = pid_from_id(child.id());
+    let (sender, receiver) = mpsc::sync_channel(0);
+
+    let _handle = thread::spawn(move || {
+        assert_eq!(child.wait().expect("wait").success(), should_succeed);
+        println!("Going to send result back..");
+        sender.send(()).unwrap();
+        println!("Done!");
+    });
+    (receiver, pid)
 }
 
 #[test]
@@ -76,7 +86,7 @@ fn pid_from_id(id: u32) -> Pid {
 // Test termination section
 #[test]
 fn test_termination() {
-    let (mut cmd, temp_dir) = get_cli();
+    let (cmd, temp_dir) = get_cli();
     // this script captures traps SIGINT / SIGTERM / SIGEXIT
     let script = r#"#!/bin/bash
 
@@ -100,18 +110,8 @@ done
 wait = "1s""#;
     store_service(temp_dir.path(), script, Some(service), None);
 
-    let mut child = cmd.stdin(Stdio::null()).spawn().unwrap();
-    thread::sleep(Duration::from_millis(500));
-
-    let pid = pid_from_id(child.id());
-    let (sender, receiver) = mpsc::sync_channel(0);
-
-    let _handle = thread::spawn(move || {
-        child.wait().unwrap().success();
-        sender.send(123).unwrap();
-    });
-
-    kill(pid, Signal::SIGINT).unwrap();
+    let (receiver, pid) = run_async(cmd, true);
+    kill(pid, Signal::SIGINT).expect("kill");
     thread::sleep(Duration::from_secs(3));
     receiver.try_recv().unwrap();
 }
@@ -144,4 +144,54 @@ printenv"#;
 
     store_service(temp_dir.path(), script, Some(service), None);
     cmd.assert().success().stdout(contains("bar"));
+}
+
+// Test failure strategies
+fn test_failure_strategy(strategy: &str) {
+    println!("running test: {}", strategy);
+    let (cmd, temp_dir) = get_cli();
+    let failing_service = format!(
+        r#"[failure]
+strategy = "{}"
+"#,
+        strategy
+    );
+    let failing_script = r#"#!/bin/bash
+# Let's give horust some time to spinup the other service as well.
+sleep 1
+exit 1"#;
+    store_service(
+        temp_dir.path(),
+        failing_script,
+        Some(failing_service.as_str()),
+        Some("a"),
+    );
+
+    let sleep_service = r#"start-after = ["a.toml"]
+[termination]
+wait = "500millis"
+"#;
+    let sleep_script = r#"#!/bin/bash
+sleep 30"#;
+
+    //store_service(temp_dir.path(), sleep_script, None, None);
+    store_service(temp_dir.path(), sleep_script, Some(sleep_service), None);
+    let (receiver, pid) = run_async(cmd, true);
+    if let Err(_error) = receiver.recv_timeout(Duration::from_secs(15)) {
+        let _res = kill(pid, Signal::SIGKILL);
+        std::panic!(format!(
+            "{}: : Failed to receive message, the cmd didn't finish",
+            strategy
+        ));
+    }
+}
+
+#[test]
+fn test_failure_shutdown() {
+    test_failure_strategy("shutdown");
+}
+
+#[test]
+fn test_failure_kill_dependents() {
+    test_failure_strategy("kill-dependents");
 }

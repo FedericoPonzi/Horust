@@ -32,7 +32,7 @@ pub(crate) fn init() {
 
 extern "C" fn handle_sigterm(signal: libc::c_int) {
     let s = format!("Received signal: {} (SIGTERM | SIGINT)\n", signal);
-    print(s.as_str());
+    //print(s.as_str());
     unsafe {
         SIGTERM_RECEIVED = true;
     }

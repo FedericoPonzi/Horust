@@ -1,0 +1,3 @@
+command = "/bin/bash /home/isaacisback/dev/rust/horust/examples/services/failure/main.sh"
+[failure]
+strategy = "shutdown"

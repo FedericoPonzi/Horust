@@ -2,8 +2,7 @@ use crate::horust::error::Result;
 use crate::horust::formats::{FailureStrategy, Service, ServiceHandler, ServiceStatus};
 use crate::horust::repository::ServiceRepository;
 use crate::horust::{healthcheck, signal_handling};
-use nix::sys::signal::kill;
-use nix::sys::signal::Signal;
+use nix::sys::signal::{self, Signal};
 use nix::unistd::{fork, getppid, ForkResult};
 use nix::unistd::{getpid, Pid};
 use shlex;
@@ -11,13 +10,12 @@ use std::ffi::{CStr, CString};
 use std::fmt::Debug;
 use std::path::PathBuf;
 use std::thread;
-use std::time::{Duration, Instant};
+use std::time::Duration;
 
 #[derive(Debug)]
 pub struct Runtime {
     service_repository: ServiceRepository,
-    /// Instant representing at which time we received a shutdown request. Will be used for comparing Service.termination.wait
-    shutting_down_start: Option<Instant>,
+    is_shutting_down: bool,
 }
 
 // Spawns and runs this component in a new thread.
@@ -29,50 +27,74 @@ impl Runtime {
     fn new(repo: ServiceRepository) -> Self {
         Self {
             service_repository: repo,
-            shutting_down_start: None,
+            is_shutting_down: false,
         }
     }
 
-    fn check_is_shutting_down(&mut self) {
-        // If any failed service has the kill-all strategy, then shut everything down.
-        let should_shut_down = self
-            .service_repository
-            .get_failed()
-            .any(|sh| sh.service().failure.strategy == FailureStrategy::KillAll);
-
-        if signal_handling::is_sigterm_received() || should_shut_down {
-            if self.shutting_down_start.is_none() {
-                self.shutting_down_start = Some(Instant::now());
-            }
+    /// Check if the system should shutdown. If so, triggers the stop of all the services.
+    fn should_shutdown(&mut self) {
+        if self.is_shutting_down {
             self.stop_all_services();
+        } else {
+            // If any failed service has the kill-all strategy, then shut everything down.
+            let failed_shutdown_strategy = self
+                .service_repository
+                .get_failed()
+                .into_iter()
+                .any(|sh| sh.service().failure.strategy == FailureStrategy::Shutdown);
+
+            if failed_shutdown_strategy {
+                debug!("Found failed service with shutdown strategy.");
+            }
+            if signal_handling::is_sigterm_received() || failed_shutdown_strategy {
+                self.is_shutting_down = true;
+                self.stop_all_services();
+            }
         }
     }
 
-    // Blocking call
+    /// Blocking call. Continuously try to (re)start services, and init shutdown as needed.
     pub fn run(&mut self) {
         loop {
             //TODO: a blocking update maybe? This loop should be executed onstatechange.
+            // Ingest updates
             self.service_repository.ingest("runtime");
-            self.check_is_shutting_down();
-            /*           self.service_repository
-            .get_failed()
-            .filter(|sh| sh.service().failure.strategy == FailureStrategy::KillDepdencies)
-            .for_each(|sh| {
-                self.service_repository
-                    .get_dependencies(sh.name().into())
-                    .iter()
-                    .filter(|sh| !sh.is_in_killing())
-                    .for_each(|sh| {
-                        if sh.status != ServiceStatus::InKilling {
 
-                        }
-                    })
-            });*/
+            // Check if the system is shuttingdown and if so handles the shutdown of the services.
+            self.should_shutdown();
+
+            // If some process has failed, applies the failure strategies.
+            self.service_repository
+                .get_failed()
+                .into_iter()
+                .for_each(|mut failed_sh| match failed_sh.service().failure.strategy {
+                    FailureStrategy::Shutdown => {
+                        self.is_shutting_down = true;
+                    }
+                    FailureStrategy::KillDependents => {
+                        debug!(
+                            "Failed service has kill-dependents strategy, going to kill them all.."
+                        );
+                        let mut dependents = self
+                            .service_repository
+                            .get_dependents(failed_sh.name().into());
+                        dependents.iter_mut().for_each(|dependent| {
+                            self.service_repository
+                                .mutate_service_status(shutdown_service(dependent))
+                        });
+                        // Todo: finishedfailed
+                        failed_sh.set_status(ServiceStatus::Finished);
+                        self.service_repository
+                            .mutate_service_status(Some(&failed_sh));
+                    }
+                    _ => (),
+                });
 
             self.service_repository
                 .get_runnable_services()
                 .into_iter()
                 .for_each(|service_handler| {
+                    debug!("Found runnable service: {:?}", service_handler);
                     self.service_repository
                         .update_status(service_handler.name(), ServiceStatus::ToBeRun);
                     healthcheck::prepare_service(&service_handler).unwrap();
@@ -80,6 +102,35 @@ impl Runtime {
                         service_handler.service().clone(),
                         self.service_repository.clone(),
                     );
+                });
+            self.service_repository
+                .get_in_killing_services()
+                .into_iter()
+                .for_each(|mut sh| {
+                    debug!("{} is in killing..", sh.name());
+                    // If after termination.wait time the service has not yet exited, then we will use the force:
+                    let should_force_kill = if let Some(shutting_down_elapsed_secs) =
+                        sh.shutting_down_start.clone()
+                    {
+                        let shutting_down_elapsed_secs =
+                            shutting_down_elapsed_secs.elapsed().as_secs();
+                        debug!(
+                            "{}, should not force kill. Elapsed: {}, termination wait: {}",
+                            sh.name(),
+                            shutting_down_elapsed_secs,
+                            sh.service().termination.wait.clone().as_secs()
+                        );
+                        shutting_down_elapsed_secs > sh.service().termination.wait.clone().as_secs()
+                    } else {
+                        error!("There is no shutting down elapsed secs!!");
+                        false
+                    };
+                    if sh.is_in_killing() && should_force_kill {
+                        kill(&sh, Signal::SIGKILL);
+                        sh.set_status(ServiceStatus::Finished);
+                        sh.shutting_down_start = None;
+                        self.service_repository.mutate_service_status(Some(&sh));
+                    }
                 });
             if self.service_repository.all_finished() {
                 debug!("All services have finished, exiting...");
@@ -90,55 +141,43 @@ impl Runtime {
         std::process::exit(0);
     }
 
-    /**
-    Send a term signal to all the services in the "Running" state.
-    **/
+    /// Send a term signal to all the services in the "Running" state.
     pub fn stop_all_services(&mut self) {
-        let shutting_down_elapsed_secs = self
-            .shutting_down_start
-            .clone()
-            .unwrap()
-            .elapsed()
-            .as_secs();
-        let kill = |sh: &ServiceHandler, signal: Signal| {
-            debug!("Going to send {} signal to pid {:?}", signal, sh.pid());
-            let pid = sh
-                .pid()
-                .expect("Missing pid to kill but process was in running state.");
-            match kill(pid, signal) {
-                Err(error) => match error.as_errno().unwrap() {
-                    nix::errno::Errno::ESRCH => (),
-                    _ => error!(
-                        "Error encountered while killing the process: {}, service: {}, pid: {:?}",
-                        error,
-                        sh.name(),
-                        pid,
-                    ),
-                },
-                Ok(()) => (),
-            }
-        };
+        self.service_repository
+            .mutate_service_status_apply(shutdown_service);
+    }
+}
 
-        self.service_repository.mutate_service_status(|sh| {
-            // If after termination.wait time the service has not yet exited, then we will use the force:
-            let should_force_kill =
-                shutting_down_elapsed_secs > sh.service().termination.wait.clone().as_secs();
+/// Handle the shutting down of a service. It returns Some if it has modified the sh.
+fn shutdown_service(sh: &mut ServiceHandler) -> Option<&ServiceHandler> {
+    if sh.is_running() && sh.pid().is_some() {
+        kill(sh, sh.service().termination.signal.as_signal());
+        sh.shutting_down_started();
+        sh.set_status(ServiceStatus::InKilling);
+        Some(sh)
+    } else if sh.is_initial() {
+        sh.set_status(ServiceStatus::Finished);
+        Some(sh)
+    } else {
+        None
+    }
+}
 
-            if sh.is_in_killing() && should_force_kill {
-                kill(sh, Signal::SIGKILL);
-                sh.set_status(ServiceStatus::Finished);
-                Some(sh)
-            } else if sh.is_running() && sh.pid().is_some() {
-                kill(sh, sh.service().termination.signal.as_signal());
-                sh.set_status(ServiceStatus::InKilling);
-                Some(sh)
-            } else if sh.is_initial() {
-                sh.set_status(ServiceStatus::Finished);
-                Some(sh)
-            } else {
-                None
-            }
-        });
+fn kill(sh: &ServiceHandler, signal: Signal) {
+    debug!("Going to send {} signal to pid {:?}", signal, sh.pid());
+    let pid = sh
+        .pid()
+        .expect("Missing pid to kill but process was in running state.");
+    if let Err(error) = signal::kill(pid, signal) {
+        match error.as_errno().expect("errno empty!") {
+            nix::errno::Errno::ESRCH => (),
+            _ => error!(
+                "Error killing the process: {}, service: {}, pid: {:?}",
+                error,
+                sh.name(),
+                pid,
+            ),
+        }
     }
 }
 
@@ -181,9 +220,9 @@ fn exec_service(service: &Service) {
     let cwd = service.working_directory.as_ref().unwrap_or(&default);
     debug!("Set cwd: {:?}, ", cwd);
 
-    std::env::set_current_dir(cwd).unwrap();
-    nix::unistd::setsid().unwrap();
-    nix::unistd::setuid(service.user.get_uid()).unwrap();
+    std::env::set_current_dir(cwd).expect("Set cwd");
+    nix::unistd::setsid().expect("Setsid");
+    nix::unistd::setuid(service.user.get_uid()).expect("setuid");
     let chunks: Vec<String> = shlex::split(service.command.as_ref()).unwrap();
     let program_name = CString::new(chunks.get(0).unwrap().as_str()).unwrap();
     let to_cstring = |s: Vec<String>| {
