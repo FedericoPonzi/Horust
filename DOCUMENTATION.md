@@ -4,7 +4,7 @@ Since the README it's growing too much long, and it will likely increase as feat
 ### Service section
 * **`name` = `string`**: Name of the service. If not defined, it will use the filename instead.
 * **`command` = `string`**: Specify a command to run, or a full path. You can also add arguments. If a full path is not provided, the binary will be searched using the $PATH env variable.
-* **`working_directory` = `string`**: will use this value as current working directory for the service.
+* **`working-directory` = `string`**: will use this value as current working directory for the service.
 * **`user` = `uid|username`**: Will run this service as this user. Either an uid or a username (check it in /etc/passwd)
 * **`start-after` = `list<string>`**: Start after these other services. User their filename.
 * **`start-delay` = `time`**: Start this service with the specified delay. Check how to specify times [here](https://github.com/tailhook/humantime/blob/49f11fdc2a59746085d2457cb46bce204dec746a/src/duration.rs#L338) 

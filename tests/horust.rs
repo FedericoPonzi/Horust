@@ -83,6 +83,18 @@ fn pid_from_id(id: u32) -> Pid {
     Pid::from_raw(id)
 }
 
+#[test]
+fn test_cwd() {
+    let (mut cmd, temp_dir) = get_cli();
+    let another_dir = TempDir::new("another").unwrap();
+    let displ = another_dir.path().display().to_string();
+    let service = format!(r#"working-directory = "{}""#, displ);
+    let script = r#"#!/bin/bash
+pwd"#;
+    store_service(temp_dir.path(), script, Some(service.as_str()), None);
+    cmd.assert().success().stdout(contains(displ.as_str()));
+}
+
 // Test termination section
 #[test]
 fn test_termination() {

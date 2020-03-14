@@ -1,7 +1,5 @@
-use libc::STDOUT_FILENO;
 use nix::sys::signal::{sigaction, SaFlags, SigAction, SigHandler, SigSet, SIGINT, SIGTERM};
-use std::ffi::c_void;
-
+use std::panic;
 static mut SIGTERM_RECEIVED: bool = false;
 
 pub(crate) fn is_sigterm_received() -> bool {
@@ -9,11 +7,12 @@ pub(crate) fn is_sigterm_received() -> bool {
 }
 
 /// Signal safe print
-fn print(s: &str) {
+/*fn print(s: &str) {
     unsafe {
         libc::write(STDOUT_FILENO, s.as_ptr() as *const c_void, s.len());
     }
 }
+*/
 
 /// Setup the signal handlers
 pub(crate) fn init() {
@@ -30,8 +29,8 @@ pub(crate) fn init() {
     };
 }
 
-extern "C" fn handle_sigterm(signal: libc::c_int) {
-    let s = format!("Received signal: {} (SIGTERM | SIGINT)\n", signal);
+extern "C" fn handle_sigterm(_signal: libc::c_int) {
+    //let s = format!("Received signal: {} (SIGTERM | SIGINT)\n", signal);
     //print(s.as_str());
     unsafe {
         SIGTERM_RECEIVED = true;
