@@ -124,16 +124,19 @@ impl ServiceRepository {
     }
     pub fn get_runnable_services(&self) -> Vec<ServiceHandler> {
         let check_can_run = |sh: &ServiceHandler| {
-            let mut check_run = true;
+            if !sh.is_initial() {
+                return false;
+            }
             for service_name in sh.start_after() {
-                for service in self.services.iter() {
-                    let is_started = service.name() == service_name
-                        && (service.is_running() || service.is_finished());
-                    // if not started, then cannot run!
-                    check_run = !is_started;
+                let is_started = self.services.iter().any(|service| {
+                    service.name() == service_name
+                        && (service.is_running() || service.is_finished())
+                });
+                if !is_started {
+                    return false;
                 }
             }
-            sh.is_initial() && check_run
+            true
         };
 
         self.services

@@ -95,6 +95,34 @@ pwd"#;
     cmd.assert().success().stdout(contains(displ.as_str()));
 }
 
+#[test]
+fn tests_start_after() {
+    let (mut cmd, temp_dir) = get_cli();
+    let script_first = r#"#!/bin/bash
+echo "a""#;
+    store_service(temp_dir.path(), script_first, None, Some("a"));
+
+    let service_second = r#"start-delay = "500millis" 
+    start-after = ["a.toml"]
+    "#;
+    let script_second = r#"#!/bin/bash
+echo "b""#;
+    store_service(
+        temp_dir.path(),
+        script_second,
+        Some(service_second),
+        Some("b"),
+    );
+
+    let service_c = r#"start-delay = "500millis"
+    start-after = ["b.toml"]"#;
+    let script_c = r#"#!/bin/bash
+echo "c""#;
+    store_service(temp_dir.path(), script_c, Some(service_c), None);
+
+    cmd.assert().success().stdout(contains("a\nb\nc"));
+}
+
 // Test termination section
 #[test]
 fn test_termination() {
