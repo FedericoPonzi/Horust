@@ -80,17 +80,18 @@ impl Runtime {
         }
     }
     fn handle_runnable_service(
-        &self,
-        mut service_handler: ServiceHandler,
+        &mut self,
+        service_handler: ServiceHandler,
     ) -> Option<ServiceHandler> {
         debug!("Found runnable service: {:?}", service_handler);
-        service_handler.set_status(ServiceStatus::ToBeRun);
+        self.service_repository
+            .update_status(service_handler.name(), ServiceStatus::ToBeRun);
         healthcheck::prepare_service(&service_handler).unwrap();
         run_spawning_thread(
             service_handler.service().clone(),
             self.service_repository.clone(),
         );
-        Some(service_handler)
+        None
     }
     fn handle_in_killing_service(
         &self,
