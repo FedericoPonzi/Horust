@@ -96,7 +96,7 @@ pwd"#;
 }
 
 #[test]
-fn tests_start_after() {
+fn test_start_after() {
     let (mut cmd, temp_dir) = get_cli();
     let script_first = r#"#!/bin/bash
 echo "a""#;

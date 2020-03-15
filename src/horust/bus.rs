@@ -1,4 +1,4 @@
-use crate::horust::formats::{Event, EventKind, ServiceHandler};
+use crate::horust::formats::{Event, EventKind, ServiceHandler, ServiceName};
 use crossbeam::channel::{unbounded, Receiver, Sender};
 
 /// Since I couldn't find any satisfying crate for broadcasting messages,
@@ -55,23 +55,41 @@ impl BusConnector {
         BusConnector { sender, receiver }
     }
 
+    /// Non blocking
+    pub fn try_get_events(&self) -> Vec<Event> {
+        self.receiver.try_iter().collect()
+    }
+
     fn send_update(&self, ev: Event) {
         //debug!("Going to send the following event: {:?}", ev);
         self.sender.send(ev).expect("Failed sending update event!");
     }
 
-    pub fn try_get_events(&self) -> Vec<Event> {
-        self.receiver.try_iter().collect()
+    pub fn send_exit_code(&self, service_name: ServiceName, exit_code: i32) {
+        self.send_update(Event::new(
+            service_name,
+            EventKind::ServiceExited(exit_code),
+        ));
     }
 
-    pub fn send_update_pid(&self, sh: &ServiceHandler) {
-        self.send_update(Event::new(sh.clone(), EventKind::PidChanged));
+    pub fn send_updated_pid(&self, sh: &ServiceHandler) {
+        self.send_update(Event::new(
+            sh.name().clone(),
+            EventKind::PidChanged(sh.pid.unwrap()),
+        ));
     }
 
     pub fn send_updated_status(&self, sh: &ServiceHandler) {
-        self.send_update(Event::new(sh.clone(), EventKind::StatusChanged));
+        self.send_update(Event::new(
+            sh.service().name.clone(),
+            EventKind::StatusChanged(sh.status.clone()),
+        ));
     }
+
     pub fn send_updated_marked_for_killing(&self, sh: &ServiceHandler) {
-        self.send_update(Event::new(sh.clone(), EventKind::MarkedForKillingChanged));
+        self.send_update(Event::new(
+            sh.name().clone(),
+            EventKind::MarkedForKillingChanged(sh.marked_for_killing.clone()),
+        ));
     }
 }

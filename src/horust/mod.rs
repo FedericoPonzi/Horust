@@ -55,14 +55,18 @@ impl Horust {
         signal_handling::init();
 
         let mut dispatcher = Bus::new();
-        let mut new_service_repo =
-            || ServiceRepository::new(self.services.clone(), dispatcher.join_bus());
         debug!("Services: {:?}", self.services);
         // Spawn helper threads:
         debug!("Going to spawn threads:, going to start running services now!");
-        runtime::spawn(new_service_repo());
-        reaper::spawn(new_service_repo());
-        healthcheck::spawn(new_service_repo());
+        runtime::spawn(ServiceRepository::new(
+            self.services.clone(),
+            dispatcher.join_bus(),
+        ));
+        reaper::spawn(dispatcher.join_bus());
+        healthcheck::spawn(ServiceRepository::new(
+            self.services.clone(),
+            dispatcher.join_bus(),
+        ));
         dispatcher.run();
     }
 }

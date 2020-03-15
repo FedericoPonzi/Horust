@@ -8,7 +8,7 @@ use nix::unistd::Pid;
 #[derive(Debug, Clone)]
 pub struct ServiceRepository {
     pub services: Vec<ServiceHandler>,
-    updates_queue: BusConnector,
+    pub(crate) updates_queue: BusConnector,
 }
 
 impl ServiceRepository {
@@ -28,55 +28,34 @@ impl ServiceRepository {
             .collect()
     }
 
-    fn update_from_events(&mut self, mut events: Vec<Event>) {
-        self.services.iter_mut().for_each(|sh| {
-            events = events
-                .clone()
-                .into_iter()
-                .filter(|ev| {
-                    let to_consume = sh.name() == ev.service_handler.name();
-                    if to_consume {
-                        match &ev.kind {
-                            EventKind::StatusChanged => {
-                                sh.status = ev.service_handler.status.clone();
-                            }
-                            EventKind::MarkedForKillingChanged => {
-                                sh.marked_for_killing = ev.service_handler.marked_for_killing;
-                            }
-                            EventKind::PidChanged => {
-                                sh.pid = ev.service_handler.pid.clone();
-                                sh.status = ev.service_handler.status.clone()
-                            }
-                        }
+    fn update_from_events(&mut self, events: Vec<Event>) {
+        events.into_iter().for_each(|ev| {
+            self.services
+                .iter_mut()
+                .filter(|sh| ev.service_name == *sh.service().name)
+                .for_each(|sh| match &ev.kind {
+                    EventKind::StatusChanged(status) => {
+                        sh.status = status.clone();
                     }
-                    // If this event has been consumed (e.g. shname == ev.service_name) thne I can just throw it away..
-                    !to_consume
+                    EventKind::MarkedForKillingChanged(mark) => {
+                        sh.marked_for_killing = *mark;
+                    }
+                    EventKind::ServiceExited(exit_code) => sh.set_status_by_exit_code(*exit_code),
+                    EventKind::PidChanged(pid) => {
+                        sh.pid = Some(pid.clone());
+                        sh.status = ServiceStatus::Running;
+                    }
                 })
-                .collect();
         });
     }
 
     /// Process all the received services changes. Non-blocking
     pub fn ingest(&mut self, _name: &str) {
         let updates: Vec<Event> = self.updates_queue.try_get_events();
-        if !updates.is_empty() {
-            //debug!("{}: Received the following updates: {:?}", name, updates);
-            self.update_from_events(updates);
-        }
+        //debug!("{}: Received the following updates: {:?}", name, updates);
+        self.update_from_events(updates);
     }
 
-    // True if the update was applied, false otherwise.
-    pub fn update_status_by_exit_code(&mut self, pid: Pid, exit_code: i32) -> bool {
-        let queues = &self.updates_queue;
-        for service in self.services.iter_mut() {
-            if service.pid() == Some(pid) {
-                service.set_status_by_exit_code(exit_code);
-                queues.send_updated_status(service);
-                return true;
-            }
-        }
-        false
-    }
     // Adds a pid to a service, and sends an update to other components
     pub fn update_pid(&mut self, service_name: ServiceName, pid: Pid) {
         let queue = &self.updates_queue;
@@ -85,7 +64,7 @@ impl ServiceRepository {
             .filter(|sh| *sh.name() == *service_name)
             .for_each(|sh| {
                 sh.set_pid(pid);
-                queue.send_update_pid(sh);
+                queue.send_updated_pid(sh);
             });
     }
 
@@ -99,10 +78,6 @@ impl ServiceRepository {
                 sh.set_status(status.clone());
                 queue.send_updated_status(sh);
             });
-    }
-
-    pub fn is_any_service_to_be_run(&self) -> bool {
-        self.services.iter().any(|sh| sh.is_to_be_run())
     }
 
     pub fn all_finished(&self) -> bool {
@@ -123,6 +98,8 @@ impl ServiceRepository {
         if !sh.is_initial() {
             return false;
         }
+        //TODO: check if it's finished failed. Apply restart policy.
+
         for service_name in sh.start_after() {
             let is_started = self.services.iter().any(|service| {
                 service.name() == service_name && (service.is_running() || service.is_finished())
