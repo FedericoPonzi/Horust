@@ -71,4 +71,7 @@ impl BusConnector {
     pub fn send_updated_status(&self, sh: &ServiceHandler) {
         self.send_update(Event::new(sh.clone(), EventKind::StatusChanged));
     }
+    pub fn send_updated_marked_for_killing(&self, sh: &ServiceHandler) {
+        self.send_update(Event::new(sh.clone(), EventKind::MarkedForKillingChanged));
+    }
 }

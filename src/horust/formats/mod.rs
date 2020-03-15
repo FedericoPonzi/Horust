@@ -22,5 +22,6 @@ impl Event {
 pub enum EventKind {
     StatusChanged,
     PidChanged,
+    MarkedForKillingChanged,
     //ServiceCreated(ServiceHandler),
 }

@@ -40,6 +40,9 @@ impl ServiceRepository {
                             EventKind::StatusChanged => {
                                 sh.status = ev.service_handler.status.clone();
                             }
+                            EventKind::MarkedForKillingChanged => {
+                                sh.marked_for_killing = ev.service_handler.marked_for_killing;
+                            }
                             EventKind::PidChanged => {
                                 sh.pid = ev.service_handler.pid.clone();
                                 sh.status = ev.service_handler.status.clone()
@@ -122,6 +125,13 @@ impl ServiceRepository {
             .cloned()
             .collect()
     }
+    pub fn get_marked_for_kill_services(&self) -> Vec<ServiceHandler> {
+        self.services
+            .iter()
+            .cloned()
+            .filter(|v| v.marked_for_killing)
+            .collect()
+    }
     pub fn get_runnable_services(&self) -> Vec<ServiceHandler> {
         let check_can_run = |sh: &ServiceHandler| {
             if !sh.is_initial() {
@@ -171,6 +181,20 @@ impl ServiceRepository {
                 .chain(vec![val.clone()])
                 .collect();
             queues.send_updated_status(val)
+        }
+    }
+
+    pub fn mutate_marked_for_killing(&mut self, modified: Option<&ServiceHandler>) {
+        let queues = &self.updates_queue;
+        if let Some(val) = modified {
+            self.services = self
+                .services
+                .clone()
+                .into_iter()
+                .filter(|sh| sh.name() != val.name())
+                .chain(vec![val.clone()])
+                .collect();
+            queues.send_updated_marked_for_killing(val)
         }
     }
 }

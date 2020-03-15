@@ -377,6 +377,7 @@ pub enum TerminationSignal {
     USR1,
     USR2,
 }
+
 impl TerminationSignal {
     pub(crate) fn as_signal(&self) -> Signal {
         match self {

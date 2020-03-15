@@ -73,15 +73,17 @@ impl Runtime {
                     }
                     FailureStrategy::KillDependents => {
                         debug!(
-                            "Failed service has kill-dependents strategy, going to kill them all.."
+                            "Failed service has kill-dependents strategy, going to mark them all.."
                         );
-                        let mut dependents = self
+                        let _dependents = self
                             .service_repository
-                            .get_dependents(failed_sh.name().into());
-                        dependents.iter_mut().for_each(|dependent| {
-                            self.service_repository
-                                .mutate_service_status(shutdown_service(dependent))
-                        });
+                            .get_dependents(failed_sh.name().into())
+                            .iter_mut()
+                            .for_each(|dep| {
+                                dep.marked_for_killing = true;
+                                self.service_repository.mutate_marked_for_killing(Some(dep))
+                            });
+
                         // Todo: finishedfailed
                         failed_sh.set_status(ServiceStatus::Finished);
                         self.service_repository
@@ -104,6 +106,13 @@ impl Runtime {
                     );
                 });
             self.service_repository
+                .get_marked_for_kill_services()
+                .into_iter()
+                .for_each(|mut sh| {
+                    shutdown_service(&mut sh);
+                    self.service_repository.mutate_service_status(Some(&sh));
+                });
+            self.service_repository
                 .get_in_killing_services()
                 .into_iter()
                 .for_each(|mut sh| {
@@ -114,6 +123,7 @@ impl Runtime {
                     {
                         let shutting_down_elapsed_secs =
                             shutting_down_elapsed_secs.elapsed().as_secs();
+
                         debug!(
                             "{}, should not force kill. Elapsed: {}, termination wait: {}",
                             sh.name(),
@@ -150,12 +160,18 @@ impl Runtime {
 
 /// Handle the shutting down of a service. It returns Some if it has modified the sh.
 fn shutdown_service(sh: &mut ServiceHandler) -> Option<&ServiceHandler> {
+    debug!(
+        "Shutting down service: {}, status: {}",
+        sh.name(),
+        sh.status
+    );
     if sh.is_running() && sh.pid().is_some() {
         kill(sh, sh.service().termination.signal.as_signal());
         sh.shutting_down_started();
         sh.set_status(ServiceStatus::InKilling);
         Some(sh)
     } else if sh.is_initial() {
+        sh.marked_for_killing = false;
         sh.set_status(ServiceStatus::Finished);
         Some(sh)
     } else {
