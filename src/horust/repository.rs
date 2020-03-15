@@ -118,42 +118,20 @@ impl ServiceRepository {
             .cloned()
             .collect()
     }
-    pub fn get_in_killing_services(&self) -> Vec<ServiceHandler> {
-        self.services
-            .iter()
-            .filter(|v| v.is_in_killing())
-            .cloned()
-            .collect()
-    }
-    pub fn get_marked_for_kill_services(&self) -> Vec<ServiceHandler> {
-        self.services
-            .iter()
-            .cloned()
-            .filter(|v| v.marked_for_killing)
-            .collect()
-    }
-    pub fn get_runnable_services(&self) -> Vec<ServiceHandler> {
-        let check_can_run = |sh: &ServiceHandler| {
-            if !sh.is_initial() {
+
+    pub(crate) fn is_service_runnable(&self, sh: &ServiceHandler) -> bool {
+        if !sh.is_initial() {
+            return false;
+        }
+        for service_name in sh.start_after() {
+            let is_started = self.services.iter().any(|service| {
+                service.name() == service_name && (service.is_running() || service.is_finished())
+            });
+            if !is_started {
                 return false;
             }
-            for service_name in sh.start_after() {
-                let is_started = self.services.iter().any(|service| {
-                    service.name() == service_name
-                        && (service.is_running() || service.is_finished())
-                });
-                if !is_started {
-                    return false;
-                }
-            }
-            true
-        };
-
-        self.services
-            .iter()
-            .filter(|v| check_can_run(*v))
-            .cloned()
-            .collect()
+        }
+        true
     }
 
     // apply a function to all services, and send an update on the bus for the changed services.

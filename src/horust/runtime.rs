@@ -52,7 +52,77 @@ impl Runtime {
             }
         }
     }
+    pub fn handle_failing_service(
+        &mut self,
+        mut failed_sh: ServiceHandler,
+    ) -> Option<ServiceHandler> {
+        match failed_sh.service().failure.strategy {
+            FailureStrategy::Shutdown => {
+                self.is_shutting_down = true;
+                None
+            }
+            FailureStrategy::KillDependents => {
+                debug!("Failed service has kill-dependents strategy, going to mark them all..");
+                let _dependents = self
+                    .service_repository
+                    .get_dependents(failed_sh.name().into())
+                    .iter_mut()
+                    .for_each(|dep| {
+                        dep.marked_for_killing = true;
+                        self.service_repository.mutate_marked_for_killing(Some(dep))
+                    });
 
+                // Todo: finishedfailed
+                failed_sh.set_status(ServiceStatus::Finished);
+                Some(failed_sh)
+            }
+            _ => None,
+        }
+    }
+    fn handle_runnable_service(
+        &self,
+        mut service_handler: ServiceHandler,
+    ) -> Option<ServiceHandler> {
+        debug!("Found runnable service: {:?}", service_handler);
+        service_handler.set_status(ServiceStatus::ToBeRun);
+        healthcheck::prepare_service(&service_handler).unwrap();
+        run_spawning_thread(
+            service_handler.service().clone(),
+            self.service_repository.clone(),
+        );
+        Some(service_handler)
+    }
+    fn handle_in_killing_service(
+        &self,
+        mut service_handler: ServiceHandler,
+    ) -> Option<ServiceHandler> {
+        debug!("{} is in killing..", service_handler.name());
+        // If after termination.wait time the service has not yet exited, then we will use the force:
+        let should_force_kill =
+            if let Some(shutting_down_elapsed_secs) = service_handler.shutting_down_start.clone() {
+                let shutting_down_elapsed_secs = shutting_down_elapsed_secs.elapsed().as_secs();
+
+                debug!(
+                    "{}, should not force kill. Elapsed: {}, termination wait: {}",
+                    service_handler.name(),
+                    shutting_down_elapsed_secs,
+                    service_handler.service().termination.wait.clone().as_secs()
+                );
+                shutting_down_elapsed_secs
+                    > service_handler.service().termination.wait.clone().as_secs()
+            } else {
+                error!("There is no shutting down elapsed secs!!");
+                false
+            };
+        if service_handler.is_in_killing() && should_force_kill {
+            kill(&service_handler, Signal::SIGKILL);
+            service_handler.set_status(ServiceStatus::Finished);
+            service_handler.shutting_down_start = None;
+            Some(service_handler)
+        } else {
+            None
+        }
+    }
     /// Blocking call. Continuously try to (re)start services, and init shutdown as needed.
     pub fn run(&mut self) {
         loop {
@@ -62,86 +132,23 @@ impl Runtime {
 
             // Check if the system is shuttingdown and if so handles the shutdown of the services.
             self.should_shutdown();
-
-            // If some process has failed, applies the failure strategies.
-            self.service_repository
-                .get_failed()
-                .into_iter()
-                .for_each(|mut failed_sh| match failed_sh.service().failure.strategy {
-                    FailureStrategy::Shutdown => {
-                        self.is_shutting_down = true;
-                    }
-                    FailureStrategy::KillDependents => {
-                        debug!(
-                            "Failed service has kill-dependents strategy, going to mark them all.."
-                        );
-                        let _dependents = self
-                            .service_repository
-                            .get_dependents(failed_sh.name().into())
-                            .iter_mut()
-                            .for_each(|dep| {
-                                dep.marked_for_killing = true;
-                                self.service_repository.mutate_marked_for_killing(Some(dep))
-                            });
-
-                        // Todo: finishedfailed
-                        failed_sh.set_status(ServiceStatus::Finished);
-                        self.service_repository
-                            .mutate_service_status(Some(&failed_sh));
-                    }
-                    _ => (),
-                });
-
-            self.service_repository
-                .get_runnable_services()
-                .into_iter()
-                .for_each(|service_handler| {
-                    debug!("Found runnable service: {:?}", service_handler);
-                    self.service_repository
-                        .update_status(service_handler.name(), ServiceStatus::ToBeRun);
-                    healthcheck::prepare_service(&service_handler).unwrap();
-                    run_spawning_thread(
-                        service_handler.service().clone(),
-                        self.service_repository.clone(),
-                    );
-                });
-            self.service_repository
-                .get_marked_for_kill_services()
-                .into_iter()
-                .for_each(|mut sh| {
+            let old_repo = self.service_repository.clone();
+            old_repo.services.into_iter().for_each(|mut sh| {
+                let sh = if sh.is_failed() {
+                    self.handle_failing_service(sh)
+                } else if self.service_repository.is_service_runnable(&sh) {
+                    self.handle_runnable_service(sh)
+                } else if sh.marked_for_killing {
                     shutdown_service(&mut sh);
-                    self.service_repository.mutate_service_status(Some(&sh));
-                });
-            self.service_repository
-                .get_in_killing_services()
-                .into_iter()
-                .for_each(|mut sh| {
-                    debug!("{} is in killing..", sh.name());
-                    // If after termination.wait time the service has not yet exited, then we will use the force:
-                    let should_force_kill = if let Some(shutting_down_elapsed_secs) =
-                        sh.shutting_down_start.clone()
-                    {
-                        let shutting_down_elapsed_secs =
-                            shutting_down_elapsed_secs.elapsed().as_secs();
-
-                        debug!(
-                            "{}, should not force kill. Elapsed: {}, termination wait: {}",
-                            sh.name(),
-                            shutting_down_elapsed_secs,
-                            sh.service().termination.wait.clone().as_secs()
-                        );
-                        shutting_down_elapsed_secs > sh.service().termination.wait.clone().as_secs()
-                    } else {
-                        error!("There is no shutting down elapsed secs!!");
-                        false
-                    };
-                    if sh.is_in_killing() && should_force_kill {
-                        kill(&sh, Signal::SIGKILL);
-                        sh.set_status(ServiceStatus::Finished);
-                        sh.shutting_down_start = None;
-                        self.service_repository.mutate_service_status(Some(&sh));
-                    }
-                });
+                    Some(sh)
+                } else if sh.is_in_killing() {
+                    self.handle_in_killing_service(sh)
+                } else {
+                    None
+                };
+                self.service_repository.mutate_service_status(sh.as_ref());
+            });
+            // If some process has failed, applies the failure strategies.
             if self.service_repository.all_finished() {
                 debug!("All services have finished, exiting...");
                 break;
