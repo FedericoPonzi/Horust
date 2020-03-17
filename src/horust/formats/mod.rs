@@ -28,6 +28,3 @@ impl Event {
         Self::ForceKill(service_name.clone())
     }
 }
-
-#[derive(Debug, Clone)]
-pub enum EventKind {}

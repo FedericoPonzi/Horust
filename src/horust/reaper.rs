@@ -1,5 +1,5 @@
 use crate::horust::bus::BusConnector;
-use crate::horust::formats::{Event, EventKind, ServiceName, ServiceStatus};
+use crate::horust::formats::{Event, ServiceName, ServiceStatus};
 use nix::sys::wait::{waitpid, WaitStatus};
 use nix::unistd::Pid;
 use std::collections::{HashMap, HashSet};
@@ -10,6 +10,7 @@ pub(crate) fn spawn(bus: BusConnector) {
         supervisor_thread(bus);
     });
 }
+
 struct Repo {
     possibly_running: HashSet<ServiceName>,
     bus: BusConnector,

@@ -225,6 +225,8 @@ pub enum ServiceStatus {
     InRunning,
     /// A finished service has done it's job and won't be restarted.
     Finished,
+    /// A failed, finished service won't be restarted.
+    FinishedFailed,
     /// A Failed service might be restarted if the restart policy demands so.
     Failed,
     // A Service that will be killed soon.
@@ -233,6 +235,7 @@ pub enum ServiceStatus {
     /// it will be run as soon as possible.
     Initial,
 }
+
 impl std::fmt::Display for ServiceStatus {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), Error> {
         f.write_str(match self {
@@ -245,9 +248,11 @@ impl std::fmt::Display for ServiceStatus {
             ServiceStatus::ToBeKilled => "ToBeKilled",
             ServiceStatus::Initial => "Initial",
             ServiceStatus::InRunning => "InRunning",
+            ServiceStatus::FinishedFailed => "FinishedFailed",
         })
     }
 }
+
 #[derive(Serialize, Clone, Deserialize, Debug, Eq, PartialEq)]
 #[serde(rename_all = "kebab-case")]
 pub struct Restart {
@@ -303,13 +308,13 @@ impl From<&str> for RestartStrategy {
 #[derive(Serialize, Clone, Deserialize, Debug, Eq, PartialEq)]
 #[serde(rename_all = "kebab-case")]
 pub struct Failure {
-    #[serde(default = "Failure::default_successfull_exit_code")]
-    pub successfull_exit_code: Vec<i32>,
+    #[serde(default = "Failure::default_successful_exit_code")]
+    pub successful_exit_code: Vec<i32>,
     pub strategy: FailureStrategy,
 }
 
 impl Failure {
-    fn default_successfull_exit_code() -> Vec<i32> {
+    fn default_successful_exit_code() -> Vec<i32> {
         vec![0]
     }
 }
@@ -325,7 +330,7 @@ pub enum FailureStrategy {
 impl Default for Failure {
     fn default() -> Self {
         Failure {
-            successfull_exit_code: Self::default_successfull_exit_code(),
+            successful_exit_code: Self::default_successful_exit_code(),
             strategy: FailureStrategy::Ignore,
         }
     }

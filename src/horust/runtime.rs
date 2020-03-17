@@ -1,15 +1,13 @@
 use crate::horust::bus::BusConnector;
 use crate::horust::error::Result;
-use crate::horust::formats::ServiceStatus::{Finished, InKilling};
 use crate::horust::formats::{
-    Event, EventKind, FailureStrategy, Service, ServiceHandler, ServiceName, ServiceStatus,
+    Event, FailureStrategy, Service, ServiceHandler, ServiceName, ServiceStatus,
 };
 use crate::horust::signal_handling;
 use nix::sys::signal::{self, Signal};
 use nix::unistd::{fork, getppid, ForkResult};
 use nix::unistd::{getpid, Pid};
 use shlex;
-use std::alloc::handle_alloc_error;
 use std::ffi::{CStr, CString};
 use std::fmt::Debug;
 use std::path::PathBuf;
@@ -157,7 +155,11 @@ impl Runtime {
             match service_handler.status {
                 ServiceStatus::Failed => handle_failed_service(&self.repo, service_handler),
                 ServiceStatus::InKilling => {
-                    state_transition::handle_in_killing_service(service_handler)
+                    if should_force_kill(service_handler) {
+                        vec![Event::new_force_kill(service_handler.name())]
+                    } else {
+                        vec![]
+                    }
                 }
                 ServiceStatus::Running => {
                     // Change to service in killing event.
@@ -205,6 +207,22 @@ impl Runtime {
     }
 }
 
+fn should_force_kill(service_handler: &ServiceHandler) -> bool {
+    if let Some(shutting_down_elapsed_secs) = service_handler.shutting_down_start.clone() {
+        let shutting_down_elapsed_secs = shutting_down_elapsed_secs.elapsed().as_secs();
+        debug!(
+            "{}, should not force kill. Elapsed: {}, termination wait: {}",
+            service_handler.name(),
+            shutting_down_elapsed_secs,
+            service_handler.service().termination.wait.clone().as_secs()
+        );
+        shutting_down_elapsed_secs > service_handler.service().termination.wait.clone().as_secs()
+    } else {
+        error!("There is no shutting down elapsed secs!!");
+        false
+    }
+}
+
 fn handle_failed_service(repo: &Repo, failed_sh: &ServiceHandler) -> Vec<Event> {
     match failed_sh.service().failure.strategy {
         FailureStrategy::Shutdown => vec![Event::ShuttingDownInitiated],
@@ -222,37 +240,6 @@ fn handle_failed_service(repo: &Repo, failed_sh: &ServiceHandler) -> Vec<Event> 
                 .collect()
         }
         _ => vec![],
-    }
-}
-
-mod state_transition {
-    use crate::horust::formats::ServiceStatus::Running;
-    use crate::horust::formats::{Event, FailureStrategy, ServiceHandler, ServiceStatus};
-    use crate::horust::runtime::{kill, run_spawning_thread, Repo};
-    use nix::sys::signal::{self, Signal};
-
-    pub(crate) fn handle_in_killing_service(service_handler: &ServiceHandler) -> Vec<Event> {
-        // If after termination.wait time the service has not yet exited, then we will use the force:
-        let should_force_kill =
-            if let Some(shutting_down_elapsed_secs) = service_handler.shutting_down_start.clone() {
-                let shutting_down_elapsed_secs = shutting_down_elapsed_secs.elapsed().as_secs();
-                debug!(
-                    "{}, should not force kill. Elapsed: {}, termination wait: {}",
-                    service_handler.name(),
-                    shutting_down_elapsed_secs,
-                    service_handler.service().termination.wait.clone().as_secs()
-                );
-                shutting_down_elapsed_secs
-                    > service_handler.service().termination.wait.clone().as_secs()
-            } else {
-                error!("There is no shutting down elapsed secs!!");
-                false
-            };
-        if should_force_kill {
-            vec![Event::new_force_kill(service_handler.name())]
-        } else {
-            vec![]
-        }
     }
 }
 
@@ -339,7 +326,6 @@ fn exec_service(service: &Service) {
 #[cfg(test)]
 mod test {
     use crate::horust::formats::ServiceHandler;
-    use crate::horust::runtime::state_transition;
 
     #[test]
     fn test_handle_in_killing() {

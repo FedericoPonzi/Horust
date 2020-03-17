@@ -99,7 +99,7 @@ impl ServiceHandler {
         let has_failed = !self
             .service
             .failure
-            .successfull_exit_code
+            .successful_exit_code
             .contains(&exit_code);
         if has_failed {
             error!(

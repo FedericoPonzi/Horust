@@ -12,7 +12,6 @@ pub use self::formats::get_sample_service;
 use crate::horust::bus::Bus;
 use crate::horust::error::Result;
 use crate::horust::formats::{validate, Service};
-//use crate::horust::repository::ServiceRepository;
 use libc::{prctl, PR_SET_CHILD_SUBREAPER};
 use std::ffi::OsStr;
 use std::fmt::Debug;
