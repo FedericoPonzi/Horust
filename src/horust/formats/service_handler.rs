@@ -7,8 +7,6 @@ pub struct ServiceHandler {
     service: Service,
     pub(crate) status: ServiceStatus,
     pub(crate) pid: Option<Pid>,
-    // Used only by the Runtime.
-    pub marked_for_killing: bool,
     /// Instant representing at which time we received a shutdown request. Will be used for comparing Service.termination.wait
     pub(crate) shutting_down_start: Option<Instant>,
 }
@@ -20,7 +18,6 @@ impl From<Service> for ServiceHandler {
             status: ServiceStatus::Initial,
             pid: None,
             shutting_down_start: None,
-            marked_for_killing: false,
         }
     }
 }
@@ -93,8 +90,8 @@ impl ServiceHandler {
     }
 
     pub fn shutting_down_started(&mut self) {
-        self.marked_for_killing = false;
         self.shutting_down_start = Some(Instant::now());
+        self.status = ServiceStatus::InKilling;
     }
 
     pub fn set_status_by_exit_code(&mut self, exit_code: i32) {

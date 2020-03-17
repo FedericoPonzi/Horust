@@ -1,6 +1,6 @@
 use crate::horust::bus::BusConnector;
 use crate::horust::error::Result;
-use crate::horust::formats::ServiceStatus::Finished;
+use crate::horust::formats::ServiceStatus::{Finished, InKilling};
 use crate::horust::formats::{
     Event, EventKind, FailureStrategy, Service, ServiceHandler, ServiceName, ServiceStatus,
 };
@@ -106,13 +106,13 @@ impl Runtime {
                         if service_handler.status == ServiceStatus::Initial {
                             service_handler.status = ServiceStatus::Finished;
                         } else if service_handler.status == ServiceStatus::Running {
+                            service_handler.shutting_down_started();
                             kill(
                                 service_handler,
                                 service_handler.service().termination.signal.as_signal(),
                             );
                         }
                     }
-                    ServiceStatus::Failed => {}
                     ServiceStatus::ToBeRun => {
                         //healthcheck::prepare_service(service_handler).unwrap();
                         service_handler.status = ServiceStatus::InRunning;
@@ -142,16 +142,31 @@ impl Runtime {
     /// Compute next state for each sh
     pub fn next(&self, service_handler: &ServiceHandler) -> Vec<Event> {
         if self.repo.is_service_runnable(&service_handler) {
-            vec![Event::new_status_changed(
-                service_handler.name(),
-                ServiceStatus::ToBeRun,
-            )]
+            if self.is_shutting_down {
+                vec![Event::new_status_changed(
+                    service_handler.name(),
+                    ServiceStatus::Finished,
+                )]
+            } else {
+                vec![Event::new_status_changed(
+                    service_handler.name(),
+                    ServiceStatus::ToBeRun,
+                )]
+            }
         } else {
             match service_handler.status {
                 ServiceStatus::Failed => handle_failed_service(&self.repo, service_handler),
                 ServiceStatus::InKilling => {
                     state_transition::handle_in_killing_service(service_handler)
                 }
+                ServiceStatus::Running => {
+                    // Change to service in killing event.
+                    vec![Event::new_status_changed(
+                        service_handler.name(),
+                        ServiceStatus::ToBeKilled,
+                    )]
+                }
+
                 ServiceStatus::ToBeKilled => {
                     // Change to service in killing event.
                     vec![]
