@@ -24,16 +24,17 @@ impl Repo {
             bus,
         }
     }
+
     fn consume(&mut self, ev: Event) {
-        match &ev.kind {
-            EventKind::PidChanged(pid) => {
-                self.pids_map.insert(pid.clone(), ev.service_name);
+        match ev {
+            Event::PidChanged(service_name, pid) => {
+                self.pids_map.insert(pid, service_name);
             }
-            EventKind::StatusChanged(status) => {
-                if vec![ServiceStatus::ToBeRun, ServiceStatus::Initial].contains(status) {
-                    self.possibly_running.insert(ev.service_name);
+            Event::StatusChanged(service_name, status) => {
+                if vec![ServiceStatus::ToBeRun, ServiceStatus::Initial].contains(&status) {
+                    self.possibly_running.insert(service_name);
                 } else {
-                    self.possibly_running.remove(&ev.service_name);
+                    self.possibly_running.remove(&service_name);
                 }
             }
             _ => (),
@@ -42,7 +43,8 @@ impl Repo {
     fn send_pid_exited(&mut self, pid: Pid, exit_code: i32) {
         if self.pids_map.contains_key(&pid) {
             let service_name = self.pids_map.remove(&pid).unwrap();
-            self.bus.send_exit_code(service_name, exit_code);
+            self.bus
+                .send_event(Event::new_service_exited(service_name, exit_code));
         }
     }
 

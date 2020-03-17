@@ -60,36 +60,7 @@ impl BusConnector {
         self.receiver.try_iter().collect()
     }
 
-    fn send_update(&self, ev: Event) {
-        //debug!("Going to send the following event: {:?}", ev);
+    pub(crate) fn send_event(&self, ev: Event) {
         self.sender.send(ev).expect("Failed sending update event!");
-    }
-
-    pub fn send_exit_code(&self, service_name: ServiceName, exit_code: i32) {
-        self.send_update(Event::new(
-            service_name,
-            EventKind::ServiceExited(exit_code),
-        ));
-    }
-
-    pub fn send_updated_pid(&self, sh: &ServiceHandler) {
-        self.send_update(Event::new(
-            sh.name().clone(),
-            EventKind::PidChanged(sh.pid.unwrap()),
-        ));
-    }
-
-    pub fn send_updated_status(&self, sh: &ServiceHandler) {
-        self.send_update(Event::new(
-            sh.service().name.clone(),
-            EventKind::StatusChanged(sh.status.clone()),
-        ));
-    }
-
-    pub fn send_updated_marked_for_killing(&self, sh: &ServiceHandler) {
-        self.send_update(Event::new(
-            sh.name().clone(),
-            EventKind::MarkedForKillingChanged(sh.marked_for_killing.clone()),
-        ));
     }
 }

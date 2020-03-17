@@ -19,36 +19,6 @@ impl ServiceRepository {
         }
     }
 
-    //TODO: probably this should be failedfinished.
-    pub(crate) fn get_failed(&self) -> Vec<ServiceHandler> {
-        self.services
-            .iter()
-            .filter(|sh| sh.is_failed())
-            .cloned()
-            .collect()
-    }
-
-    fn update_from_events(&mut self, events: Vec<Event>) {
-        events.into_iter().for_each(|ev| {
-            self.services
-                .iter_mut()
-                .filter(|sh| ev.service_name == *sh.service().name)
-                .for_each(|sh| match &ev.kind {
-                    EventKind::StatusChanged(status) => {
-                        sh.status = status.clone();
-                    }
-                    EventKind::MarkedForKillingChanged(mark) => {
-                        sh.marked_for_killing = *mark;
-                    }
-                    EventKind::ServiceExited(exit_code) => sh.set_status_by_exit_code(*exit_code),
-                    EventKind::PidChanged(pid) => {
-                        sh.pid = Some(pid.clone());
-                        sh.status = ServiceStatus::Running;
-                    }
-                })
-        });
-    }
-
     /// Process all the received services changes. Non-blocking
     pub fn ingest(&mut self, _name: &str) {
         let updates: Vec<Event> = self.updates_queue.try_get_events();
@@ -80,35 +50,12 @@ impl ServiceRepository {
             });
     }
 
-    pub fn all_finished(&self) -> bool {
-        self.services
-            .iter()
-            .all(|sh| sh.is_finished() || sh.is_failed())
-    }
-
     pub fn get_dependents(&self, name: ServiceName) -> Vec<ServiceHandler> {
         self.services
             .iter()
             .filter(|sh| sh.service().start_after.contains(&name))
             .cloned()
             .collect()
-    }
-
-    pub(crate) fn is_service_runnable(&self, sh: &ServiceHandler) -> bool {
-        if !sh.is_initial() {
-            return false;
-        }
-        //TODO: check if it's finished failed. Apply restart policy.
-
-        for service_name in sh.start_after() {
-            let is_started = self.services.iter().any(|service| {
-                service.name() == service_name && (service.is_running() || service.is_finished())
-            });
-            if !is_started {
-                return false;
-            }
-        }
-        true
     }
 
     // apply a function to all services, and send an update on the bus for the changed services.

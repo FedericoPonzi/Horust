@@ -220,12 +220,15 @@ pub enum ServiceStatus {
     ToBeRun,
     /// The service is up and healthy
     Running,
-    /// Signal sent, waiting for the process to terminate.
+    /// Friendly signal sent, waiting for the process to terminate.
     InKilling,
+    InRunning,
     /// A finished service has done it's job and won't be restarted.
     Finished,
     /// A Failed service might be restarted if the restart policy demands so.
     Failed,
+    // A Service that will be killed soon.
+    ToBeKilled,
     /// This is the initial state: A service in Initial state is marked to be runnable:
     /// it will be run as soon as possible.
     Initial,
@@ -239,7 +242,9 @@ impl std::fmt::Display for ServiceStatus {
             ServiceStatus::InKilling => "InKilling",
             ServiceStatus::Finished => "Finished",
             ServiceStatus::Failed => "Failed",
+            ServiceStatus::ToBeKilled => "ToBeKilled",
             ServiceStatus::Initial => "Initial",
+            ServiceStatus::InRunning => "InRunning",
         })
     }
 }
