@@ -153,6 +153,7 @@ wait = "1s""#;
     let (receiver, pid) = run_async(cmd, true);
     kill(pid, Signal::SIGINT).expect("kill");
     thread::sleep(Duration::from_secs(3));
+    //todo: send sigkill.
     receiver.try_recv().unwrap();
 }
 

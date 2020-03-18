@@ -1,18 +1,58 @@
-use crate::horust::formats::{ServiceHandler, ServiceStatus};
-use crate::horust::repository::ServiceRepository;
-
+use crate::horust::bus::BusConnector;
+use crate::horust::formats::{Event, Service, ServiceHandler, ServiceName, ServiceStatus};
 #[cfg(feature = "http-healthcheck")]
 use reqwest::blocking::Client;
+use std::collections::HashMap;
 use std::time::Duration;
 
 // TODO:
 // * Tunable healthchecks in horust's config
 // * If there are no checks to run, just exit the thread. or go sleep until an "service created" event is received.
-pub fn spawn(mut services: ServiceRepository) {
-    std::thread::spawn(move || loop {
-        run_checks(&mut services);
-        std::thread::sleep(Duration::from_millis(1000));
+pub fn spawn(bus: BusConnector, services: Vec<Service>) {
+    std::thread::spawn(move || {
+        let mut repo = Repo::new(bus, services);
+        loop {
+            run_checks(&mut repo);
+            std::thread::sleep(Duration::from_millis(1000));
+        }
     });
+}
+
+struct Repo {
+    bus: BusConnector,
+    services: HashMap<ServiceName, Service>,
+    starting: HashMap<ServiceName, Service>,
+    running: HashMap<ServiceName, Service>,
+}
+
+impl Repo {
+    fn ingest(&mut self) {
+        self.bus.try_get_events().into_iter().for_each(|ev| {
+            if let Event::StatusChanged(service_name, status) = ev {
+                let svc = self.services.get(&service_name).unwrap();
+                if status == ServiceStatus::Starting {
+                    self.starting.insert(svc.name.clone(), svc.clone());
+                } else if status == ServiceStatus::Running {
+                    let svc = self.starting.remove(&service_name);
+                    self.running.insert(service_name, svc.unwrap());
+                }
+            }
+        });
+    }
+    fn new(bus: BusConnector, services: Vec<Service>) -> Self {
+        Self {
+            bus,
+            services: services
+                .into_iter()
+                .map(|service| (service.name.clone(), service))
+                .collect(),
+            starting: Default::default(),
+            running: Default::default(),
+        }
+    }
+    fn send_ev(&mut self, ev: Event) {
+        self.bus.send_event(ev)
+    }
 }
 
 #[cfg(feature = "http-healthcheck")]
@@ -21,10 +61,8 @@ fn check_http_endpoint(endpoint: &str) -> bool {
     let resp: reqwest::blocking::Response = client.head(endpoint).send().unwrap();
     resp.status().is_success()
 }
-
-fn run_checks(services: &mut ServiceRepository) {
-    services.ingest("healthcheck");
-    let healthchecks = |sh: &ServiceHandler| match sh.service().healthiness.as_ref() {
+fn healthchecks(service: &Service) -> bool {
+    match service.healthiness.as_ref() {
         Some(healthiness) => {
             // Count of required checks:
             let mut checks = 0;
@@ -62,19 +100,28 @@ fn run_checks(services: &mut ServiceRepository) {
             res || !empty_section
         }
         None => true,
-    };
-    services.mutate_service_status_apply(|sh| {
-        let is_healthy = healthchecks(sh);
-        if sh.is_starting() && is_healthy {
-            sh.set_status(ServiceStatus::Running);
-            Some(sh)
-        } else if sh.is_running() && !is_healthy {
-            sh.set_status(ServiceStatus::Failed);
-            Some(sh)
-        } else {
-            None
-        }
-    });
+    }
+}
+fn run_checks(repo: &mut Repo) {
+    repo.ingest();
+    let evs_starting: Vec<Event> = repo
+        .starting
+        .iter()
+        .filter(|(_s_name, service)| healthchecks(service))
+        .map(|(s_name, _service)| Event::new_status_changed(s_name, ServiceStatus::Running))
+        .collect();
+    let evs_running: Vec<Event> = repo
+        .running
+        .iter()
+        .filter(|(_s_name, service)| !healthchecks(service))
+        .map(|(service_name, _service)| {
+            Event::new_status_changed(service_name, ServiceStatus::Failed)
+        })
+        .collect();
+
+    for ev in evs_starting.into_iter().chain(evs_running) {
+        repo.send_ev(ev);
+    }
 }
 
 /// Setup require for the service, before running the healthchecks and starting the service.
@@ -87,11 +134,10 @@ pub fn prepare_service(service_handler: &ServiceHandler) -> Result<(), std::io::
     Ok(())
 }
 
+/*
 #[cfg(test)]
 mod test {
-    /*
-    use crate::horust::formats::{Healthness, Service, ServiceStatus, UpdatesQueue};
-    use crate::horust::service_handler::ServiceRepository;
+    use crate::horust::formats::{Healthness, Service, ServiceStatus};
     use crate::horust::{get_sample_service, healthcheck};
     use std::sync::Arc;
 
@@ -139,5 +185,5 @@ mod test {
         healthcheck::run_checks(&Arc::clone(&services));
         assert_status(&services, ServiceStatus::Running);
     }
-    */
 }
+*/

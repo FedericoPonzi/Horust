@@ -1,9 +1,8 @@
 mod bus;
 mod error;
 mod formats;
-// mod healthcheck;
+mod healthcheck;
 mod reaper;
-//mod repository;
 mod runtime;
 mod signal_handling;
 
@@ -59,10 +58,7 @@ impl Horust {
         debug!("Going to spawn threads:, going to start running services now!");
         runtime::spawn(dispatcher.join_bus(), self.services.clone());
         reaper::spawn(dispatcher.join_bus());
-        /*healthcheck::spawn(ServiceRepository::new(
-            self.services.clone(),
-            dispatcher.join_bus(),
-        ));*/
+        healthcheck::spawn(dispatcher.join_bus(), self.services.clone());
         dispatcher.run();
     }
 }

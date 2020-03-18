@@ -3,7 +3,7 @@ use crate::horust::error::Result;
 use crate::horust::formats::{
     Event, FailureStrategy, Service, ServiceHandler, ServiceName, ServiceStatus,
 };
-use crate::horust::signal_handling;
+use crate::horust::{healthcheck, signal_handling};
 use nix::sys::signal::{self, Signal};
 use nix::unistd::{fork, getppid, ForkResult};
 use nix::unistd::{getpid, Pid};
@@ -12,7 +12,7 @@ use std::ffi::{CStr, CString};
 use std::fmt::Debug;
 use std::path::PathBuf;
 use std::thread;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 #[derive(Debug)]
 pub struct Runtime {
@@ -96,27 +96,43 @@ impl Runtime {
         match ev {
             Event::StatusChanged(service_name, status) => {
                 let service_handler = self.repo.get_mut_service(&service_name);
-                if self.is_shutting_down {
-                    return;
-                }
                 match status {
                     ServiceStatus::ToBeKilled => {
                         if service_handler.status == ServiceStatus::Initial {
                             service_handler.status = ServiceStatus::Finished;
-                        } else if service_handler.status == ServiceStatus::Running {
-                            service_handler.shutting_down_started();
+                        } else if vec![ServiceStatus::Running, ServiceStatus::Starting]
+                            .contains(&service_handler.status)
+                        {
+                            service_handler.status = ServiceStatus::ToBeKilled;
+                            service_handler.shutting_down_start = Some(Instant::now());
                             kill(
                                 service_handler,
                                 service_handler.service().termination.signal.as_signal(),
                             );
+                        } else {
+                            error!(
+                                "Service tobekilled was in status: {}",
+                                service_handler.status
+                            );
                         }
                     }
                     ServiceStatus::ToBeRun => {
-                        //healthcheck::prepare_service(service_handler).unwrap();
-                        service_handler.status = ServiceStatus::InRunning;
+                        service_handler.status = ServiceStatus::ToBeRun;
+                        healthcheck::prepare_service(service_handler).unwrap();
                         run_spawning_thread(service_handler.service().clone(), self.repo.clone());
                     }
-                    unhandled_status => service_handler.status = unhandled_status,
+                    ServiceStatus::Running => {
+                        if service_handler.status == ServiceStatus::Starting {
+                            service_handler.status = ServiceStatus::Running;
+                        }
+                    }
+                    unhandled_status => {
+                        debug!(
+                            "Unhandled status, setting: {}, {}",
+                            service_name, unhandled_status
+                        );
+                        service_handler.status = unhandled_status;
+                    }
                 }
             }
             Event::ServiceExited(service_name, exit_code) => {
@@ -131,7 +147,6 @@ impl Runtime {
             Event::PidChanged(service_name, pid) => {
                 let service_handler = self.repo.get_mut_service(&service_name);
                 service_handler.pid = Some(pid);
-                service_handler.status = ServiceStatus::Running;
             }
             Event::ShuttingDownInitiated => self.is_shutting_down = true,
         }
@@ -161,32 +176,42 @@ impl Runtime {
                         vec![]
                     }
                 }
-                ServiceStatus::Running => {
+                ServiceStatus::Running | ServiceStatus::Starting => {
                     // Change to service in killing event.
-                    vec![Event::new_status_changed(
-                        service_handler.name(),
-                        ServiceStatus::ToBeKilled,
-                    )]
+                    if self.is_shutting_down {
+                        vec![Event::new_status_changed(
+                            service_handler.name(),
+                            ServiceStatus::ToBeKilled,
+                        )]
+                    } else {
+                        vec![]
+                    }
                 }
 
                 ServiceStatus::ToBeKilled => {
                     // Change to service in killing event.
-                    vec![]
+                    vec![Event::new_status_changed(
+                        service_handler.name(),
+                        ServiceStatus::InKilling,
+                    )]
                 }
                 _ => vec![],
             }
         }
     }
 
-    /// Blocking call. Continuously try to (re)start services, and init shutdown as needed.
+    /// Blocking call. Tries to move state machines forward
     pub fn run(&mut self) {
         loop {
             // Ingest updates
             let events = self.repo.get_events();
             debug!("Applying events.. {:?}", events);
+            if signal_handling::is_sigterm_received() && !self.is_shutting_down {
+                self.repo.send_ev(Event::ShuttingDownInitiated);
+            }
+
             events.into_iter().for_each(|ev| self.apply_event(ev));
 
-            if signal_handling::is_sigterm_received() {}
             let events: Vec<Event> = self
                 .repo
                 .services
@@ -265,17 +290,23 @@ fn kill(sh: &ServiceHandler, signal: Signal) {
 fn run_spawning_thread(service: Service, mut repo: Repo) {
     std::thread::spawn(move || {
         std::thread::sleep(service.start_delay);
-        let ev = match spawn_process(&service) {
+        let evs = match spawn_process(&service) {
             Ok(pid) => {
                 debug!("Setting pid:{} for service: {}", pid, service.name);
-                Event::new_pid_changed(service.name, pid)
+                vec![
+                    Event::new_pid_changed(service.name.clone(), pid),
+                    Event::new_status_changed(&service.name, ServiceStatus::Starting),
+                ]
             }
             Err(error) => {
                 error!("Failed spawning the process: {}", error);
-                Event::new_status_changed(&service.name, ServiceStatus::Failed)
+                vec![Event::new_status_changed(
+                    &service.name,
+                    ServiceStatus::Failed,
+                )]
             }
         };
-        repo.send_ev(ev);
+        evs.into_iter().for_each(|ev| repo.send_ev(ev));
     });
 }
 
@@ -325,10 +356,7 @@ fn exec_service(service: &Service) {
 
 #[cfg(test)]
 mod test {
-    use crate::horust::formats::ServiceHandler;
-
     #[test]
-    fn test_handle_in_killing() {
-        //handlers::handle_in_killing_service(ServiceHandler);
-    }
+    #[ignore]
+    fn test_life_cycle() {}
 }

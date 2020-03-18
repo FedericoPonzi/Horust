@@ -215,6 +215,7 @@ Failed => Initial : "restart = always|on-failure";
 
 #[derive(Serialize, Clone, Deserialize, Debug, Eq, PartialEq)]
 pub enum ServiceStatus {
+    /// Has a pid,
     Starting,
     /// This is just an intermediate state between Initial and Running.
     ToBeRun,
