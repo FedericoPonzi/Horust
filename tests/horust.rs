@@ -96,7 +96,7 @@ pwd"#;
 }
 
 #[test]
-fn tests_start_after() {
+fn test_start_after() {
     let (mut cmd, temp_dir) = get_cli();
     let script_first = r#"#!/bin/bash
 echo "a""#;
@@ -153,6 +153,7 @@ wait = "1s""#;
     let (receiver, pid) = run_async(cmd, true);
     kill(pid, Signal::SIGINT).expect("kill");
     thread::sleep(Duration::from_secs(3));
+    //todo: send sigkill.
     receiver.try_recv().unwrap();
 }
 

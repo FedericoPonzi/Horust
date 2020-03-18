@@ -1,4 +1,4 @@
-use crate::horust::formats::{Event, EventKind, ServiceHandler};
+use crate::horust::formats::Event;
 use crossbeam::channel::{unbounded, Receiver, Sender};
 
 /// Since I couldn't find any satisfying crate for broadcasting messages,
@@ -55,23 +55,12 @@ impl BusConnector {
         BusConnector { sender, receiver }
     }
 
-    fn send_update(&self, ev: Event) {
-        //debug!("Going to send the following event: {:?}", ev);
-        self.sender.send(ev).expect("Failed sending update event!");
-    }
-
+    /// Non blocking
     pub fn try_get_events(&self) -> Vec<Event> {
         self.receiver.try_iter().collect()
     }
 
-    pub fn send_update_pid(&self, sh: &ServiceHandler) {
-        self.send_update(Event::new(sh.clone(), EventKind::PidChanged));
-    }
-
-    pub fn send_updated_status(&self, sh: &ServiceHandler) {
-        self.send_update(Event::new(sh.clone(), EventKind::StatusChanged));
-    }
-    pub fn send_updated_marked_for_killing(&self, sh: &ServiceHandler) {
-        self.send_update(Event::new(sh.clone(), EventKind::MarkedForKillingChanged));
+    pub(crate) fn send_event(&self, ev: Event) {
+        self.sender.send(ev).expect("Failed sending update event!");
     }
 }

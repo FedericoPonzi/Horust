@@ -3,7 +3,6 @@ mod error;
 mod formats;
 mod healthcheck;
 mod reaper;
-mod repository;
 mod runtime;
 mod signal_handling;
 
@@ -12,7 +11,6 @@ pub use self::formats::get_sample_service;
 use crate::horust::bus::Bus;
 use crate::horust::error::Result;
 use crate::horust::formats::{validate, Service};
-use crate::horust::repository::ServiceRepository;
 use libc::{prctl, PR_SET_CHILD_SUBREAPER};
 use std::ffi::OsStr;
 use std::fmt::Debug;
@@ -55,14 +53,12 @@ impl Horust {
         signal_handling::init();
 
         let mut dispatcher = Bus::new();
-        let mut new_service_repo =
-            || ServiceRepository::new(self.services.clone(), dispatcher.join_bus());
         debug!("Services: {:?}", self.services);
         // Spawn helper threads:
         debug!("Going to spawn threads:, going to start running services now!");
-        runtime::spawn(new_service_repo());
-        reaper::spawn(new_service_repo());
-        healthcheck::spawn(new_service_repo());
+        runtime::spawn(dispatcher.join_bus(), self.services.clone());
+        reaper::spawn(dispatcher.join_bus());
+        healthcheck::spawn(dispatcher.join_bus(), self.services.clone());
         dispatcher.run();
     }
 }

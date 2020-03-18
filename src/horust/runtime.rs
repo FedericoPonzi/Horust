@@ -1,6 +1,8 @@
+use crate::horust::bus::BusConnector;
 use crate::horust::error::Result;
-use crate::horust::formats::{FailureStrategy, Service, ServiceHandler, ServiceStatus};
-use crate::horust::repository::ServiceRepository;
+use crate::horust::formats::{
+    Event, FailureStrategy, Service, ServiceHandler, ServiceName, ServiceStatus,
+};
 use crate::horust::{healthcheck, signal_handling};
 use nix::sys::signal::{self, Signal};
 use nix::unistd::{fork, getppid, ForkResult};
@@ -10,147 +12,233 @@ use std::ffi::{CStr, CString};
 use std::fmt::Debug;
 use std::path::PathBuf;
 use std::thread;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 #[derive(Debug)]
 pub struct Runtime {
-    service_repository: ServiceRepository,
     is_shutting_down: bool,
+    repo: Repo,
+}
+
+#[derive(Debug, Clone)]
+struct Repo {
+    pub services: Vec<ServiceHandler>,
+    pub(crate) bus: BusConnector,
+}
+
+impl Repo {
+    fn new<T: Into<ServiceHandler>>(bus: BusConnector, services: Vec<T>) -> Self {
+        let services = services.into_iter().map(Into::into).collect();
+        Self { bus, services }
+    }
+    fn get_events(&mut self) -> Vec<Event> {
+        self.bus.try_get_events()
+    }
+    pub fn all_finished(&self) -> bool {
+        self.services
+            .iter()
+            .all(|sh| sh.is_finished() || sh.is_failed())
+    }
+    pub fn get_mut_service(&mut self, service_name: &ServiceName) -> &mut ServiceHandler {
+        self.services
+            .iter_mut()
+            .filter(|sh| sh.name() == service_name)
+            .last()
+            .unwrap()
+    }
+
+    fn get_dependents(&self, service_name: &ServiceName) -> Vec<ServiceHandler> {
+        self.services
+            .iter()
+            .filter(|sh| sh.service().start_after.contains(service_name))
+            .cloned()
+            .collect()
+    }
+
+    fn send_ev(&mut self, ev: Event) {
+        self.bus.send_event(ev)
+    }
+
+    fn is_service_runnable(&self, sh: &ServiceHandler) -> bool {
+        if !sh.is_initial() {
+            return false;
+        }
+        //TODO: check if it's finished failed. Apply restart policy.
+
+        for service_name in sh.start_after() {
+            let is_started = self.services.iter().any(|service| {
+                service.name() == service_name && (service.is_running() || service.is_finished())
+            });
+            if !is_started {
+                return false;
+            }
+        }
+        true
+    }
 }
 
 // Spawns and runs this component in a new thread.
-pub fn spawn(repo: ServiceRepository) {
-    thread::spawn(move || Runtime::new(repo).run());
+pub fn spawn(bus: BusConnector, services: Vec<Service>) {
+    thread::spawn(move || Runtime::new(bus, services).run());
 }
 
 impl Runtime {
-    fn new(repo: ServiceRepository) -> Self {
+    fn new(bus: BusConnector, services: Vec<Service>) -> Self {
+        let repo = Repo::new(bus, services);
         Self {
-            service_repository: repo,
+            repo,
             is_shutting_down: false,
         }
     }
 
-    /// Check if the system should shutdown. If so, triggers the stop of all the services.
-    fn should_shutdown(&mut self) {
-        if self.is_shutting_down {
-            self.stop_all_services();
-        } else {
-            // If any failed service has the kill-all strategy, then shut everything down.
-            let failed_shutdown_strategy = self
-                .service_repository
-                .get_failed()
-                .into_iter()
-                .any(|sh| sh.service().failure.strategy == FailureStrategy::Shutdown);
-
-            if failed_shutdown_strategy {
-                debug!("Found failed service with shutdown strategy.");
+    // Apply side effects
+    fn apply_event(&mut self, ev: Event) {
+        match ev {
+            Event::StatusChanged(service_name, status) => {
+                let service_handler = self.repo.get_mut_service(&service_name);
+                match status {
+                    ServiceStatus::ToBeKilled => {
+                        if service_handler.status == ServiceStatus::Initial {
+                            service_handler.status = ServiceStatus::Finished;
+                        } else if vec![
+                            ServiceStatus::Running,
+                            ServiceStatus::Starting,
+                            ServiceStatus::ToBeRun,
+                        ]
+                        .contains(&service_handler.status)
+                        {
+                            service_handler.status = ServiceStatus::ToBeKilled;
+                            service_handler.shutting_down_start = Some(Instant::now());
+                            kill(
+                                service_handler,
+                                service_handler.service().termination.signal.as_signal(),
+                            );
+                        } else {
+                            error!(
+                                "Service tobekilled was in status: {}",
+                                service_handler.status
+                            );
+                        }
+                    }
+                    ServiceStatus::ToBeRun => {
+                        if service_handler.status == ServiceStatus::Initial {
+                            service_handler.status = ServiceStatus::ToBeRun;
+                            healthcheck::prepare_service(service_handler).unwrap();
+                            run_spawning_thread(
+                                service_handler.service().clone(),
+                                self.repo.clone(),
+                            );
+                        } else {
+                            debug!("{}: Ignoring ToBeRun event", service_name);
+                        }
+                    }
+                    ServiceStatus::Running => {
+                        if service_handler.status == ServiceStatus::Starting {
+                            service_handler.status = ServiceStatus::Running;
+                        }
+                    }
+                    ServiceStatus::Starting => {
+                        if service_handler.status != ServiceStatus::InKilling {
+                            service_handler.status = ServiceStatus::Starting;
+                        }
+                    }
+                    unhandled_status => {
+                        debug!(
+                            "Unhandled status, setting: {}, {}",
+                            service_name, unhandled_status
+                        );
+                        service_handler.status = unhandled_status;
+                    }
+                }
             }
-            if signal_handling::is_sigterm_received() || failed_shutdown_strategy {
-                self.is_shutting_down = true;
-                self.stop_all_services();
+            Event::ServiceExited(service_name, exit_code) => {
+                let service_handler = self.repo.get_mut_service(&service_name);
+                service_handler.set_status_by_exit_code(exit_code);
             }
+            Event::ForceKill(service_name) => {
+                let service_handler = self.repo.get_mut_service(&service_name);
+                kill(&service_handler, Signal::SIGKILL);
+                service_handler.status = ServiceStatus::Finished;
+            }
+            Event::PidChanged(service_name, pid) => {
+                let service_handler = self.repo.get_mut_service(&service_name);
+                service_handler.pid = Some(pid);
+            }
+            Event::ShuttingDownInitiated => self.is_shutting_down = true,
         }
     }
-    pub fn handle_failing_service(
-        &mut self,
-        mut failed_sh: ServiceHandler,
-    ) -> Option<ServiceHandler> {
-        match failed_sh.service().failure.strategy {
-            FailureStrategy::Shutdown => {
-                self.is_shutting_down = true;
-                None
-            }
-            FailureStrategy::KillDependents => {
-                debug!("Failed service has kill-dependents strategy, going to mark them all..");
-                let _dependents = self
-                    .service_repository
-                    .get_dependents(failed_sh.name().into())
-                    .iter_mut()
-                    .for_each(|dep| {
-                        dep.marked_for_killing = true;
-                        self.service_repository.mutate_marked_for_killing(Some(dep))
-                    });
 
-                // Todo: finishedfailed
-                failed_sh.set_status(ServiceStatus::Finished);
-                Some(failed_sh)
-            }
-            _ => None,
-        }
-    }
-    fn handle_runnable_service(
-        &mut self,
-        service_handler: ServiceHandler,
-    ) -> Option<ServiceHandler> {
-        debug!("Found runnable service: {:?}", service_handler);
-        self.service_repository
-            .update_status(service_handler.name(), ServiceStatus::ToBeRun);
-        healthcheck::prepare_service(&service_handler).unwrap();
-        run_spawning_thread(
-            service_handler.service().clone(),
-            self.service_repository.clone(),
-        );
-        None
-    }
-    fn handle_in_killing_service(
-        &self,
-        mut service_handler: ServiceHandler,
-    ) -> Option<ServiceHandler> {
-        debug!("{} is in killing..", service_handler.name());
-        // If after termination.wait time the service has not yet exited, then we will use the force:
-        let should_force_kill =
-            if let Some(shutting_down_elapsed_secs) = service_handler.shutting_down_start.clone() {
-                let shutting_down_elapsed_secs = shutting_down_elapsed_secs.elapsed().as_secs();
-
-                debug!(
-                    "{}, should not force kill. Elapsed: {}, termination wait: {}",
+    /// Compute next state for each sh
+    pub fn next(&self, service_handler: &ServiceHandler) -> Vec<Event> {
+        if self.repo.is_service_runnable(&service_handler) {
+            if self.is_shutting_down {
+                vec![Event::new_status_changed(
                     service_handler.name(),
-                    shutting_down_elapsed_secs,
-                    service_handler.service().termination.wait.clone().as_secs()
-                );
-                shutting_down_elapsed_secs
-                    > service_handler.service().termination.wait.clone().as_secs()
+                    ServiceStatus::Finished,
+                )]
             } else {
-                error!("There is no shutting down elapsed secs!!");
-                false
-            };
-        if service_handler.is_in_killing() && should_force_kill {
-            kill(&service_handler, Signal::SIGKILL);
-            service_handler.set_status(ServiceStatus::Finished);
-            service_handler.shutting_down_start = None;
-            Some(service_handler)
+                vec![Event::new_status_changed(
+                    service_handler.name(),
+                    ServiceStatus::ToBeRun,
+                )]
+            }
         } else {
-            None
+            match service_handler.status {
+                ServiceStatus::Failed => handle_failed_service(&self.repo, service_handler),
+                ServiceStatus::InKilling => {
+                    if should_force_kill(service_handler) {
+                        vec![Event::new_force_kill(service_handler.name())]
+                    } else {
+                        vec![]
+                    }
+                }
+                ServiceStatus::Running | ServiceStatus::Starting => {
+                    // Change to service in killing event.
+                    if self.is_shutting_down {
+                        vec![Event::new_status_changed(
+                            service_handler.name(),
+                            ServiceStatus::ToBeKilled,
+                        )]
+                    } else {
+                        vec![]
+                    }
+                }
+
+                ServiceStatus::ToBeKilled => {
+                    // Change to service in killing event.
+                    vec![Event::new_status_changed(
+                        service_handler.name(),
+                        ServiceStatus::InKilling,
+                    )]
+                }
+                _ => vec![],
+            }
         }
     }
-    /// Blocking call. Continuously try to (re)start services, and init shutdown as needed.
+
+    /// Blocking call. Tries to move state machines forward
     pub fn run(&mut self) {
         loop {
-            //TODO: a blocking update maybe? This loop should be executed onstatechange.
             // Ingest updates
-            self.service_repository.ingest("runtime");
+            let events = self.repo.get_events();
+            debug!("Applying events.. {:?}", events);
+            if signal_handling::is_sigterm_received() && !self.is_shutting_down {
+                self.repo.send_ev(Event::ShuttingDownInitiated);
+            }
 
-            // Check if the system is shuttingdown and if so handles the shutdown of the services.
-            self.should_shutdown();
-            let old_repo = self.service_repository.clone();
-            old_repo.services.into_iter().for_each(|mut sh| {
-                let sh = if sh.is_failed() {
-                    self.handle_failing_service(sh)
-                } else if self.service_repository.is_service_runnable(&sh) {
-                    self.handle_runnable_service(sh)
-                } else if sh.marked_for_killing {
-                    shutdown_service(&mut sh);
-                    Some(sh)
-                } else if sh.is_in_killing() {
-                    self.handle_in_killing_service(sh)
-                } else {
-                    None
-                };
-                self.service_repository.mutate_service_status(sh.as_ref());
-            });
+            events.into_iter().for_each(|ev| self.apply_event(ev));
+
+            let events: Vec<Event> = self
+                .repo
+                .services
+                .iter()
+                .map(|sh| self.next(sh))
+                .flatten()
+                .collect();
+            debug!("Going to emit events: {:?}", events);
+            events.into_iter().for_each(|ev| self.repo.send_ev(ev));
             // If some process has failed, applies the failure strategies.
-            if self.service_repository.all_finished() {
+            if self.repo.all_finished() {
                 debug!("All services have finished, exiting...");
                 break;
             }
@@ -158,67 +246,84 @@ impl Runtime {
         }
         std::process::exit(0);
     }
+}
 
-    /// Send a term signal to all the services in the "Running" state.
-    pub fn stop_all_services(&mut self) {
-        self.service_repository
-            .mutate_service_status_apply(shutdown_service);
+fn should_force_kill(service_handler: &ServiceHandler) -> bool {
+    if let Some(shutting_down_elapsed_secs) = service_handler.shutting_down_start.clone() {
+        let shutting_down_elapsed_secs = shutting_down_elapsed_secs.elapsed().as_secs();
+        debug!(
+            "{}, should not force kill. Elapsed: {}, termination wait: {}",
+            service_handler.name(),
+            shutting_down_elapsed_secs,
+            service_handler.service().termination.wait.clone().as_secs()
+        );
+        shutting_down_elapsed_secs > service_handler.service().termination.wait.clone().as_secs()
+    } else {
+        error!("There is no shutting down elapsed secs!!");
+        false
     }
 }
 
-/// Handle the shutting down of a service. It returns Some if it has modified the sh.
-fn shutdown_service(sh: &mut ServiceHandler) -> Option<&ServiceHandler> {
-    debug!(
-        "Shutting down service: {}, status: {}",
-        sh.name(),
-        sh.status
-    );
-    if sh.is_running() && sh.pid().is_some() {
-        kill(sh, sh.service().termination.signal.as_signal());
-        sh.shutting_down_started();
-        sh.set_status(ServiceStatus::InKilling);
-        Some(sh)
-    } else if sh.is_initial() {
-        sh.marked_for_killing = false;
-        sh.set_status(ServiceStatus::Finished);
-        Some(sh)
-    } else {
-        None
+fn handle_failed_service(repo: &Repo, failed_sh: &ServiceHandler) -> Vec<Event> {
+    match failed_sh.service().failure.strategy {
+        FailureStrategy::Shutdown => vec![Event::ShuttingDownInitiated],
+        FailureStrategy::KillDependents => {
+            debug!("Failed service has kill-dependents strategy, going to mark them all..");
+            let finished_ev = vec![Event::new_status_changed(
+                failed_sh.name(),
+                // Todo: finishedfailed
+                ServiceStatus::Finished,
+            )];
+            repo.get_dependents(failed_sh.name().into())
+                .iter()
+                .map(|sh| Event::new_status_changed(sh.name(), ServiceStatus::ToBeKilled))
+                .chain(finished_ev)
+                .collect()
+        }
+        _ => vec![],
     }
 }
 
 fn kill(sh: &ServiceHandler, signal: Signal) {
     debug!("Going to send {} signal to pid {:?}", signal, sh.pid());
-    let pid = sh
-        .pid()
-        .expect("Missing pid to kill but process was in running state.");
-    if let Err(error) = signal::kill(pid, signal) {
-        match error.as_errno().expect("errno empty!") {
-            nix::errno::Errno::ESRCH => (),
-            _ => error!(
-                "Error killing the process: {}, service: {}, pid: {:?}",
-                error,
-                sh.name(),
-                pid,
-            ),
+    if let Some(pid) = sh.pid() {
+        if let Err(error) = signal::kill(pid, signal) {
+            match error.as_errno().expect("errno empty!") {
+                nix::errno::Errno::ESRCH => (),
+                _ => error!(
+                    "Error killing the process: {}, service: {}, pid: {:?}",
+                    error,
+                    sh.name(),
+                    pid,
+                ),
+            }
         }
+    } else {
+        error!("Missing pid to kill but process was in running state.");
     }
 }
 
 /// Run another thread that will wait for the start delay, and handle the fork / exec.
-fn run_spawning_thread(service: Service, mut service_repository: ServiceRepository) {
+fn run_spawning_thread(service: Service, mut repo: Repo) {
     std::thread::spawn(move || {
         std::thread::sleep(service.start_delay);
-        match spawn_process(&service) {
+        let evs = match spawn_process(&service) {
             Ok(pid) => {
                 debug!("Setting pid:{} for service: {}", pid, service.name);
-                service_repository.update_pid(service.name, pid);
+                vec![
+                    Event::new_pid_changed(service.name.clone(), pid),
+                    Event::new_status_changed(&service.name, ServiceStatus::Starting),
+                ]
             }
             Err(error) => {
                 error!("Failed spawning the process: {}", error);
-                service_repository.update_status(&service.name, ServiceStatus::Failed);
+                vec![Event::new_status_changed(
+                    &service.name,
+                    ServiceStatus::Failed,
+                )]
             }
-        }
+        };
+        evs.into_iter().for_each(|ev| repo.send_ev(ev));
     });
 }
 
@@ -264,4 +369,27 @@ fn exec_service(service: &Service) {
     //arg_cstrings.insert(0, program_name.clone());
     nix::unistd::execvpe(program_name.as_ref(), arg_cptr.as_ref(), env_cptr.as_ref())
         .expect("Execvp() failed: ");
+}
+
+#[cfg(test)]
+mod test {
+    use crate::horust::formats::{Service, ServiceHandler};
+    use crate::horust::runtime::should_force_kill;
+    use std::ops::Sub;
+    use std::time::Duration;
+
+    #[test]
+    fn test_should_force_kill() {
+        let service = r#"command="notrelevant"
+[termination]
+wait = "10s"
+"#;
+        let service: Service = toml::from_str(service).unwrap();
+        let mut sh: ServiceHandler = service.into();
+        assert!(!should_force_kill(&sh));
+        sh.shutting_down_started();
+        assert!(!should_force_kill(&sh));
+        sh.shutting_down_start = Some(sh.shutting_down_start.unwrap().sub(Duration::from_secs(20)));
+        assert!(should_force_kill(&sh))
+    }
 }
