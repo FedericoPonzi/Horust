@@ -4,7 +4,7 @@ use nix::unistd::Pid;
 pub use service::*;
 pub use service_handler::ServiceHandler;
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum Event {
     PidChanged(ServiceName, Pid),
     StatusChanged(ServiceName, ServiceStatus),

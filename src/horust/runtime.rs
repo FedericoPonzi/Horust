@@ -100,8 +100,12 @@ impl Runtime {
                     ServiceStatus::ToBeKilled => {
                         if service_handler.status == ServiceStatus::Initial {
                             service_handler.status = ServiceStatus::Finished;
-                        } else if vec![ServiceStatus::Running, ServiceStatus::Starting]
-                            .contains(&service_handler.status)
+                        } else if vec![
+                            ServiceStatus::Running,
+                            ServiceStatus::Starting,
+                            ServiceStatus::ToBeRun,
+                        ]
+                        .contains(&service_handler.status)
                         {
                             service_handler.status = ServiceStatus::ToBeKilled;
                             service_handler.shutting_down_start = Some(Instant::now());
@@ -117,13 +121,25 @@ impl Runtime {
                         }
                     }
                     ServiceStatus::ToBeRun => {
-                        service_handler.status = ServiceStatus::ToBeRun;
-                        healthcheck::prepare_service(service_handler).unwrap();
-                        run_spawning_thread(service_handler.service().clone(), self.repo.clone());
+                        if service_handler.status == ServiceStatus::Initial {
+                            service_handler.status = ServiceStatus::ToBeRun;
+                            healthcheck::prepare_service(service_handler).unwrap();
+                            run_spawning_thread(
+                                service_handler.service().clone(),
+                                self.repo.clone(),
+                            );
+                        } else {
+                            debug!("{}: Ignoring ToBeRun event", service_name);
+                        }
                     }
                     ServiceStatus::Running => {
                         if service_handler.status == ServiceStatus::Starting {
                             service_handler.status = ServiceStatus::Running;
+                        }
+                    }
+                    ServiceStatus::Starting => {
+                        if service_handler.status != ServiceStatus::InKilling {
+                            service_handler.status = ServiceStatus::Starting;
                         }
                     }
                     unhandled_status => {
@@ -270,19 +286,20 @@ fn handle_failed_service(repo: &Repo, failed_sh: &ServiceHandler) -> Vec<Event> 
 
 fn kill(sh: &ServiceHandler, signal: Signal) {
     debug!("Going to send {} signal to pid {:?}", signal, sh.pid());
-    let pid = sh
-        .pid()
-        .expect("Missing pid to kill but process was in running state.");
-    if let Err(error) = signal::kill(pid, signal) {
-        match error.as_errno().expect("errno empty!") {
-            nix::errno::Errno::ESRCH => (),
-            _ => error!(
-                "Error killing the process: {}, service: {}, pid: {:?}",
-                error,
-                sh.name(),
-                pid,
-            ),
+    if let Some(pid) = sh.pid() {
+        if let Err(error) = signal::kill(pid, signal) {
+            match error.as_errno().expect("errno empty!") {
+                nix::errno::Errno::ESRCH => (),
+                _ => error!(
+                    "Error killing the process: {}, service: {}, pid: {:?}",
+                    error,
+                    sh.name(),
+                    pid,
+                ),
+            }
         }
+    } else {
+        error!("Missing pid to kill but process was in running state.");
     }
 }
 
@@ -356,7 +373,23 @@ fn exec_service(service: &Service) {
 
 #[cfg(test)]
 mod test {
+    use crate::horust::formats::{Service, ServiceHandler};
+    use crate::horust::runtime::should_force_kill;
+    use std::ops::Sub;
+    use std::time::Duration;
+
     #[test]
-    #[ignore]
-    fn test_life_cycle() {}
+    fn test_should_force_kill() {
+        let service = r#"command="notrelevant"
+[termination]
+wait = "10s"
+"#;
+        let service: Service = toml::from_str(service).unwrap();
+        let mut sh: ServiceHandler = service.into();
+        assert!(!should_force_kill(&sh));
+        sh.shutting_down_started();
+        assert!(!should_force_kill(&sh));
+        sh.shutting_down_start = Some(sh.shutting_down_start.unwrap().sub(Duration::from_secs(20)));
+        assert!(should_force_kill(&sh))
+    }
 }

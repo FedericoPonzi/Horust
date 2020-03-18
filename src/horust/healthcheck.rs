@@ -10,11 +10,7 @@ use std::time::Duration;
 // * If there are no checks to run, just exit the thread. or go sleep until an "service created" event is received.
 pub fn spawn(bus: BusConnector, services: Vec<Service>) {
     std::thread::spawn(move || {
-        let mut repo = Repo::new(bus, services);
-        loop {
-            run_checks(&mut repo);
-            std::thread::sleep(Duration::from_millis(1000));
-        }
+        run(bus, services);
     });
 }
 
@@ -61,6 +57,7 @@ fn check_http_endpoint(endpoint: &str) -> bool {
     let resp: reqwest::blocking::Response = client.head(endpoint).send().unwrap();
     resp.status().is_success()
 }
+
 fn healthchecks(service: &Service) -> bool {
     match service.healthiness.as_ref() {
         Some(healthiness) => {
@@ -102,25 +99,34 @@ fn healthchecks(service: &Service) -> bool {
         None => true,
     }
 }
-fn run_checks(repo: &mut Repo) {
-    repo.ingest();
-    let evs_starting: Vec<Event> = repo
-        .starting
+
+// Run the healthcheck, produce the event changes
+fn next(
+    running: &HashMap<ServiceName, Service>,
+    starting: &HashMap<ServiceName, Service>,
+) -> Vec<Event> {
+    let evs_starting = starting
         .iter()
         .filter(|(_s_name, service)| healthchecks(service))
-        .map(|(s_name, _service)| Event::new_status_changed(s_name, ServiceStatus::Running))
-        .collect();
-    let evs_running: Vec<Event> = repo
-        .running
+        .map(|(s_name, _service)| Event::new_status_changed(s_name, ServiceStatus::Running));
+    running
         .iter()
         .filter(|(_s_name, service)| !healthchecks(service))
         .map(|(service_name, _service)| {
             Event::new_status_changed(service_name, ServiceStatus::Failed)
         })
-        .collect();
-
-    for ev in evs_starting.into_iter().chain(evs_running) {
-        repo.send_ev(ev);
+        .chain(evs_starting)
+        .collect()
+}
+fn run(bus: BusConnector, services: Vec<Service>) {
+    let mut repo = Repo::new(bus, services);
+    loop {
+        repo.ingest();
+        let events = next(&repo.starting, &repo.running);
+        for ev in events {
+            repo.send_ev(ev);
+        }
+        std::thread::sleep(Duration::from_millis(300));
     }
 }
 
@@ -134,56 +140,60 @@ pub fn prepare_service(service_handler: &ServiceHandler) -> Result<(), std::io::
     Ok(())
 }
 
-/*
 #[cfg(test)]
 mod test {
-    use crate::horust::formats::{Healthness, Service, ServiceStatus};
-    use crate::horust::{get_sample_service, healthcheck};
-    use std::sync::Arc;
-
-    fn create_from_service(service: Service) -> ServiceRepository {
-        let services: Vec<Service> = vec![service];
-        let services: ServiceRepository = ServiceRepository::new(services, UpdatesQueue);
-        services.iter_mut().for_each(|sh| {
-            sh.set_status(ServiceStatus::Starting);
-        });
-        services
-    }
-
-    fn assert_status(services: &Services, status: ServiceStatus) {
-        services
-            .0
-            .lock()
-            .unwrap()
-            .iter()
-            .for_each(|sh| assert_eq!(*sh.status(), status));
-    }
+    use crate::horust::error::Result;
+    use crate::horust::formats::{Event, Service, ServiceName, ServiceStatus};
+    use crate::horust::healthcheck;
+    use crate::horust::healthcheck::healthchecks;
+    use std::collections::HashMap;
+    use tempdir::TempDir;
 
     #[test]
-    fn test_healthiness_checks() {
+    fn test_next() -> Result<()> {
+        let tempdir = TempDir::new("health")?;
+        let file_path = tempdir.path().join("file.txt");
+        let service = format!(
+            r#"command = "not relevant"
+[healthiness]
+file-path = "{}""#,
+            file_path.display()
+        );
+        let service: Service = toml::from_str(service.as_str())?;
+        std::fs::write(file_path, "Hello world!")?;
+        let starting: HashMap<ServiceName, Service> = vec![(service.name.clone(), service.clone())]
+            .into_iter()
+            .collect();
+        let events: Vec<Event> = healthcheck::next(&HashMap::new(), &starting);
+        println!("{:?}", events);
+        assert!(events.contains(&Event::StatusChanged(
+            service.name.clone(),
+            ServiceStatus::Running
+        )));
+        Ok(())
+    }
+    #[test]
+    fn test_healthiness_checks() -> Result<()> {
         // _no_checks_needed
-        let service = get_sample_service().parse().unwrap();
-        let services = create_from_service(service);
-        healthcheck::run_checks(&Arc::clone(&services));
-        assert_status(&services, ServiceStatus::Running);
-    }
+        let tempdir = TempDir::new("health")?;
+        let file_path = tempdir.path().join("file.txt");
+        let service = format!(
+            r#"command = "not relevant"
+[healthiness]
+file-path = "{}""#,
+            file_path.display()
+        );
+        let service: Service = toml::from_str(service.as_str())?;
+        assert!(!healthchecks(&service));
+        std::fs::write(file_path, "Hello world!")?;
+        assert!(healthchecks(&service));
 
-    #[test]
-    fn test_check_file_path() {
-        let tempdir = tempdir::TempDir::new("horust").unwrap();
-        let filepath = tempdir.path().join("up");
-        let healthcheck = Healthness {
-            http_endpoint: None,
-            file_path: Some(filepath.clone()),
-        };
-        let mut service: Service = get_sample_service().parse().unwrap();
-        service.healthiness = Some(healthcheck);
-        let services = create_from_service(service);
-        healthcheck::run_checks(&Arc::clone(&services));
-        assert_status(&services, ServiceStatus::Starting);
-        std::fs::write(filepath, "Hello world!").unwrap();
-        healthcheck::run_checks(&Arc::clone(&services));
-        assert_status(&services, ServiceStatus::Running);
+        let service: Service = toml::from_str(
+            r#"command = "not relevant"
+[healthiness]
+"#,
+        )?;
+        assert!(healthchecks(&service));
+        Ok(())
     }
 }
-*/
