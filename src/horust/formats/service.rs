@@ -12,8 +12,8 @@ use std::str::FromStr;
 use std::time::Duration;
 
 pub fn get_sample_service() -> String {
-    r#"# The name of your service, must be unique. It's optional, will use the filename as name.
-name = "my-cool-service"
+    r#"# The name of your service is your filename.
+# name = "my-cool-service.toml"
 command = "/bin/bash -c 'echo hello world'"
 working-directory = "/tmp/"
 start-delay = "2s"
@@ -26,11 +26,11 @@ backoff = "0s"
 attempts = 0
 
 [healthiness]
-http_endpoint = "http://localhost:8080/healthcheck"
-file_path = "/var/myservice/up"
+http-endpoint = "http://localhost:8080/healthcheck"
+file-path = "/var/myservice/up"
 
 [failure]
-successfull_exit_code = [ 0, 1, 255]
+successfull-exit-code = [ 0, 1, 255]
 strategy = "ignore"
 
 [termination]
@@ -438,7 +438,12 @@ pub fn validate(services: Vec<Service>) -> Result<Vec<Service>, Vec<ValidationEr
 
 #[cfg(test)]
 mod test {
-    use crate::horust::formats::{validate, Service};
+    use crate::horust::formats::TerminationSignal::TERM;
+    use crate::horust::formats::User::Name;
+    use crate::horust::formats::{
+        validate, Failure, FailureStrategy, Healthness, Restart, RestartStrategy, Service,
+        Termination,
+    };
     use crate::horust::get_sample_service;
     use std::str::FromStr;
     use std::time::Duration;
@@ -468,8 +473,38 @@ mod test {
     }
     #[test]
     fn test_should_correctly_deserialize_sample() {
-        let service = Service::from_str(get_sample_service().as_str());
-        service.expect("error on deserializing the manifest");
+        let expected = Service {
+            name: "my-cool-service.toml".to_string(),
+            command: "/bin/bash -c \'echo hello world\'".to_string(),
+            user: Name("root".into()),
+            environment: None,
+            working_directory: Some("/tmp/".into()),
+            start_delay: Duration::from_secs(2),
+            start_after: vec!["another.toml".into(), "second.toml".into()],
+            restart: Restart {
+                strategy: RestartStrategy::Never,
+                backoff: Duration::from_millis(0),
+                attempts: 0,
+            },
+            healthiness: Some(Healthness {
+                http_endpoint: Some("http://localhost:8080/healthcheck".into()),
+                file_path: Some("/var/myservice/up".into()),
+            }),
+            signal_rewrite: None,
+            last_mtime_sec: 0,
+            failure: Failure {
+                successful_exit_code: vec![0],
+                strategy: FailureStrategy::Ignore,
+            },
+            termination: Termination {
+                signal: TERM,
+                wait: Duration::from_secs(10),
+            },
+        };
+        let service = Service::from_str(get_sample_service().as_str())
+            .expect("error on deserializing the manifest");
+        println!("{:#?}", service);
+        assert_eq!(expected, service);
     }
     #[test]
     fn test_validate() {

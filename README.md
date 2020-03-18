@@ -33,7 +33,6 @@ Check the [documentation](https://github.com/FedericoPonzi/Horust/blob/master/DO
 You can also bootstrap the creation of a new service, by using `horust --sample-service > new_service.toml`.
 
 ```toml
-name = "my-cool-service"
 command = "/bin/bash -c 'echo hello world'"
 working-directory = "/tmp/"
 start-delay = "2s"
@@ -46,11 +45,11 @@ backoff = "0s"
 attempts = 0
 
 [healthiness]
-http_endpoint = "http://localhost:8080/healthcheck"
-file_path = "/var/myservice/up"
+http-endpoint = "http://localhost:8080/healthcheck"
+file-path = "/var/myservice/up"
 
 [failure]
-exit_code = [ 1, 2, 3]
+successfull-exit-code = [ 0, 1, 255]
 strategy = "ignore"
 
 [termination]
