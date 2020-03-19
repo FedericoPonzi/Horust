@@ -474,7 +474,7 @@ mod test {
     #[test]
     fn test_should_correctly_deserialize_sample() {
         let expected = Service {
-            name: "my-cool-service.toml".to_string(),
+            name: "".to_string(),
             command: "/bin/bash -c \'echo hello world\'".to_string(),
             user: Name("root".into()),
             environment: None,
