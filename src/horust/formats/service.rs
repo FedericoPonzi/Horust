@@ -30,7 +30,7 @@ http-endpoint = "http://localhost:8080/healthcheck"
 file-path = "/var/myservice/up"
 
 [failure]
-successfull-exit-code = [ 0, 1, 255]
+successful-exit-code = [ 0, 1, 255]
 strategy = "ignore"
 
 [termination]
@@ -493,7 +493,7 @@ mod test {
             signal_rewrite: None,
             last_mtime_sec: 0,
             failure: Failure {
-                successful_exit_code: vec![0],
+                successful_exit_code: vec![0, 1, 255],
                 strategy: FailureStrategy::Ignore,
             },
             termination: Termination {

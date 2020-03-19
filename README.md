@@ -49,7 +49,7 @@ http-endpoint = "http://localhost:8080/healthcheck"
 file-path = "/var/myservice/up"
 
 [failure]
-successfull-exit-code = [ 0, 1, 255]
+successful-exit-code = [ 0, 1, 255]
 strategy = "ignore"
 
 [termination]
@@ -74,4 +74,4 @@ If you're planning to add new features, it's super awesome but please open an [i
 Have a look on [DEVELOPMENT.md](https://github.com/FedericoPonzi/Horust/blob/master/DEVELOPMENT.md) for more info on how to get started hacking on horust.
 
 ## License
-horust is provided under the MIT license. Please read the attached [license](https://github.com/FedericoPonzi/horust/blob/master/LICENSE) file.
+Horust is provided under the MIT license. Please read the attached [license](https://github.com/FedericoPonzi/horust/blob/master/LICENSE) file.

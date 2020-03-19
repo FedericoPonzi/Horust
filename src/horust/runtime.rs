@@ -47,10 +47,11 @@ impl Repo {
             .unwrap()
     }
 
-    fn get_dependents(&self, service_name: &ServiceName) -> Vec<ServiceHandler> {
+    fn get_dependents(&self, service_name: &ServiceName) -> Vec<ServiceName> {
         self.services
             .iter()
             .filter(|sh| sh.service().start_after.contains(service_name))
+            .map(|sh| sh.name())
             .cloned()
             .collect()
     }
@@ -184,7 +185,10 @@ impl Runtime {
             }
         } else {
             match service_handler.status {
-                ServiceStatus::Failed => handle_failed_service(&self.repo, service_handler),
+                ServiceStatus::Failed => handle_failed_service(
+                    self.repo.get_dependents(service_handler.name().into()),
+                    service_handler,
+                ),
                 ServiceStatus::InKilling => {
                     if should_force_kill(service_handler) {
                         vec![Event::new_force_kill(service_handler.name())]
@@ -264,7 +268,7 @@ fn should_force_kill(service_handler: &ServiceHandler) -> bool {
     }
 }
 
-fn handle_failed_service(repo: &Repo, failed_sh: &ServiceHandler) -> Vec<Event> {
+fn handle_failed_service(deps: Vec<ServiceName>, failed_sh: &ServiceHandler) -> Vec<Event> {
     match failed_sh.service().failure.strategy {
         FailureStrategy::Shutdown => vec![Event::ShuttingDownInitiated],
         FailureStrategy::KillDependents => {
@@ -274,13 +278,12 @@ fn handle_failed_service(repo: &Repo, failed_sh: &ServiceHandler) -> Vec<Event> 
                 // Todo: finishedfailed
                 ServiceStatus::Finished,
             )];
-            repo.get_dependents(failed_sh.name().into())
-                .iter()
-                .map(|sh| Event::new_status_changed(sh.name(), ServiceStatus::ToBeKilled))
+            deps.iter()
+                .map(|sh| Event::new_status_changed(sh, ServiceStatus::ToBeKilled))
                 .chain(finished_ev)
                 .collect()
         }
-        _ => vec![],
+        FailureStrategy::Ignore => vec![],
     }
 }
 
@@ -373,8 +376,8 @@ fn exec_service(service: &Service) {
 
 #[cfg(test)]
 mod test {
-    use crate::horust::formats::{Service, ServiceHandler};
-    use crate::horust::runtime::should_force_kill;
+    use crate::horust::formats::{FailureStrategy, Service, ServiceHandler};
+    use crate::horust::runtime::{handle_failed_service, should_force_kill};
     use std::ops::Sub;
     use std::time::Duration;
 
@@ -391,5 +394,20 @@ wait = "10s"
         assert!(!should_force_kill(&sh));
         sh.shutting_down_start = Some(sh.shutting_down_start.unwrap().sub(Duration::from_secs(20)));
         assert!(should_force_kill(&sh))
+    }
+
+    #[test]
+    fn test_failure_strategy() {
+        let mut service = Service::from_name("a");
+        let evs = handle_failed_service(vec!["a".into()], &service.clone().into());
+        assert!(evs.is_empty());
+
+        service.failure.strategy = FailureStrategy::KillDependents;
+        let evs = handle_failed_service(vec!["a".into()], &service.clone().into());
+        assert_eq!(evs.len(), 2);
+
+        service.failure.strategy = FailureStrategy::Shutdown;
+        let evs = handle_failed_service(vec!["a".into()], &service.into());
+        assert_eq!(evs.len(), 1);
     }
 }
