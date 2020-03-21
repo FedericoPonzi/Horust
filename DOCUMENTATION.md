@@ -90,6 +90,27 @@ wait = "10s"
 * **wait** = **"time"**: How much time to wait before sending a SIGKILL after `signal` has been sent.
 
 ---
+# State machine
+[![State machne](https://github.com/FedericoPonzi/Horust/tree/master/res/state-machine.svg)](https://github.com/FedericoPonzi/Horust/tree/master/res/state-machine.svg)
+
+You can compile this on https://state-machine-cat.js.org/
+```
+initial => Initial : "Will eventually be run";
+Initial => ToBeRun : "All dependencies are running, a thread has spawned and will run the fork/exec the process";
+ToBeRun => Starting : "The ServiceHandler has a pid";
+Starting => Running : "The service has met healthiness policy";
+Starting => Failed : "Service cannot be started";
+Failed => FinishedFailed : "Restart policy ";
+Running => ToBeKilled: "Marked for killing";
+ToBeKilled => InKilling : "Friendly TERM signal sent";
+InKilling => Finished : "Successfully killed";
+InKilling => FinishedFailed : "Forcefully killed (SIGKILL)";
+Running => Failed  : "Exit status is not successful";
+Running => Success  : "Exit status == 0";
+Success => Initial : "Restart policy applied";
+Success => Finished : "Based on restart policy";
+Failed => Initial : "restart = always|on-failure";
+```
 
 ## Single command
 WIP.
