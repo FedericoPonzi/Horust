@@ -96,7 +96,7 @@ impl ServiceHandler {
     }
 
     pub fn is_finished(&self) -> bool {
-        ServiceStatus::Finished == self.status || self.status == ServiceStatus::Failed
+        ServiceStatus::Finished == self.status
     }
 
     pub fn shutting_down_started(&mut self) {

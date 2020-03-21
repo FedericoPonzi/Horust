@@ -275,10 +275,10 @@ attempts = {}
     }
 }
 #[test]
-fn test_restart_backoff() {
+fn test_restart_attempts() {
     restart_backoff(false, 0);
 }
 #[test]
-fn test_restart_backoff_succeed() {
+fn test_restart_attempts_succeed() {
     restart_backoff(true, 1);
 }

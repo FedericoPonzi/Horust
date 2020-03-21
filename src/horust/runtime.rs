@@ -23,10 +23,10 @@ pub struct Runtime {
 
 #[derive(Debug, Clone)]
 struct Repo {
+    // TODO: make it a map ServiceName: ServiceHandler
     pub services: Vec<ServiceHandler>,
     pub(crate) bus: BusConnector,
 }
-
 impl Repo {
     fn new<T: Into<ServiceHandler>>(bus: BusConnector, services: Vec<T>) -> Self {
         let services = services.into_iter().map(Into::into).collect();
@@ -112,7 +112,7 @@ impl Runtime {
                             );
                         } else {
                             error!(
-                                "Service tobekilled was in status: {}",
+                                "Service ToBeKilled was in status: {}",
                                 service_handler.status
                             );
                         }
@@ -201,7 +201,7 @@ impl Runtime {
             Event::ForceKill(service_name) => {
                 let service_handler = self.repo.get_mut_service(&service_name);
                 kill(&service_handler, Signal::SIGKILL);
-                service_handler.status = ServiceStatus::Finished;
+                service_handler.status = ServiceStatus::FinishedFailed;
             }
             Event::PidChanged(service_name, pid) => {
                 let service_handler = self.repo.get_mut_service(&service_name);
@@ -301,7 +301,7 @@ impl Runtime {
                 .collect();
             debug!("Going to emit events: {:?}", events);
             events.into_iter().for_each(|ev| self.repo.send_ev(ev));
-            // TODO: applie some clever check and exit if no service will never be started again.
+            // TODO: apply some clever check and exit if no service will never be started again.
             if self.repo.all_finished() {
                 debug!("All services have finished, exiting...");
                 break;
@@ -351,7 +351,7 @@ fn handle_restart_strategy(service_handler: &ServiceHandler, is_failed: bool) ->
     ev
 }
 
-/// This is applied to both failed and finishedfailed services.
+/// This is applied to both failed and FinishedFailed services.
 fn handle_failure_strategy(deps: Vec<ServiceName>, failed_sh: &ServiceHandler) -> Vec<Event> {
     match failed_sh.service().failure.strategy {
         FailureStrategy::Shutdown => vec![Event::ShuttingDownInitiated],
@@ -431,7 +431,7 @@ fn exec_service(service: &Service) {
     debug!("Set cwd: {:?}, ", cwd);
 
     std::env::set_current_dir(cwd).expect("Set cwd");
-    nix::unistd::setsid().expect("Setsid");
+    nix::unistd::setsid().expect("Set sid");
     nix::unistd::setuid(service.user.get_uid()).expect("setuid");
     let chunks: Vec<String> = shlex::split(service.command.as_ref()).unwrap();
     let program_name = CString::new(chunks.get(0).unwrap().as_str()).unwrap();
@@ -449,7 +449,7 @@ fn exec_service(service: &Service) {
 
     //arg_cstrings.insert(0, program_name.clone());
     nix::unistd::execvpe(program_name.as_ref(), arg_cptr.as_ref(), env_cptr.as_ref())
-        .expect("Execvp() failed: ");
+        .expect("Execvpe() failed: ");
 }
 
 #[cfg(test)]

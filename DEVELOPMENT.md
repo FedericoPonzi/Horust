@@ -1,5 +1,5 @@
 ## Development environment
-In order to start hacking on Horust, you will need to install [Rust](https://www.rust-lang.org/tools/install) (1.41).
+In order to start hacking on Horust, you will need to install [Rust](https://www.rust-lang.org/tools/install) (1.42).
 By using rustup, you will also automatically install cargo and other needed tools.
 
 Run horust by using:

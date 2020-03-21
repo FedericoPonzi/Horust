@@ -204,12 +204,15 @@ Initial => ToBeRun : "All dependencies are running, a thread has spawned and wil
 ToBeRun => Starting : "The ServiceHandler has a pid";
 Starting => Running : "The service has met healthiness policy";
 Starting => Failed : "Service cannot be started";
-Running => Finished : "Exit status = 0";
-Running => InKilling : "Shutdown request received";
-InKilling => Finished : "Succesfully killed";
-InKilling => Failed : "Forcefully killed (SIGKILL)";
-Running => Failed  : "Exit status != 0";
-Finished => Initial : "restart = Always";
+Failed => FinishedFailed : "Restart policy ";
+Running => ToBeKilled: "Marked for killing";
+ToBeKilled => InKilling : "Friendly TERM signal sent";
+InKilling => Finished : "Successfully killed";
+InKilling => FinishedFailed : "Forcefully killed (SIGKILL)";
+Running => Failed  : "Exit status is not successful";
+Running => Success  : "Exit status == 0";
+Success => Initial : "Restart policy applied";
+Success => Finished : "Based on restart policy";
 Failed => Initial : "restart = always|on-failure";
 */
 
@@ -223,8 +226,7 @@ pub enum ServiceStatus {
     Running,
     /// Friendly signal sent, waiting for the process to terminate.
     InKilling,
-    InRunning,
-    /// A succesfully exited service.
+    /// A successfully exited service.
     Success,
     /// A finished service has done it's job and won't be restarted.
     Finished,
@@ -250,7 +252,6 @@ impl std::fmt::Display for ServiceStatus {
             ServiceStatus::Failed => "Failed",
             ServiceStatus::ToBeKilled => "ToBeKilled",
             ServiceStatus::Initial => "Initial",
-            ServiceStatus::InRunning => "InRunning",
             ServiceStatus::Success => "Success",
             ServiceStatus::FinishedFailed => "FinishedFailed",
         })

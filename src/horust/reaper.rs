@@ -12,6 +12,8 @@ pub(crate) fn spawn(bus: BusConnector) {
 }
 
 struct Repo {
+    // Contains services which are possibly started but we don't know their pid yet
+    // Used to check if there is
     possibly_running: HashSet<ServiceName>,
     bus: BusConnector,
     pids_map: HashMap<Pid, ServiceName>,

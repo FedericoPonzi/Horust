@@ -24,9 +24,6 @@ An example service:
 ```toml
 # mycoolapp.toml:
 path = "/usr/bin/mycoolapp.sh"
-restart-strategy = "always"
-start-delay = "10s"
-start-after = "my-other-service.toml"
 ``` 
 
 Check the [documentation](https://github.com/FedericoPonzi/Horust/blob/master/DOCUMENTATION.md) for a complete reference.
