@@ -64,7 +64,11 @@ fn run_async(mut cmd: Command, should_succeed: bool) -> (mpsc::Receiver<()>, Pid
     let (sender, receiver) = mpsc::sync_channel(0);
 
     let _handle = thread::spawn(move || {
-        assert_eq!(child.wait().expect("wait").success(), should_succeed);
+        assert_eq!(
+            child.wait().expect("wait").success(),
+            should_succeed,
+            "horust failed with an error!"
+        );
         println!("Going to send result back..");
         sender.send(()).unwrap();
         println!("Done!");
@@ -189,7 +193,7 @@ printenv"#;
 
 // Test failure strategies
 fn test_failure_strategy(strategy: &str) {
-    println!("running test: {}", strategy);
+    //debug!("running test: {}", strategy);
     let (cmd, temp_dir) = get_cli();
     let failing_service = format!(
         r#"[failure]
@@ -235,4 +239,46 @@ fn test_failure_shutdown() {
 #[test]
 fn test_failure_kill_dependents() {
     test_failure_strategy("kill-dependents");
+}
+
+fn restart_backoff(should_contain: bool, attempts: u32) {
+    let (mut cmd, temp_dir) = get_cli();
+    let failing_once_script = format!(
+        r#"#!/bin/bash
+        echo starting
+if [ ! -f {0} ]; then
+    echo "I'm in!"
+    touch {0} && exit 1
+    echo "Done O.o"
+fi
+echo "File is there!:D"
+"#,
+        temp_dir.path().join("file.temp").display()
+    );
+    let service = format!(
+        r#"
+[restart]
+attempts = {}
+"#,
+        attempts
+    );
+    store_service(
+        temp_dir.path(),
+        failing_once_script.as_str(),
+        Some(service.as_str()),
+        None,
+    );
+    if should_contain {
+        cmd.assert().stdout(contains("File is there!"));
+    } else {
+        cmd.assert().stdout(contains("File is there!").not());
+    }
+}
+#[test]
+fn test_restart_attempts() {
+    restart_backoff(false, 0);
+}
+#[test]
+fn test_restart_attempts_succeed() {
+    restart_backoff(true, 1);
 }

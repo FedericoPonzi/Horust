@@ -1,4 +1,4 @@
-use crate::horust::formats::{RestartStrategy, Service, ServiceName, ServiceStatus};
+use crate::horust::formats::{Service, ServiceName, ServiceStatus};
 use nix::unistd::Pid;
 use std::time::Instant;
 
@@ -7,6 +7,7 @@ pub struct ServiceHandler {
     service: Service,
     pub(crate) status: ServiceStatus,
     pub(crate) pid: Option<Pid>,
+    pub(crate) restart_attempts: u32,
     /// Instant representing at which time we received a shutdown request. Will be used for comparing Service.termination.wait
     pub(crate) shutting_down_start: Option<Instant>,
 }
@@ -18,6 +19,7 @@ impl From<Service> for ServiceHandler {
             status: ServiceStatus::Initial,
             pid: None,
             shutting_down_start: None,
+            restart_attempts: 0,
         }
     }
 }
@@ -69,6 +71,14 @@ impl ServiceHandler {
         self.status == ServiceStatus::Failed
     }
 
+    pub fn restart_attempts_are_over(&self) -> bool {
+        self.restart_attempts > self.service.restart.attempts
+    }
+
+    pub fn is_finished_failed(&self) -> bool {
+        self.status == ServiceStatus::FinishedFailed
+    }
+
     pub fn is_in_killing(&self) -> bool {
         self.status == ServiceStatus::InKilling
     }
@@ -86,51 +96,11 @@ impl ServiceHandler {
     }
 
     pub fn is_finished(&self) -> bool {
-        ServiceStatus::Finished == self.status || self.status == ServiceStatus::Failed
+        ServiceStatus::Finished == self.status
     }
 
     pub fn shutting_down_started(&mut self) {
         self.shutting_down_start = Some(Instant::now());
         self.status = ServiceStatus::InKilling;
-    }
-
-    pub fn set_status_by_exit_code(&mut self, exit_code: i32) {
-        self.shutting_down_start = None;
-        let has_failed = !self
-            .service
-            .failure
-            .successful_exit_code
-            .contains(&exit_code);
-        if has_failed {
-            error!(
-                "Service: {} has failed, exit code: {}",
-                self.name(),
-                exit_code
-            );
-        } else {
-            info!("Service: {} successfully exited.", self.name());
-        }
-        match self.service.restart.strategy {
-            RestartStrategy::Never => {
-                // Will never be restarted, even if failed:
-                self.status = if has_failed {
-                    ServiceStatus::Failed
-                } else {
-                    ServiceStatus::Finished
-                };
-            }
-            RestartStrategy::OnFailure => {
-                self.status = if has_failed {
-                    ServiceStatus::Initial
-                } else {
-                    ServiceStatus::Finished
-                };
-                debug!("Going to rerun the process because it failed!");
-            }
-            RestartStrategy::Always => {
-                self.status = ServiceStatus::Initial;
-            }
-        };
-        self.pid = None;
     }
 }
