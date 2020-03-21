@@ -19,12 +19,39 @@ Horust is a supervisor system written in rust and designed to be run in containe
 At this point, this should be considered Alpha software.
 
 ## Usage
-1. Create a directory with your services. `/etc/horust/services/`.
-An example service:
+Let's go through a simple example usage. We will create a website healthchecker using horust and a python script.
+1. Create a directory: `mkdir -p /etc/horust/services`
+2. Create your first service: `/etc/horust/services/healthchecker.toml`
 ```toml
-# mycoolapp.toml:
-path = "/usr/bin/mycoolapp.sh"
+command = "/tmp/healthcheck.py"
+start-delay = "10s"
+[restart]
+strategy = "always"
 ``` 
+There are many supported properties for your service file, but they are all optional. This is as minimal as we can get.
+As soon as we run horust, this service will be read and the command run. As soon as the service is over it won't be restarted,
+and horust will exit.
+
+3. Create a new file called `healthcheck.py` and in tmp:
+```
+#!/usr/bin/python3
+import urllib.request
+import sys
+req = urllib.request.Request("https://www.google.com", method="HEAD")
+resp = urllib.request.urlopen(req)
+if resp.status == 200:
+    sys.exit(0)
+else:
+    sys.exit(1)
+```
+Add execution permissions to it: `chmod +x /tmp/healthcheck.py`.
+
+4. Run horust: "./horust". By default it will search services inside the `/etc/horust/services` folder.
+Now every 10 seconds, this will send an http head request to google.it. If the response is different than 200, then there is an issue!
+In this case, we're just exiting with a different exit code. But in real life, you could trigger other actions.
+Use ctrl+c for stopping horust. Horust will send a SIGTERM signal to all the running services, and if it doesn't hear back for a while, it will terminate them via a SIGKILL.
+
+---
 
 Check the [documentation](https://github.com/FedericoPonzi/Horust/blob/master/DOCUMENTATION.md) for a complete reference.
 You can also bootstrap the creation of a new service, by using `horust --sample-service > new_service.toml`.

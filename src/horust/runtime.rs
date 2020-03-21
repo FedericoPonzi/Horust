@@ -398,6 +398,7 @@ fn kill(sh: &ServiceHandler, signal: Signal) {
 /// Run another thread that will wait for the start delay, and handle the fork / exec.
 fn run_spawning_thread(service: Service, backoff: Duration, mut repo: Repo) {
     std::thread::spawn(move || {
+        // todo: we should wake up every second, in case someone wants to kill this process.
         std::thread::sleep(service.start_delay.add(backoff));
         let evs = match spawn_process(&service) {
             Ok(pid) => {
