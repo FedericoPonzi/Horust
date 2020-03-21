@@ -224,6 +224,8 @@ pub enum ServiceStatus {
     /// Friendly signal sent, waiting for the process to terminate.
     InKilling,
     InRunning,
+    /// A succesfully exited service.
+    Success,
     /// A finished service has done it's job and won't be restarted.
     Finished,
     /// A failed, finished service won't be restarted.
@@ -249,6 +251,7 @@ impl std::fmt::Display for ServiceStatus {
             ServiceStatus::ToBeKilled => "ToBeKilled",
             ServiceStatus::Initial => "Initial",
             ServiceStatus::InRunning => "InRunning",
+            ServiceStatus::Success => "Success",
             ServiceStatus::FinishedFailed => "FinishedFailed",
         })
     }
@@ -260,9 +263,12 @@ pub struct Restart {
     #[serde(default)]
     pub strategy: RestartStrategy,
     #[serde(default, with = "humantime_serde")]
-    backoff: Duration,
-    #[serde(default)]
-    attempts: u32,
+    pub backoff: Duration,
+    #[serde(default = "default_attempts")]
+    pub attempts: u32,
+}
+fn default_attempts() -> u32 {
+    3
 }
 
 impl Default for Restart {

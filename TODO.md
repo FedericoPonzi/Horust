@@ -17,4 +17,3 @@
 
 On service statuses:
 * killed? After a sigkill
-* FinishedFailed? A failed process which won't be restarted vs Failed which has failed and will be restarted.
