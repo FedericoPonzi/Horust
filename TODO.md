@@ -1,4 +1,3 @@
-* Adds support for Restart's backoff and attempts.
 * Add tests for http healthcheck.
 * Parameter to force death if any service is incorrect.
 * If running via command, should just proxy signals instead of shutting down the system.
