@@ -1,0 +1,186 @@
+<!DOCTYPE svg [<!ENTITY nbsp "&#160;">]><svg width="717pt" height="467pt" viewBox="0.00 0.00 716.89 467.00" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink">
+<g id="graph0" class="graph" transform="scale(1 1) rotate(0) translate(4 463)">
+<title>state transitions</title>
+<polygon fill="#ffffff" stroke="transparent" points="-4,4 -4,-463 712.893,-463 712.893,4 -4,4"></polygon>
+<!-- initial -->
+<g id="node1" class="node">
+<title>initial</title>
+<ellipse fill="#000000" stroke="#000000" stroke-width="2" cx="28" cy="-453.5" rx="5.5" ry="5.5"></ellipse>
+</g>
+<!-- Initial -->
+<g id="node2" class="node">
+<title>Initial</title>
+<polygon fill="transparent" stroke="transparent" stroke-width="2" points="56,-420 0,-420 0,-384 56,-384 56,-420"></polygon>
+<text text-anchor="start" x="14.0002" y="-398.2" font-family="Helvetica,sans-Serif" font-size="12.00" fill="#000000">Initial</text>
+<path fill="none" stroke="#000000" stroke-width="2" d="M12.3333,-385C12.3333,-385 43.6667,-385 43.6667,-385 49.3333,-385 55,-390.6667 55,-396.3333 55,-396.3333 55,-407.6667 55,-407.6667 55,-413.3333 49.3333,-419 43.6667,-419 43.6667,-419 12.3333,-419 12.3333,-419 6.6667,-419 1,-413.3333 1,-407.6667 1,-407.6667 1,-396.3333 1,-396.3333 1,-390.6667 6.6667,-385 12.3333,-385"></path>
+</g>
+<!-- initial&#45;&gt;Initial -->
+<g id="edge1" class="edge">
+<title>initial-&gt;Initial</title>
+<path fill="none" stroke="#000000" d="M28,-447.9886C28,-443.6293 28,-437.1793 28,-430.4801"></path>
+<polygon fill="#000000" stroke="#000000" points="31.5001,-430.0122 28,-420.0122 24.5001,-430.0122 31.5001,-430.0122"></polygon>
+<text text-anchor="start" x="28" y="-431" font-family="Helvetica,sans-Serif" font-size="10.00" fill="#000000">Will eventually be run &nbsp;&nbsp;</text>
+</g>
+<!-- ToBeRun -->
+<g id="node3" class="node">
+<title>ToBeRun</title>
+<polygon fill="transparent" stroke="transparent" stroke-width="2" points="177,-356 105,-356 105,-320 177,-320 177,-356"></polygon>
+<text text-anchor="start" x="115.6602" y="-334.2" font-family="Helvetica,sans-Serif" font-size="12.00" fill="#000000">ToBeRun</text>
+<path fill="none" stroke="#000000" stroke-width="2" d="M117.3333,-321C117.3333,-321 164.6667,-321 164.6667,-321 170.3333,-321 176,-326.6667 176,-332.3333 176,-332.3333 176,-343.6667 176,-343.6667 176,-349.3333 170.3333,-355 164.6667,-355 164.6667,-355 117.3333,-355 117.3333,-355 111.6667,-355 106,-349.3333 106,-343.6667 106,-343.6667 106,-332.3333 106,-332.3333 106,-326.6667 111.6667,-321 117.3333,-321"></path>
+</g>
+<!-- Initial&#45;&gt;ToBeRun -->
+<g id="edge2" class="edge">
+<title>Initial-&gt;ToBeRun</title>
+<path fill="none" stroke="#000000" d="M56.2232,-386.0152C69.5404,-378.4727 85.6816,-369.3308 100.2911,-361.0564"></path>
+<polygon fill="#000000" stroke="#000000" points="102.1743,-364.0122 109.1507,-356.0385 98.7245,-357.9213 102.1743,-364.0122"></polygon>
+<text text-anchor="start" x="95" y="-367" font-family="Helvetica,sans-Serif" font-size="10.00" fill="#000000">All dependencies are running, a thread has spawned and will run the fork/exec the process &nbsp;&nbsp;</text>
+</g>
+<!-- Starting -->
+<g id="node4" class="node">
+<title>Starting</title>
+<polygon fill="transparent" stroke="transparent" stroke-width="2" points="216.5,-292 153.5,-292 153.5,-256 216.5,-256 216.5,-292"></polygon>
+<text text-anchor="start" x="164.8288" y="-270.2" font-family="Helvetica,sans-Serif" font-size="12.00" fill="#000000">Starting</text>
+<path fill="none" stroke="#000000" stroke-width="2" d="M165.8333,-257C165.8333,-257 204.1667,-257 204.1667,-257 209.8333,-257 215.5,-262.6667 215.5,-268.3333 215.5,-268.3333 215.5,-279.6667 215.5,-279.6667 215.5,-285.3333 209.8333,-291 204.1667,-291 204.1667,-291 165.8333,-291 165.8333,-291 160.1667,-291 154.5,-285.3333 154.5,-279.6667 154.5,-279.6667 154.5,-268.3333 154.5,-268.3333 154.5,-262.6667 160.1667,-257 165.8333,-257"></path>
+</g>
+<!-- ToBeRun&#45;&gt;Starting -->
+<g id="edge3" class="edge">
+<title>ToBeRun-&gt;Starting</title>
+<path fill="none" stroke="#000000" d="M153.4909,-319.8314C157.5433,-313.937 162.1288,-307.2673 166.5218,-300.8773"></path>
+<polygon fill="#000000" stroke="#000000" points="169.5439,-302.6596 172.325,-292.4363 163.7755,-298.6939 169.5439,-302.6596"></polygon>
+<text text-anchor="start" x="167" y="-303" font-family="Helvetica,sans-Serif" font-size="10.00" fill="#000000">The ServiceHandler has a pid &nbsp;&nbsp;</text>
+</g>
+<!-- Running -->
+<g id="node5" class="node">
+<title>Running</title>
+<polygon fill="transparent" stroke="transparent" stroke-width="2" points="213,-228 147,-228 147,-192 213,-192 213,-228"></polygon>
+<text text-anchor="start" x="157.6602" y="-206.2" font-family="Helvetica,sans-Serif" font-size="12.00" fill="#000000">Running</text>
+<path fill="none" stroke="#000000" stroke-width="2" d="M159.3333,-193C159.3333,-193 200.6667,-193 200.6667,-193 206.3333,-193 212,-198.6667 212,-204.3333 212,-204.3333 212,-215.6667 212,-215.6667 212,-221.3333 206.3333,-227 200.6667,-227 200.6667,-227 159.3333,-227 159.3333,-227 153.6667,-227 148,-221.3333 148,-215.6667 148,-215.6667 148,-204.3333 148,-204.3333 148,-198.6667 153.6667,-193 159.3333,-193"></path>
+</g>
+<!-- Starting&#45;&gt;Running -->
+<g id="edge4" class="edge">
+<title>Starting-&gt;Running</title>
+<path fill="none" stroke="#000000" d="M183.5806,-255.8314C183.1619,-250.4728 182.6932,-244.4735 182.2364,-238.6262"></path>
+<polygon fill="#000000" stroke="#000000" points="185.7087,-238.1333 181.4403,-228.4363 178.7299,-238.6786 185.7087,-238.1333"></polygon>
+<text text-anchor="start" x="183" y="-239" font-family="Helvetica,sans-Serif" font-size="10.00" fill="#000000">The service has met healthiness policy &nbsp;&nbsp;</text>
+</g>
+<!-- Failed -->
+<g id="node6" class="node">
+<title>Failed</title>
+<polygon fill="transparent" stroke="transparent" stroke-width="2" points="451,-164 395,-164 395,-128 451,-128 451,-164"></polygon>
+<text text-anchor="start" x="406.6656" y="-142.2" font-family="Helvetica,sans-Serif" font-size="12.00" fill="#000000">Failed</text>
+<path fill="none" stroke="#000000" stroke-width="2" d="M407.3333,-129C407.3333,-129 438.6667,-129 438.6667,-129 444.3333,-129 450,-134.6667 450,-140.3333 450,-140.3333 450,-151.6667 450,-151.6667 450,-157.3333 444.3333,-163 438.6667,-163 438.6667,-163 407.3333,-163 407.3333,-163 401.6667,-163 396,-157.3333 396,-151.6667 396,-151.6667 396,-140.3333 396,-140.3333 396,-134.6667 401.6667,-129 407.3333,-129"></path>
+</g>
+<!-- Starting&#45;&gt;Failed -->
+<g id="edge5" class="edge">
+<title>Starting-&gt;Failed</title>
+<path fill="none" stroke="#000000" d="M216.7829,-272.8887C262.5594,-270.7273 344.1747,-264.6059 368,-248 393.1607,-230.4633 407.8588,-197.6438 415.6329,-173.9608"></path>
+<polygon fill="#000000" stroke="#000000" points="419.0629,-174.7126 418.6408,-164.1262 412.369,-172.6653 419.0629,-174.7126"></polygon>
+<text text-anchor="start" x="409" y="-207" font-family="Helvetica,sans-Serif" font-size="10.00" fill="#000000">Service cannot be started &nbsp;&nbsp;</text>
+</g>
+<!-- Running&#45;&gt;Failed -->
+<g id="edge11" class="edge">
+<title>Running-&gt;Failed</title>
+<path fill="none" stroke="#000000" d="M171.7035,-191.9296C169.8104,-184.9285 169.5724,-177.3321 174.413,-172 180.6098,-165.1739 247.8289,-164.9414 257,-164 300.7149,-159.5128 350.8662,-154.0281 384.5021,-150.3007"></path>
+<polygon fill="#000000" stroke="#000000" points="385.2608,-153.738 394.8135,-149.1557 384.4883,-146.7808 385.2608,-153.738"></polygon>
+<text text-anchor="start" x="175" y="-175" font-family="Helvetica,sans-Serif" font-size="10.00" fill="#000000">Exit status is not successful &nbsp;&nbsp;</text>
+</g>
+<!-- ToBeKilled -->
+<g id="node8" class="node">
+<title>ToBeKilled</title>
+<polygon fill="transparent" stroke="transparent" stroke-width="2" points="246,-164 166,-164 166,-128 246,-128 246,-164"></polygon>
+<text text-anchor="start" x="176.996" y="-142.2" font-family="Helvetica,sans-Serif" font-size="12.00" fill="#000000">ToBeKilled</text>
+<path fill="none" stroke="#000000" stroke-width="2" d="M178.3333,-129C178.3333,-129 233.6667,-129 233.6667,-129 239.3333,-129 245,-134.6667 245,-140.3333 245,-140.3333 245,-151.6667 245,-151.6667 245,-157.3333 239.3333,-163 233.6667,-163 233.6667,-163 178.3333,-163 178.3333,-163 172.6667,-163 167,-157.3333 167,-151.6667 167,-151.6667 167,-140.3333 167,-140.3333 167,-134.6667 172.6667,-129 178.3333,-129"></path>
+</g>
+<!-- Running&#45;&gt;ToBeKilled -->
+<g id="edge7" class="edge">
+<title>Running-&gt;ToBeKilled</title>
+<path fill="none" stroke="#000000" d="M146.8199,-206.8847C117.173,-203.3335 76.9406,-196.3533 67.109,-184 63.7878,-179.827 63.6312,-176.0434 67.109,-172 74.8606,-162.9878 108.301,-166.1074 120,-164 131.6112,-161.9085 144.0564,-159.4377 155.7717,-157.0078"></path>
+<polygon fill="#000000" stroke="#000000" points="156.7726,-160.374 165.8398,-154.8935 155.3339,-153.5235 156.7726,-160.374"></polygon>
+<text text-anchor="start" x="68" y="-175" font-family="Helvetica,sans-Serif" font-size="10.00" fill="#000000">Marked for killing &nbsp;&nbsp;</text>
+</g>
+<!-- Success -->
+<g id="node11" class="node">
+<title>Success</title>
+<polygon fill="transparent" stroke="transparent" stroke-width="2" points="109.5,-164 42.5,-164 42.5,-128 109.5,-128 109.5,-164"></polygon>
+<text text-anchor="start" x="53.8278" y="-142.2" font-family="Helvetica,sans-Serif" font-size="12.00" fill="#000000">Success</text>
+<path fill="none" stroke="#000000" stroke-width="2" d="M54.8333,-129C54.8333,-129 97.1667,-129 97.1667,-129 102.8333,-129 108.5,-134.6667 108.5,-140.3333 108.5,-140.3333 108.5,-151.6667 108.5,-151.6667 108.5,-157.3333 102.8333,-163 97.1667,-163 97.1667,-163 54.8333,-163 54.8333,-163 49.1667,-163 43.5,-157.3333 43.5,-151.6667 43.5,-151.6667 43.5,-140.3333 43.5,-140.3333 43.5,-134.6667 49.1667,-129 54.8333,-129"></path>
+</g>
+<!-- Running&#45;&gt;Success -->
+<g id="edge12" class="edge">
+<title>Running-&gt;Success</title>
+<path fill="none" stroke="#000000" d="M213.0379,-208.0463C247.4367,-205.2408 297.9615,-198.6846 310,-184 313.3813,-179.8755 313.6728,-175.8672 310,-172 298.1243,-159.4955 172.0817,-166.3688 155,-164 143.3612,-162.386 130.9068,-159.9089 119.4082,-157.3037"></path>
+<polygon fill="#000000" stroke="#000000" points="120.1292,-153.8779 109.5939,-154.9998 118.5294,-160.6926 120.1292,-153.8779"></polygon>
+<text text-anchor="start" x="313" y="-175" font-family="Helvetica,sans-Serif" font-size="10.00" fill="#000000">Exit status == 0 &nbsp;&nbsp;</text>
+</g>
+<!-- Failed&#45;&gt;Initial -->
+<g id="edge15" class="edge">
+<title>Failed-&gt;Initial</title>
+<path fill="none" stroke="#000000" d="M451.0207,-151.0257C497.6248,-160.1902 586,-181.3463 586,-210 586,-338 586,-338 586,-338 586,-390.4078 192.4798,-399.9283 66.3815,-401.6337"></path>
+<polygon fill="#000000" stroke="#000000" points="66.0088,-398.138 56.0537,-401.7638 66.097,-405.1375 66.0088,-398.138"></polygon>
+<text text-anchor="start" x="586" y="-271" font-family="Helvetica,sans-Serif" font-size="10.00" fill="#000000">restart = always|on-failure &nbsp;&nbsp;</text>
+</g>
+<!-- FinishedFailed -->
+<g id="node7" class="node">
+<title>FinishedFailed</title>
+<polygon fill="transparent" stroke="transparent" stroke-width="2" points="378,-36 278,-36 278,0 378,0 378,-36"></polygon>
+<text text-anchor="start" x="288.9958" y="-14.2" font-family="Helvetica,sans-Serif" font-size="12.00" fill="#000000">FinishedFailed</text>
+<path fill="none" stroke="#000000" stroke-width="2" d="M290.3333,-1C290.3333,-1 365.6667,-1 365.6667,-1 371.3333,-1 377,-6.6667 377,-12.3333 377,-12.3333 377,-23.6667 377,-23.6667 377,-29.3333 371.3333,-35 365.6667,-35 365.6667,-35 290.3333,-35 290.3333,-35 284.6667,-35 279,-29.3333 279,-23.6667 279,-23.6667 279,-12.3333 279,-12.3333 279,-6.6667 284.6667,-1 290.3333,-1"></path>
+</g>
+<!-- Failed&#45;&gt;FinishedFailed -->
+<g id="edge6" class="edge">
+<title>Failed-&gt;FinishedFailed</title>
+<path fill="none" stroke="#000000" d="M422.7702,-127.8342C421.5281,-105.4311 416.1634,-67.4463 395,-44 392.586,-41.3256 389.8642,-38.9237 386.9347,-36.7669"></path>
+<polygon fill="#000000" stroke="#000000" points="388.5469,-33.6472 378.212,-31.3147 384.8366,-39.5831 388.5469,-33.6472"></polygon>
+<text text-anchor="start" x="420" y="-79" font-family="Helvetica,sans-Serif" font-size="10.00" fill="#000000">Restart policy &nbsp;&nbsp;&nbsp;</text>
+</g>
+<!-- InKilling -->
+<g id="node9" class="node">
+<title>InKilling</title>
+<polygon fill="transparent" stroke="transparent" stroke-width="2" points="272,-100 208,-100 208,-64 272,-64 272,-100"></polygon>
+<text text-anchor="start" x="218.9994" y="-78.2" font-family="Helvetica,sans-Serif" font-size="12.00" fill="#000000">InKilling</text>
+<path fill="none" stroke="#000000" stroke-width="2" d="M220.3333,-65C220.3333,-65 259.6667,-65 259.6667,-65 265.3333,-65 271,-70.6667 271,-76.3333 271,-76.3333 271,-87.6667 271,-87.6667 271,-93.3333 265.3333,-99 259.6667,-99 259.6667,-99 220.3333,-99 220.3333,-99 214.6667,-99 209,-93.3333 209,-87.6667 209,-87.6667 209,-76.3333 209,-76.3333 209,-70.6667 214.6667,-65 220.3333,-65"></path>
+</g>
+<!-- ToBeKilled&#45;&gt;InKilling -->
+<g id="edge8" class="edge">
+<title>ToBeKilled-&gt;InKilling</title>
+<path fill="none" stroke="#000000" d="M215.6521,-127.8314C218.7123,-122.0709 222.1659,-115.57 225.4897,-109.3134"></path>
+<polygon fill="#000000" stroke="#000000" points="228.605,-110.9095 230.2057,-100.4363 222.4232,-107.6254 228.605,-110.9095"></polygon>
+<text text-anchor="start" x="227" y="-111" font-family="Helvetica,sans-Serif" font-size="10.00" fill="#000000">Friendly TERM signal sent &nbsp;&nbsp;</text>
+</g>
+<!-- InKilling&#45;&gt;FinishedFailed -->
+<g id="edge10" class="edge">
+<title>InKilling-&gt;FinishedFailed</title>
+<path fill="none" stroke="#000000" d="M251.3607,-63.774C256.3074,-56.9141 262.572,-49.4606 269.547,-44 270.5801,-43.1912 271.6422,-42.4018 272.7286,-41.6315"></path>
+<polygon fill="#000000" stroke="#000000" points="274.8792,-44.4123 281.451,-36.1019 271.1312,-38.5002 274.8792,-44.4123"></polygon>
+<text text-anchor="start" x="270" y="-47" font-family="Helvetica,sans-Serif" font-size="10.00" fill="#000000">Forcefully killed (SIGKILL) &nbsp;&nbsp;</text>
+</g>
+<!-- Finished -->
+<g id="node10" class="node">
+<title>Finished</title>
+<polygon fill="transparent" stroke="transparent" stroke-width="2" points="135.5,-36 68.5,-36 68.5,0 135.5,0 135.5,-36"></polygon>
+<text text-anchor="start" x="79.8302" y="-14.2" font-family="Helvetica,sans-Serif" font-size="12.00" fill="#000000">Finished</text>
+<path fill="none" stroke="#000000" stroke-width="2" d="M80.8333,-1C80.8333,-1 123.1667,-1 123.1667,-1 128.8333,-1 134.5,-6.6667 134.5,-12.3333 134.5,-12.3333 134.5,-23.6667 134.5,-23.6667 134.5,-29.3333 128.8333,-35 123.1667,-35 123.1667,-35 80.8333,-35 80.8333,-35 75.1667,-35 69.5,-29.3333 69.5,-23.6667 69.5,-23.6667 69.5,-12.3333 69.5,-12.3333 69.5,-6.6667 75.1667,-1 80.8333,-1"></path>
+</g>
+<!-- InKilling&#45;&gt;Finished -->
+<g id="edge9" class="edge">
+<title>InKilling-&gt;Finished</title>
+<path fill="none" stroke="#000000" d="M207.9383,-69.9179C202.3132,-67.8854 196.5005,-65.8403 191,-64 179.3514,-60.1028 175.7626,-61.0065 164.546,-56 155.2351,-51.8441 145.6154,-46.5596 136.7956,-41.2624"></path>
+<polygon fill="#000000" stroke="#000000" points="138.6301,-38.2818 128.2834,-36.0024 134.9504,-44.2366 138.6301,-38.2818"></polygon>
+<text text-anchor="start" x="165" y="-47" font-family="Helvetica,sans-Serif" font-size="10.00" fill="#000000">Successfully killed &nbsp;&nbsp;</text>
+</g>
+<!-- Success&#45;&gt;Initial -->
+<g id="edge13" class="edge">
+<title>Success-&gt;Initial</title>
+<path fill="none" stroke="#000000" d="M52.5625,-164.1283C40.3779,-175.7227 28,-191.9444 28,-210 28,-338 28,-338 28,-338 28,-349.704 28,-362.6119 28,-373.7515"></path>
+<polygon fill="#000000" stroke="#000000" points="24.5001,-373.7928 28,-383.7928 31.5001,-373.7929 24.5001,-373.7928"></polygon>
+<text text-anchor="start" x="28" y="-271" font-family="Helvetica,sans-Serif" font-size="10.00" fill="#000000">Restart policy applied &nbsp;&nbsp;</text>
+</g>
+<!-- Success&#45;&gt;Finished -->
+<g id="edge14" class="edge">
+<title>Success-&gt;Finished</title>
+<path fill="none" stroke="#000000" d="M77.4627,-127.9155C79.041,-111.1868 82.0183,-85.7045 86.972,-64 88.3373,-58.0181 90.1466,-51.7056 92.0355,-45.7379"></path>
+<polygon fill="#000000" stroke="#000000" points="95.393,-46.733 95.2253,-36.1395 88.7502,-44.5254 95.393,-46.733"></polygon>
+<text text-anchor="start" x="87" y="-79" font-family="Helvetica,sans-Serif" font-size="10.00" fill="#000000">Based on restart policy &nbsp;&nbsp;</text>
+</g>
+</g>
+</svg>
