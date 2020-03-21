@@ -227,6 +227,16 @@ impl Runtime {
             }
         } else {
             match service_handler.status {
+                ServiceStatus::Initial => {
+                    if self.is_shutting_down {
+                        vec![Event::new_status_changed(
+                            service_handler.name(),
+                            ServiceStatus::Finished,
+                        )]
+                    } else {
+                        vec![]
+                    }
+                }
                 ServiceStatus::Success => {
                     let service_ev = handle_restart_strategy(service_handler, false);
                     vec![service_ev]
@@ -286,6 +296,7 @@ impl Runtime {
             // Ingest updates
             let events = self.repo.get_events();
             debug!("Applying events.. {:?}", events);
+            //debug!("Service status: {:?}", self.repo.services);
             if signal_handling::is_sigterm_received() && !self.is_shutting_down {
                 self.repo.send_ev(Event::ShuttingDownInitiated);
             }
