@@ -91,7 +91,7 @@ wait = "10s"
 
 ---
 # State machine
-[![State machne](https://github.com/FedericoPonzi/Horust/raw/master/res/state-machine.svg)](https://github.com/FedericoPonzi/Horust/raw/master/res/state-machine.svg)
+[![State machne](https://github.com/FedericoPonzi/Horust/raw/master/res/state-machine.png)](https://github.com/FedericoPonzi/Horust/raw/master/res/state-machine.png)
 
 You can compile this on https://state-machine-cat.js.org/
 ```
