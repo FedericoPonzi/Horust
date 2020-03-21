@@ -65,24 +65,12 @@ impl Repo {
         if !sh.is_initial() {
             return false;
         }
-        /*   TODO: replace with commented code:
-             let is_not_started = |service_name: &ServiceName| {
-                    self.services.iter().any(|service| {
-                        service.name() == service_name && (service.is_running() || service.is_finished())
-                    })
-                };
-
-                sh.start_after().iter().any(is_not_started)
-        */
-        for service_name in sh.start_after() {
-            let is_started = self.services.iter().any(|service| {
+        let is_started = |service_name: &ServiceName| {
+            self.services.iter().any(|service| {
                 service.name() == service_name && (service.is_running() || service.is_finished())
-            });
-            if !is_started {
-                return false;
-            }
-        }
-        true
+            })
+        };
+        sh.start_after().iter().all(is_started)
     }
 }
 

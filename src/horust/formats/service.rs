@@ -268,7 +268,7 @@ pub struct Restart {
     pub attempts: u32,
 }
 fn default_attempts() -> u32 {
-    3
+    10
 }
 
 impl Default for Restart {
