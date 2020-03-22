@@ -1,21 +1,60 @@
+# Contributing to Horust
+Thanks for considering contributing to Horust! 
+
+[Github Issue](https://github.com/FedericoPonzi/horust/issues) are a good place for getting started. You can also search the code for `TODO`s.
+
+If you're planning to add new features, it's super awesome but please open a new [issue](https://github.com/FedericoPonzi/Horust/issues/new) describing your proposal before you start working on it. 
+
+
 ## Development environment
 In order to start hacking on Horust, you will need to install [Rust](https://www.rust-lang.org/tools/install) (1.42).
 By using rustup, you will also automatically install cargo and other needed tools.
 
-Run horust by using:
+You can run horust with debug logs by using:
 ```bash
 HORUST_LOG=debug cargo run 
 ```
 
-Pass args to horust via cargo:
+Passing arguments to horust via cargo:
 ```bash
 HORUST_LOG=debug cargo run -- --sample-service
 ```
 
-Run a single command
+Run Horust in single command mode:
 ```bash
 HORUST_LOG=debug cargo run -- /bin/bash
 ```
+Before almost every commit, you might want to check your fmt:
+```
+cargo fmt
+```
+
+Clippy for lints:
+```
+cargo clippy
+```
+
+And run tests:
+```
+cargo test
+```
+
+If you want to run integration tests only:
+```
+cargo test --package horust --test horust -- --exact
+```
+
+There is also a make file, at the moment used mainly for docker:
+```
+# build a container without the http feature:
+make build-nofeature
+# run the built image
+make run
+# print an help:
+make help 
+```
+
+---
 
 
 ### Useful Links:
@@ -38,6 +77,6 @@ Just a small collection of useful links:
 * https://github.com/OpenRC/openrc/blob/master/supervise-daemon-guide.md
 
 ### Useful man pages:
-man runlevel
-man 8 init
-man getty
+* man runlevel
+* man 8 init
+* man getty
