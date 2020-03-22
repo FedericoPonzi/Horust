@@ -29,8 +29,7 @@ start-delay = "10s"
 strategy = "always"
 ``` 
 There are many supported properties for your service file, but they are all optional. This is as minimal as we can get.
-As soon as we run horust, this service will be read and the command run. As soon as the service is over it won't be restarted,
-and horust will exit.
+As soon as we run horust, this service will be read and the command run. As soon as the service is over it won't be restarted, and horust will exit.
 
 3. Create a new file called `healthcheck.py` and in tmp:
 ```
@@ -47,14 +46,17 @@ else:
 Add execution permissions to it: `chmod +x /tmp/healthcheck.py`.
 
 4. Run horust: "./horust". By default it will search services inside the `/etc/horust/services` folder.
+
 Now every 10 seconds, this will send an http head request to google.it. If the response is different than 200, then there is an issue!
+
 In this case, we're just exiting with a different exit code. But in real life, you could trigger other actions.
 Use ctrl+c for stopping horust. Horust will send a SIGTERM signal to all the running services, and if it doesn't hear back for a while, it will terminate them via a SIGKILL.
 
 ---
 
-Check the [documentation](https://github.com/FedericoPonzi/Horust/blob/master/DOCUMENTATION.md) for a complete reference.
-You can also bootstrap the creation of a new service, by using `horust --sample-service > new_service.toml`.
+Check the [documentation](https://github.com/FedericoPonzi/Horust/blob/master/DOCUMENTATION.md) for a complete reference of the options available on the service config file.
+
+> You can also bootstrap the creation of a new service, by using `horust --sample-service > new_service.toml`.
 
 ```toml
 command = "/bin/bash -c 'echo hello world'"
@@ -89,13 +91,7 @@ timeout-before-sigkill = "10s"
 ```
 
 ## Contributing
-Thanks for considering contributing to horust! 
-[Github Issue](https://github.com/FedericoPonzi/horust/issues) are a good place for getting started. 
-You can also search the code for `TODO`s.
-
-If you're planning to add new features, it's super awesome but please open an [issue](https://github.com/FedericoPonzi/Horust/issues/new) describing your proposal before you start working on it.
-
-Have a look on [DEVELOPMENT.md](https://github.com/FedericoPonzi/Horust/blob/master/DEVELOPMENT.md) for more info on how to get started hacking on horust.
+Thanks for considering contributing to horust! For getting started have a look on [CONTRIBUTING.md](https://github.com/FedericoPonzi/Horust/blob/master/DEVELOPMENT.md).
 
 ## License
 Horust is provided under the MIT license. Please read the attached [license](https://github.com/FedericoPonzi/horust/blob/master/LICENSE) file.
