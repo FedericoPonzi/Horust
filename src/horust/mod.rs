@@ -11,6 +11,7 @@ pub use self::formats::get_sample_service;
 use crate::horust::bus::Bus;
 use crate::horust::error::Result;
 use crate::horust::formats::{validate, Service};
+pub use formats::Event;
 use libc::{prctl, PR_SET_CHILD_SUBREAPER};
 use std::ffi::OsStr;
 use std::fmt::Debug;
@@ -63,15 +64,18 @@ impl Horust {
     }
 }
 
-pub fn list_files<P: AsRef<std::path::Path>>(path: P) -> std::io::Result<Vec<std::path::PathBuf>> {
-    let mut paths = std::fs::read_dir(path)?;
-    paths.try_fold(vec![], |mut ret, p| match p {
-        Ok(entry) => {
-            ret.push(entry.path());
-            Ok(ret)
-        }
-        Err(err) => Err(err),
-    })
+/// List files in p, filtering out directories.
+fn list_files<P: AsRef<Path>>(path: P) -> std::io::Result<Vec<PathBuf>> {
+    fs::read_dir(path)?
+        .filter_map(|entry| entry.ok())
+        .try_fold(vec![], |mut ret, entry| {
+            entry.file_type().map(|ftype| {
+                if ftype.is_file() {
+                    ret.push(entry.path());
+                }
+                ret
+            })
+        })
 }
 
 /// Search for *.toml files in path, and deserialize them into Service.

@@ -432,7 +432,6 @@ fn spawn_process(service: &Service) -> Result<Pid> {
             debug!("Spawned child with PID {}.", child);
             Ok(child)
         }
-
         Err(err) => Err(Into::into(err)),
     }
 }
