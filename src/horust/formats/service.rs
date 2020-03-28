@@ -43,7 +43,7 @@ wait = "10s"
 pub type ServiceName = String;
 
 #[derive(Serialize, Clone, Deserialize, Debug, Eq, PartialEq)]
-#[serde(rename_all = "kebab-case")]
+#[serde(rename_all = "kebab-case", deny_unknown_fields)]
 pub struct Service {
     #[serde(default)]
     pub name: ServiceName,
@@ -77,7 +77,7 @@ pub struct Environment {
 }
 
 #[derive(Serialize, Clone, Deserialize, Debug, Eq, PartialEq)]
-#[serde(rename_all = "kebab-case")]
+#[serde(rename_all = "kebab-case", deny_unknown_fields)]
 pub struct Healthness {
     pub http_endpoint: Option<String>,
     pub file_path: Option<PathBuf>,
@@ -259,7 +259,7 @@ impl std::fmt::Display for ServiceStatus {
 }
 
 #[derive(Serialize, Clone, Deserialize, Debug, Eq, PartialEq)]
-#[serde(rename_all = "kebab-case")]
+#[serde(rename_all = "kebab-case", deny_unknown_fields)]
 pub struct Restart {
     #[serde(default)]
     pub strategy: RestartStrategy,
@@ -283,7 +283,7 @@ impl Default for Restart {
 }
 
 #[derive(Serialize, Clone, Deserialize, Debug, Eq, PartialEq)]
-#[serde(rename_all = "kebab-case")]
+#[serde(rename_all = "kebab-case", deny_unknown_fields)]
 pub enum RestartStrategy {
     Always,
     OnFailure,
@@ -314,7 +314,7 @@ impl From<&str> for RestartStrategy {
 }
 
 #[derive(Serialize, Clone, Deserialize, Debug, Eq, PartialEq)]
-#[serde(rename_all = "kebab-case")]
+#[serde(rename_all = "kebab-case", deny_unknown_fields)]
 pub struct Failure {
     #[serde(default = "Failure::default_successful_exit_code")]
     pub successful_exit_code: Vec<i32>,
@@ -328,7 +328,7 @@ impl Failure {
 }
 
 #[derive(Serialize, Clone, Deserialize, Debug, Eq, PartialEq)]
-#[serde(rename_all = "kebab-case")]
+#[serde(rename_all = "kebab-case", deny_unknown_fields)]
 pub enum FailureStrategy {
     Shutdown,
     KillDependents,
@@ -362,7 +362,7 @@ impl From<&str> for FailureStrategy {
 }
 
 #[derive(Serialize, Clone, Deserialize, Debug, Eq, PartialEq)]
-#[serde(rename_all = "kebab-case")]
+#[serde(rename_all = "kebab-case", deny_unknown_fields)]
 pub struct Termination {
     #[serde(default)]
     pub(crate) signal: TerminationSignal,
@@ -510,7 +510,6 @@ mod test {
         };
         let service = Service::from_str(get_sample_service().as_str())
             .expect("error on deserializing the manifest");
-        println!("{:#?}", service);
         assert_eq!(expected, service);
     }
     #[test]
