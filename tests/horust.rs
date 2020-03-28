@@ -188,7 +188,6 @@ die-if-failed = ["a.toml"]"#;
     store_service(temp_dir.path(), script, Some(service), None);
     let script = r#"#!/bin/bash
 sleep 1
-echo "Adieu mondo"
 exit 1
 "#;
     store_service(temp_dir.path(), script, None, Some("a"));
