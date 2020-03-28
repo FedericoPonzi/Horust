@@ -47,13 +47,26 @@ impl Repo {
             .last()
             .unwrap()
     }
-
+    /// Get all the services that have specifed "start-after = [`service_name`]" in their config
     fn get_dependents(&self, service_name: &ServiceName) -> Vec<ServiceName> {
         self.services
             .iter()
             .filter(|sh| sh.service().start_after.contains(service_name))
             .map(|sh| sh.name())
             .cloned()
+            .collect()
+    }
+
+    fn get_die_if_failed(&self, service_name: &ServiceName) -> Vec<&ServiceName> {
+        self.services
+            .iter()
+            .filter(|sh| {
+                sh.service()
+                    .termination
+                    .die_if_failed
+                    .contains(service_name)
+            })
+            .map(|sh| sh.name())
             .collect()
     }
 
@@ -249,6 +262,14 @@ impl Runtime {
                         self.repo.get_dependents(service_handler.name().into()),
                         service_handler,
                     );
+                    let other_services_termination = self
+                        .repo
+                        .get_die_if_failed(service_handler.name())
+                        .into_iter()
+                        .map(|sh_name| {
+                            Event::new_status_changed(&sh_name, ServiceStatus::ToBeKilled)
+                        });
+
                     let service_ev = if !attempts_are_over {
                         Event::new_status_changed(
                             service_handler.name(),
@@ -259,6 +280,7 @@ impl Runtime {
                     };
 
                     failure_evs.push(service_ev);
+                    failure_evs.extend(other_services_termination);
                     failure_evs
                 }
                 ServiceStatus::InKilling => {

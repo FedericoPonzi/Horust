@@ -113,6 +113,7 @@ fn next(
         .iter()
         .filter(|(_s_name, service)| !healthchecks(service))
         .map(|(service_name, _service)| {
+            // TODO: change to ToBeKilled. If the healthcheck fails, maybe it's a transient failure and process might be still running.
             Event::new_status_changed(service_name, ServiceStatus::Failed)
         })
         .chain(evs_starting)

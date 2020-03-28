@@ -12,8 +12,7 @@ use std::str::FromStr;
 use std::time::Duration;
 
 pub fn get_sample_service() -> String {
-    r#"# The name of your service is your filename.
-# name = "my-cool-service.toml"
+    r#"
 command = "/bin/bash -c 'echo hello world'"
 working-directory = "/tmp/"
 start-delay = "2s"
@@ -36,6 +35,7 @@ strategy = "ignore"
 [termination]
 signal = "TERM"
 wait = "10s"
+die-if-failed  = [ "db.toml"]
 "#
     .to_string()
 }
@@ -368,6 +368,8 @@ pub struct Termination {
     pub(crate) signal: TerminationSignal,
     #[serde(default = "Termination::default_wait", with = "humantime_serde")]
     pub wait: Duration,
+    #[serde(default = "Vec::new")]
+    pub die_if_failed: Vec<ServiceName>,
 }
 
 impl Termination {
@@ -381,6 +383,7 @@ impl Default for Termination {
         Termination {
             signal: Default::default(),
             wait: Self::default_wait(),
+            die_if_failed: Vec::new(),
         }
     }
 }
@@ -506,6 +509,7 @@ mod test {
             termination: Termination {
                 signal: TERM,
                 wait: Duration::from_secs(10),
+                die_if_failed: vec!["db.toml".into()],
             },
         };
         let service = Service::from_str(get_sample_service().as_str())

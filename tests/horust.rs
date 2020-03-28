@@ -56,7 +56,7 @@ fn get_cli() -> (Command, TempDir) {
 
 /// Run the cmd and send a message on receiver when it's done.
 /// This allows for ensuring termination of a test.
-fn run_async(mut cmd: Command, should_succeed: bool) -> (mpsc::Receiver<()>, Pid) {
+fn run_async(mut cmd: Command, should_succeed: bool) -> RecvWrapper {
     let mut child = cmd.spawn().unwrap();
     thread::sleep(Duration::from_millis(500));
 
@@ -73,7 +73,20 @@ fn run_async(mut cmd: Command, should_succeed: bool) -> (mpsc::Receiver<()>, Pid
         sender.send(()).unwrap();
         println!("Done!");
     });
-    (receiver, pid)
+    RecvWrapper(receiver, pid)
+}
+
+/// A simple wrapper for the recv, used for ease of running multi-threaded tests
+struct RecvWrapper(mpsc::Receiver<()>, Pid);
+
+impl RecvWrapper {
+    fn recv_or_kill(self, sleep: Duration) {
+        std::thread::sleep(sleep);
+        self.0.try_recv().unwrap_or_else(|_err| {
+            println!("test didn't terminate on time, going to kill horust...");
+            kill(self.1, Signal::SIGKILL).expect("horust kill");
+        });
+    }
 }
 
 #[test]
@@ -128,8 +141,9 @@ echo "c""#;
 }
 
 // Test termination section
+// TODO: add a test for termination / signal
 #[test]
-fn test_termination() {
+fn test_termination_wait() {
     let (cmd, temp_dir) = get_cli();
     // this script captures traps SIGINT / SIGTERM / SIGEXIT
     let script = r#"#!/bin/bash
@@ -154,11 +168,31 @@ done
 wait = "1s""#;
     store_service(temp_dir.path(), script, Some(service), None);
 
-    let (receiver, pid) = run_async(cmd, true);
-    kill(pid, Signal::SIGINT).expect("kill");
-    thread::sleep(Duration::from_secs(3));
-    //todo: send sigkill.
-    receiver.try_recv().unwrap();
+    let recv = run_async(cmd, true);
+    kill(recv.1, Signal::SIGINT).expect("kill");
+    recv.recv_or_kill(Duration::from_secs(3));
+}
+
+#[test]
+fn test_termination_die_if_failed() {
+    let (cmd, temp_dir) = get_cli();
+    let script = r#"#!/bin/bash
+while true ; do
+    sleep 1
+done
+"#;
+    let service = r#"[termination]
+wait = "0s"
+die-if-failed = ["a.toml"]"#;
+
+    store_service(temp_dir.path(), script, Some(service), None);
+    let script = r#"#!/bin/bash
+sleep 1
+exit 1
+"#;
+    store_service(temp_dir.path(), script, None, Some("a"));
+    let recv = run_async(cmd, true);
+    recv.recv_or_kill(Duration::from_secs(5));
 }
 
 // Test user
@@ -221,14 +255,8 @@ sleep 30"#;
 
     //store_service(temp_dir.path(), sleep_script, None, None);
     store_service(temp_dir.path(), sleep_script, Some(sleep_service), None);
-    let (receiver, pid) = run_async(cmd, true);
-    if let Err(_error) = receiver.recv_timeout(Duration::from_secs(15)) {
-        let _res = kill(pid, Signal::SIGKILL);
-        std::panic!(format!(
-            "{}: : Failed to receive message, the cmd didn't finish",
-            strategy
-        ));
-    }
+    let recv = run_async(cmd, true);
+    recv.recv_or_kill(Duration::from_secs(15));
 }
 
 #[test]
