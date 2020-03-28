@@ -40,11 +40,13 @@ backoff = "0s"
 attempts = 0
 ```
 * **`strategy` = `always|on-failure|never`**: Defines the restart strategy.
+
     * Always: Failure or Success, it will be always restarted
     * `on-failure`: Only if it has failed. Please check the attempts parameter below.
     * `never`: It won't be restarted, no matter what's the exit status. Please check the attempts parameter below.
-* **`backoff`** = `string`: Use this time before retrying restarting the service. 
-* **`attempts`** = `number`: How many attempts before considering the service as FinishedFailed. Default is 10.
+
+* **`backoff` = `string`**: Use this time before retrying restarting the service. 
+* **`attempts` = `number`**: How many attempts before considering the service as FinishedFailed. Default is 10.
 Attempts are useful if your service is failing too quickly. If you're in a start-stop loop, this will put and end to it.
 If a service has failed too quickly, it will be restarted even if the policy is `never`. 
 And if the attempts are over, it won't never be restarted even if the restart policy is: On-Failure/ Always.
@@ -70,7 +72,9 @@ immediately pass to the running state.
 http-endpoint = "http://localhost:8080/healthcheck"
 file-path = "/var/myservice/up"
 ```
- * **http** = 
+ * **`http-endpoint` = `<http endpoint>`**: It will send an HEAD request to the specified http endpoint. 200 means the service is healthy, otherwise it will change the status to failure.
+    This requires horust to be built with the `http-healthcheck` feature (included by default).
+    
  * You can check the healthiness of your system using an http endpoint or a flag file.
  * You can use the enforce dependency to kill every dependent system.
 
@@ -80,24 +84,26 @@ file-path = "/var/myservice/up"
 successful-exit-code = [ 0, 1, 255]
 strategy = "ignore"
 ```
-* **successful-exit-code = [\<int>]**: A comma separated list of exit code. 
+* **`successful-exit-code` = `[\<int>]`**: A comma separated list of exit code. 
 Usually a program is considered failed if its exit code is different than zero. But not all fails are the same.
 By using this parameter, you can specify which exit codes will make this service considered as failed.
 
-* **strategy = `shutdown|kill-dependents|ignore`**': We might want to kill the whole system, or part of it, if some service fails. Default: `ignore` 
- * `kill-dependents`: Dependents are all the services start after this one. So if service `b` has service `a` in its `start-after` section,
-    and `a` has strategy=kill-dependents, then b will be stopped if `a` fails.
- * `shutdown`: It will kill all the services.
+* **`strategy` = `shutdown|kill-dependents|ignore`**': We might want to kill the whole system, or part of it, if some service fails. Default: `ignore`
+
+     * `kill-dependents`: Dependents are all the services start after this one. So if service `b` has service `a` in its `start-after` section,
+        and `a` has strategy=kill-dependents, then b will be stopped if `a` fails.
+     * `shutdown`: It will kill all the services.
 
 ### Termination section
 ```toml
 [termination]
 signal = "TERM"
 wait = "10s"
+die-if-failed = ["db.toml"]
 ```
-* **signal** = **"TERM|HUP|INT|QUIT|KILL|USR1|USR2"**: The _friendly_ signal used for shutting down the process.
-* **wait** = **"time"**: How much time to wait before sending a SIGKILL after `signal` has been sent.
-
+* **`signal` = `"TERM|HUP|INT|QUIT|KILL|USR1|USR2"`**: The _friendly_ signal used for shutting down the process.
+* **`wait` = `"time"`**: How much time to wait before sending a SIGKILL after `signal` has been sent.
+* **`die-if-failed` = `["<service-name>"]`**: If any of the services in the array dies, this service will be killed.
 ---
 ## State machine
 [![State machne](https://github.com/FedericoPonzi/Horust/raw/master/res/state-machine.png)](https://github.com/FedericoPonzi/Horust/raw/master/res/state-machine.png)
