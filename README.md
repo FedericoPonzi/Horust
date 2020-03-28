@@ -2,17 +2,17 @@
 
 [![GHA Build Status](https://github.com/FedericoPonzi/horust/workflows/CI/badge.svg)](https://github.com/FedericoPonzi/horust/actions?query=workflow%3ACI) [![MIT licensed](https://img.shields.io/badge/license-MIT-blue.svg)](./LICENSE)
 
-Horust is a supervisor system written in rust and designed to be run in containers. 
+[Horust](https://github.com/FedericoPonzi/Horust) is a supervisor system written in rust and designed to be run in containers. 
 
 # Table of contents
-* Goals
-* Status
-* Usage
-* Contributing
-* License
+* [Goals](#goals)
+* [Status](#status)
+* [Usage](#usage)
+* [Contributing](#contributing)
+* [License](#license)
 
-## Goals:
-* Supervision: A full fledge supervisor system, designed to be used in containers.
+## Goals
+* Supervision: A feature full supervision system, designed (but not limited) to be used in containers.
 * Init system: Use Horust as your init system.
 * Understandability: The code should be easy to understand and easy to modify.
 * Rock solid: You should be able to trust your favorite egyptian God.
@@ -83,13 +83,6 @@ strategy = "ignore"
 [termination]
 signal = "TERM"
 wait = "10s"
-```
-
-## Horust configuration
-Horust itself can be tuned and modified by using the following shiny parameters:
-```toml
-# Default time to wait after sending a `sigterm` to a process before sending a SIGKILL.
-timeout-before-sigkill = "10s"
 ```
 
 ## Contributing

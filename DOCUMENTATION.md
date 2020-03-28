@@ -1,8 +1,17 @@
 # Documentation
-This document describe all the possible options you can put in a service.toml file.
-You should create one different service.toml for each command you want to run. 
+## Table of contents:
+* [Service configuration](#service-configuration)
+* [State machine](#state-machine)
+* [Horust's configuration](#horust-configuration)
+* [Single command](#single-command)
+* [Plugins](#plugins)
+* [Checking system status](#checking-system-status)
 
 When starting horust, you can optionally specify where it should look for services and uses `/etc/horust/services` by default.
+
+## Service configuration
+This section describes all the possible options you can put in a service.toml file.
+You should create one different service.toml for each command you want to run. 
 A part from the `user` parameter, everything should work even with an unprivileged user.
 
 ### Main section
@@ -90,7 +99,7 @@ wait = "10s"
 * **wait** = **"time"**: How much time to wait before sending a SIGKILL after `signal` has been sent.
 
 ---
-# State machine
+## State machine
 [![State machne](https://github.com/FedericoPonzi/Horust/raw/master/res/state-machine.png)](https://github.com/FedericoPonzi/Horust/raw/master/res/state-machine.png)
 
 You can compile this on https://state-machine-cat.js.org/
@@ -112,12 +121,21 @@ Success => Finished : "Based on restart policy";
 Failed => Initial : "restart = always|on-failure";
 ```
 
+
+## Horust's configuration
+Horust's configuration is still work in progress, thus not available yet.
+Horust can be configured by using the following parameters:
+```toml
+# Default time to wait after sending a `sigterm` to a process before sending a SIGKILL.
+timeout-before-sigkill = "10s"
+```
+
 ## Single command
-WIP.
+WIP. It's already supported, but it needs some love.
 
 ## Plugins
-WIP. Horust works via events, so it should be fairly easy to have additional components connected to the bus.
-## Check horust status
+WIP. Horust works via message passing, so it should be fairly easy to have additional components connected to the bus.
+
+## Checking system status
 WIP. Feel free to contribute.
-## Check services status
-WIP. Feel free to contribute.
+The idea is to create another binary, which will somehow report the system status.
