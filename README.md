@@ -83,6 +83,7 @@ strategy = "ignore"
 [termination]
 signal = "TERM"
 wait = "10s"
+die-if-failed = ["db.toml"]
 ```
 
 ## Contributing
