@@ -32,14 +32,37 @@ impl Repo {
         let services = services.into_iter().map(Into::into).collect();
         Self { bus, services }
     }
+
+    /// Returns true, if the repository is in a state for which fuhrer state transitions can be triggered
+    /// only by external events.
+    fn should_block(&self) -> bool {
+        let triggering_states = vec![
+            ServiceStatus::Running,
+            ServiceStatus::Finished,
+            ServiceStatus::FinishedFailed,
+        ];
+
+        self.services
+            .iter()
+            .all(|sh| triggering_states.contains(&sh.status))
+    }
+
+    // Non blocking
     fn get_events(&mut self) -> Vec<Event> {
         self.bus.try_get_events()
     }
+
+    /// Blocking
+    fn get_events_blocking(&mut self) -> Vec<Event> {
+        vec![self.bus.get_events_blocking()]
+    }
+
     pub fn all_finished(&self) -> bool {
         self.services
             .iter()
             .all(|sh| sh.is_finished() || sh.is_finished_failed())
     }
+
     pub fn get_mut_service(&mut self, service_name: &ServiceName) -> &mut ServiceHandler {
         self.services
             .iter_mut()
@@ -316,7 +339,12 @@ impl Runtime {
     pub fn run(&mut self) {
         loop {
             // Ingest updates
-            let events = self.repo.get_events();
+            let events = if self.repo.should_block() {
+                self.repo.get_events_blocking()
+            } else {
+                self.repo.get_events()
+            };
+
             debug!("Applying events.. {:?}", events);
             //debug!("Service status: {:?}", self.repo.services);
             if signal_handling::is_sigterm_received() && !self.is_shutting_down {

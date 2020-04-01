@@ -1,8 +1,7 @@
 use crate::horust::formats::Event;
 use crossbeam::channel::{unbounded, Receiver, Sender};
 
-/// Since I couldn't find any satisfying crate for broadcasting messages,
-/// I'm using this struct for distributing the messages among the queues - read: bus.
+/// A simple bus implementation: distributes the messages among the queues
 #[derive(Debug)]
 pub struct Bus {
     public_sender: Sender<Event>,
@@ -20,12 +19,12 @@ impl Bus {
         }
     }
 
-    // Will use the thread for running the dispatcher.
+    /// Blocking
     pub fn run(mut self) {
         self.dispatch();
     }
 
-    // Add another component to the bus
+    /// Add another connection to the bus
     pub fn join_bus(&mut self) -> BusConnector {
         let (mysx, rx) = unbounded();
         self.senders.push(mysx);
@@ -45,6 +44,7 @@ impl Bus {
     }
 }
 
+/// A connector to the shared bus
 #[derive(Debug, Clone)]
 pub struct BusConnector {
     sender: Sender<Event>,
@@ -53,6 +53,11 @@ pub struct BusConnector {
 impl BusConnector {
     pub fn new(sender: Sender<Event>, receiver: Receiver<Event>) -> Self {
         BusConnector { sender, receiver }
+    }
+
+    /// Blocking
+    pub fn get_events_blocking(&self) -> Event {
+        self.receiver.recv().unwrap()
     }
 
     /// Non blocking
