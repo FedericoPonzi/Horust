@@ -32,6 +32,10 @@ file-path = "/var/myservice/up"
 successful-exit-code = [ 0, 1, 255]
 strategy = "ignore"
 
+[environment]
+key = "value"
+DB_PASS = "MyPassword"
+
 [termination]
 signal = "TERM"
 wait = "10s"
@@ -451,8 +455,8 @@ mod test {
     use crate::horust::formats::TerminationSignal::TERM;
     use crate::horust::formats::User::Name;
     use crate::horust::formats::{
-        validate, Failure, FailureStrategy, Healthness, Restart, RestartStrategy, Service,
-        Termination,
+        validate, Environment, Failure, FailureStrategy, Healthness, Restart, RestartStrategy,
+        Service, Termination,
     };
     use crate::horust::get_sample_service;
     use std::str::FromStr;
@@ -481,13 +485,19 @@ mod test {
             Self::start_after(name, Vec::new())
         }
     }
+
     #[test]
     fn test_should_correctly_deserialize_sample() {
         let expected = Service {
             name: "".to_string(),
             command: "/bin/bash -c \'echo hello world\'".to_string(),
             user: Name("root".into()),
-            environment: None,
+            environment: Some(Environment {
+                key_val: vec![("key", "value"), ("DB_PASS", "MyPassword")]
+                    .into_iter()
+                    .map(|(v, k)| (v.to_string(), k.to_string()))
+                    .collect(),
+            }),
             working_directory: Some("/tmp/".into()),
             start_delay: Duration::from_secs(2),
             start_after: vec!["another.toml".into(), "second.toml".into()],

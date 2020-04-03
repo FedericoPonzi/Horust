@@ -84,6 +84,11 @@ strategy = "ignore"
 signal = "TERM"
 wait = "10s"
 die-if-failed = ["db.toml"]
+
+[environment]
+key = "Value"
+DB_PASS = "MyPassword"
+DB_HOST = "Localhost"
 ```
 
 ## Contributing

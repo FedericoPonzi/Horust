@@ -93,6 +93,13 @@ By using this parameter, you can specify which exit codes will make this service
      * `kill-dependents`: Dependents are all the services start after this one. So if service `b` has service `a` in its `start-after` section,
         and `a` has strategy=kill-dependents, then b will be stopped if `a` fails.
      * `shutdown`: It will kill all the services.
+### Environment section
+``toml
+[environment]
+key = "value"
+DB_PASS = "MyPassword"
+``
+This section will be used as environment.
 
 ### Termination section
 ```toml

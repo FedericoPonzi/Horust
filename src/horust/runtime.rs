@@ -27,6 +27,7 @@ struct Repo {
     pub services: Vec<ServiceHandler>,
     pub(crate) bus: BusConnector,
 }
+
 impl Repo {
     fn new<T: Into<ServiceHandler>>(bus: BusConnector, services: Vec<T>) -> Self {
         let services = services.into_iter().map(Into::into).collect();
