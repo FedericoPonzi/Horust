@@ -11,7 +11,6 @@ use shlex;
 use std::ffi::{CStr, CString};
 use std::fmt::Debug;
 use std::ops::{Add, Mul};
-use std::path::PathBuf;
 use std::thread;
 use std::time::{Duration, Instant};
 
@@ -157,7 +156,8 @@ impl Runtime {
                     ServiceStatus::ToBeRun => {
                         if service_handler.status == ServiceStatus::Initial {
                             service_handler.status = ServiceStatus::ToBeRun;
-                            healthcheck::prepare_service(service_handler).unwrap();
+                            healthcheck::prepare_service(&service_handler.service().healthiness)
+                                .unwrap();
                             let backoff = service_handler
                                 .service()
                                 .restart
@@ -488,8 +488,7 @@ fn spawn_process(service: &Service) -> Result<Pid> {
 }
 
 fn exec_service(service: &Service) {
-    let default = PathBuf::from("/");
-    let cwd = service.working_directory.as_ref().unwrap_or(&default);
+    let cwd = service.working_directory.clone();
     debug!("Set cwd: {:?}, ", cwd);
 
     std::env::set_current_dir(cwd).expect("Set cwd");

@@ -1,5 +1,5 @@
 use crate::horust::bus::BusConnector;
-use crate::horust::formats::{Event, Service, ServiceHandler, ServiceName, ServiceStatus};
+use crate::horust::formats::{Event, Healthiness, Service, ServiceName, ServiceStatus};
 #[cfg(feature = "http-healthcheck")]
 use reqwest::blocking::Client;
 use std::collections::HashMap;
@@ -58,46 +58,40 @@ fn check_http_endpoint(endpoint: &str) -> bool {
     resp.status().is_success()
 }
 
-fn healthchecks(service: &Service) -> bool {
-    match service.healthiness.as_ref() {
-        Some(healthiness) => {
-            // Count of required checks:
-            let mut checks = 0;
-            // Count of passed checks:
-            let mut checks_res = 0;
-            if let Some(file_path) = healthiness.file_path.as_ref() {
-                checks += 1;
-                checks_res += if file_path.exists() {
-                    1
-                } else {
-                    debug!("Healthcheck: File: {:?}, doesn't exists yet.", file_path);
-                    0
-                };
-            }
-            if let Some(endpoint) = healthiness.http_endpoint.as_ref() {
-                let check_feature = |endpoint: &String| {
-                    #[cfg(not(feature = "http-healthcheck"))]
-                    {
-                        error!("There is an http based healthcheck for {}, requesting: {} , but horust was built without the http-healthcheck feature (thus it will never pass these checks).", sh.name(), endpoint);
-                        return (1, 0);
-                    }
-                    #[cfg(feature = "http-healthcheck")]
-                    return (1, if check_http_endpoint(endpoint) { 1 } else { 0 });
-                };
-                let (check, res) = check_feature(endpoint);
-                checks += check;
-                checks_res += res
-            }
-            /*
-                Edge case: [healthcheck] header section is defined, but then it's empty. This should pass.
-            */
-            let res = checks <= checks_res;
-            let empty_section =
-                healthiness.file_path.is_some() || healthiness.http_endpoint.is_some();
-            res || !empty_section
-        }
-        None => true,
+fn healthchecks(healthiness: &Healthiness) -> bool {
+    // Count of required checks:
+    let mut checks = 0;
+    // Count of passed checks:
+    let mut checks_res = 0;
+    if let Some(file_path) = healthiness.file_path.as_ref() {
+        checks += 1;
+        checks_res += if file_path.exists() {
+            1
+        } else {
+            debug!("Healthcheck: File: {:?}, doesn't exists yet.", file_path);
+            0
+        };
     }
+    if let Some(endpoint) = healthiness.http_endpoint.as_ref() {
+        let check_feature = |endpoint: &String| {
+            #[cfg(not(feature = "http-healthcheck"))]
+            {
+                error!("There is an http based healthcheck for {}, requesting: {} , but horust was built without the http-healthcheck feature (thus it will never pass these checks).", sh.name(), endpoint);
+                return (1, 0);
+            }
+            #[cfg(feature = "http-healthcheck")]
+            return (1, if check_http_endpoint(endpoint) { 1 } else { 0 });
+        };
+        let (check, res) = check_feature(endpoint);
+        checks += check;
+        checks_res += res
+    }
+    /*
+        Edge case: [healthcheck] header section is defined, but then it's empty. This should pass.
+    */
+    let res = checks <= checks_res;
+    let empty_section = healthiness.file_path.is_some() || healthiness.http_endpoint.is_some();
+    res || !empty_section
 }
 
 // Run the healthcheck, produce the event changes
@@ -107,11 +101,11 @@ fn next(
 ) -> Vec<Event> {
     let evs_starting = starting
         .iter()
-        .filter(|(_s_name, service)| healthchecks(service))
+        .filter(|(_s_name, service)| healthchecks(&service.healthiness))
         .map(|(s_name, _service)| Event::new_status_changed(s_name, ServiceStatus::Running));
     running
         .iter()
-        .filter(|(_s_name, service)| !healthchecks(service))
+        .filter(|(_s_name, service)| !healthchecks(&service.healthiness))
         .map(|(service_name, _service)| {
             // TODO: change to ToBeKilled. If the healthcheck fails, maybe it's a transient failure and process might be still running.
             Event::new_status_changed(service_name, ServiceStatus::Failed)
@@ -132,11 +126,9 @@ fn run(bus: BusConnector, services: Vec<Service>) {
 }
 
 /// Setup require for the service, before running the healthchecks and starting the service.
-pub fn prepare_service(service_handler: &ServiceHandler) -> Result<(), std::io::Error> {
-    if let Some(healthiness) = &service_handler.service().healthiness {
-        if let Some(file_path) = &healthiness.file_path {
-            std::fs::remove_file(file_path)?;
-        }
+pub fn prepare_service(healthiness: &Healthiness) -> Result<(), std::io::Error> {
+    if let Some(file_path) = healthiness.file_path.as_ref() {
+        std::fs::remove_file(file_path)?;
     }
     Ok(())
 }
@@ -144,7 +136,7 @@ pub fn prepare_service(service_handler: &ServiceHandler) -> Result<(), std::io::
 #[cfg(test)]
 mod test {
     use crate::horust::error::Result;
-    use crate::horust::formats::{Event, Service, ServiceName, ServiceStatus};
+    use crate::horust::formats::{Event, Healthiness, Service, ServiceName, ServiceStatus};
     use crate::horust::healthcheck;
     use crate::horust::healthcheck::healthchecks;
     use std::collections::HashMap;
@@ -178,23 +170,15 @@ file-path = "{}""#,
         // _no_checks_needed
         let tempdir = TempDir::new("health")?;
         let file_path = tempdir.path().join("file.txt");
-        let service = format!(
-            r#"command = "not relevant"
-[healthiness]
-file-path = "{}""#,
-            file_path.display()
-        );
-        let service: Service = toml::from_str(service.as_str())?;
-        assert!(!healthchecks(&service));
+        let healthiness = Healthiness {
+            file_path: Some(file_path.clone()),
+            http_endpoint: None,
+        };
+        assert!(!healthchecks(&healthiness));
         std::fs::write(file_path, "Hello world!")?;
-        assert!(healthchecks(&service));
-
-        let service: Service = toml::from_str(
-            r#"command = "not relevant"
-[healthiness]
-"#,
-        )?;
-        assert!(healthchecks(&service));
+        assert!(healthchecks(&healthiness));
+        let healthiness: Healthiness = Default::default();
+        assert!(healthchecks(&healthiness));
         Ok(())
     }
 }

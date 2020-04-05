@@ -56,7 +56,8 @@ pub struct Service {
     pub command: String,
     #[serde(default)]
     pub user: User,
-    pub working_directory: Option<PathBuf>,
+    #[serde(default = "Service::default_working_directory")]
+    pub working_directory: PathBuf,
     #[serde(default, with = "humantime_serde")]
     pub start_delay: Duration,
     #[serde(default = "Vec::new")]
@@ -66,13 +67,58 @@ pub struct Service {
     pub signal_rewrite: Option<String>,
     #[serde(default)]
     pub restart: Restart,
-    pub healthiness: Option<Healthness>,
+    #[serde(default)]
+    pub healthiness: Healthiness,
     #[serde(default)]
     pub failure: Failure,
     #[serde(default)]
     pub environment: Environment,
     #[serde(default)]
     pub termination: Termination,
+}
+impl Service {
+    fn default_working_directory() -> PathBuf {
+        PathBuf::from("/")
+    }
+    pub fn from_file(path: &PathBuf) -> Result<Self, HorustError> {
+        let content = std::fs::read_to_string(path)?;
+        toml::from_str::<Service>(content.as_str()).map_err(HorustError::from)
+    }
+
+    /// Create the environment K=V variables, used for exec into the new process.
+    /// User defined environment variables overwrite the predefined variables.
+    pub fn get_environment(&self) -> Vec<String> {
+        self.environment.get_environment(
+            self.user.get_name().clone(),
+            self.user.get_home().display().to_string(),
+        )
+    }
+
+    pub fn from_command(command: String) -> Self {
+        Service {
+            name: command.clone(),
+            start_after: Default::default(),
+            user: Default::default(),
+            environment: Default::default(),
+            working_directory: "/".into(),
+            restart: Default::default(),
+            start_delay: Duration::from_secs(0),
+            command,
+            healthiness: Default::default(),
+            signal_rewrite: None,
+            last_mtime_sec: 0,
+            failure: Default::default(),
+            termination: Default::default(),
+        }
+    }
+}
+
+impl FromStr for Service {
+    type Err = HorustError;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        toml::from_str::<Service>(s).map_err(HorustError::from)
+    }
 }
 
 #[derive(Serialize, Clone, Deserialize, Debug, Eq, PartialEq)]
@@ -176,53 +222,19 @@ impl Environment {
 
 #[derive(Serialize, Clone, Deserialize, Debug, Eq, PartialEq)]
 #[serde(rename_all = "kebab-case", deny_unknown_fields)]
-pub struct Healthness {
+pub struct Healthiness {
     pub http_endpoint: Option<String>,
     pub file_path: Option<PathBuf>,
 }
 
-impl Service {
-    pub fn from_file(path: &PathBuf) -> Result<Self, HorustError> {
-        let content = std::fs::read_to_string(path)?;
-        toml::from_str::<Service>(content.as_str()).map_err(HorustError::from)
-    }
-
-    /// Create the environment K=V variables, used for exec into the new process.
-    /// User defined environment variables overwrite the predefined variables.
-    pub fn get_environment(&self) -> Vec<String> {
-        self.environment.get_environment(
-            self.user.get_name().clone(),
-            self.user.get_home().display().to_string(),
-        )
-    }
-
-    pub fn from_command(command: String) -> Self {
-        Service {
-            name: command.clone(),
-            start_after: Default::default(),
-            user: Default::default(),
-            environment: Default::default(),
-            working_directory: Some("/".into()),
-            restart: Default::default(),
-            start_delay: Duration::from_secs(0),
-            command,
-            healthiness: None,
-            signal_rewrite: None,
-            last_mtime_sec: 0,
-            failure: Default::default(),
-            termination: Default::default(),
+impl Default for Healthiness {
+    fn default() -> Self {
+        Self {
+            http_endpoint: None,
+            file_path: None,
         }
     }
 }
-
-impl FromStr for Service {
-    type Err = HorustError;
-
-    fn from_str(s: &str) -> Result<Self, Self::Err> {
-        toml::from_str::<Service>(s).map_err(HorustError::from)
-    }
-}
-
 /// A user in the system.
 /// It can be either a uuid or a username (available in passwd)
 #[derive(Serialize, Clone, Deserialize, Debug, Eq, PartialEq)]
@@ -523,7 +535,7 @@ mod test {
     use crate::horust::formats::TerminationSignal::TERM;
     use crate::horust::formats::User::Name;
     use crate::horust::formats::{
-        validate, Environment, Failure, FailureStrategy, Healthness, Restart, RestartStrategy,
+        validate, Environment, Failure, FailureStrategy, Healthiness, Restart, RestartStrategy,
         Service, Termination,
     };
     use crate::horust::get_sample_service;
@@ -535,12 +547,12 @@ mod test {
             Service {
                 name: name.to_owned(),
                 start_after: start_after.into_iter().map(|v| v.into()).collect(),
-                working_directory: Some("".into()),
+                working_directory: "".into(),
                 user: Default::default(),
                 restart: Default::default(),
                 start_delay: Duration::from_secs(0),
                 command: "".to_string(),
-                healthiness: None,
+                healthiness: Default::default(),
                 signal_rewrite: None,
                 environment: Default::default(),
                 last_mtime_sec: 0,
@@ -567,7 +579,7 @@ mod test {
                     .into_iter()
                     .collect(),
             },
-            working_directory: Some("/tmp/".into()),
+            working_directory: "/tmp/".into(),
             start_delay: Duration::from_secs(2),
             start_after: vec!["another.toml".into(), "second.toml".into()],
             restart: Restart {
@@ -575,10 +587,10 @@ mod test {
                 backoff: Duration::from_millis(0),
                 attempts: 0,
             },
-            healthiness: Some(Healthness {
+            healthiness: Healthiness {
                 http_endpoint: Some("http://localhost:8080/healthcheck".into()),
                 file_path: Some("/var/myservice/up".into()),
-            }),
+            },
             signal_rewrite: None,
             last_mtime_sec: 0,
             failure: Failure {
