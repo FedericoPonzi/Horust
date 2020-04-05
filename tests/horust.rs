@@ -213,16 +213,41 @@ whoami"#;
 #[test]
 fn test_environment() {
     let (mut cmd, temp_dir) = get_cli();
-    let service = r#"[environment]
-foo = "bar""#;
+
     let script = r#"#!/bin/bash
 printenv"#;
-
     store_service(temp_dir.path(), script, None, None);
     cmd.assert().success().stdout(contains("bar").not());
 
+    let service = r#"[environment]
+keep-env = true
+re-export = [ "TERM" ]
+additional = { TERM = "bar" }
+"#;
+    // Additional should overwrite TERM
     store_service(temp_dir.path(), script, Some(service), None);
     cmd.assert().success().stdout(contains("bar"));
+
+    // keep-env should keep the env :D
+    let service = r#"[environment]
+keep-env = true
+"#;
+    store_service(temp_dir.path(), script, Some(service), None);
+    cmd.env("DB_PASS", "MyPassword")
+        .assert()
+        .success()
+        .stdout(contains("MyPassword"));
+
+    // If keep env is false, we can choose variables to export:
+    let service = r#"[environment]
+keep-env = false
+re-export = [ "DB_PASS" ]
+"#;
+    store_service(temp_dir.path(), script, Some(service), None);
+    cmd.env("DB_PASS", "MyPassword")
+        .assert()
+        .success()
+        .stdout(contains("MyPassword"));
 }
 
 // Test failure strategies

@@ -33,8 +33,9 @@ successful-exit-code = [ 0, 1, 255]
 strategy = "ignore"
 
 [environment]
-key = "value"
-DB_PASS = "MyPassword"
+keep-env = false
+re-export = [ "PATH", "DB_PASS"]
+additional = { key = "value"} 
 
 [termination]
 signal = "TERM"
@@ -55,7 +56,8 @@ pub struct Service {
     pub command: String,
     #[serde(default)]
     pub user: User,
-    pub environment: Option<Environment>,
+    #[serde(default)]
+    pub environment: Environment,
     pub working_directory: Option<PathBuf>,
     #[serde(default, with = "humantime_serde")]
     pub start_delay: Duration,
@@ -76,8 +78,100 @@ pub struct Service {
 #[derive(Serialize, Clone, Deserialize, Debug, Eq, PartialEq)]
 #[serde(rename_all = "kebab-case")]
 pub struct Environment {
-    #[serde(flatten)]
-    pub key_val: HashMap<String, String>,
+    #[serde(default = "Environment::default_keep_env")]
+    pub keep_env: bool,
+    #[serde(default)]
+    pub re_export: Vec<String>,
+    #[serde(default)]
+    pub additional: HashMap<String, String>,
+}
+
+impl Default for Environment {
+    fn default() -> Self {
+        Self {
+            keep_env: false,
+            re_export: Default::default(),
+            additional: Default::default(),
+        }
+    }
+}
+
+impl Environment {
+    fn default_keep_env() -> bool {
+        true
+    }
+
+    fn get_hostname_val() -> String {
+        let hostname_path = "/etc/hostname";
+        let localhost = "localhost".to_string();
+        if std::path::PathBuf::from(hostname_path).is_file() {
+            std::fs::read_to_string(hostname_path).unwrap_or_else(|_| localhost)
+        } else {
+            std::env::var("HOSTNAME").unwrap_or_else(|_| localhost)
+        }
+    }
+
+    /// Create the environment K=V variables, used for exec into the new process.
+    /// User defined environment variables overwrite the predefined variables.
+    pub(crate) fn get_environment(&self, user_name: String, user_home: String) -> Vec<String> {
+        let mut initial = if self.keep_env {
+            std::env::vars().collect()
+        } else {
+            HashMap::new()
+        };
+
+        let mut additional = self.additional.clone();
+
+        let get_env = |name: &str, default: &str| {
+            (
+                name.to_string(),
+                std::env::var(name).unwrap_or_else(|_| default.to_string()),
+            )
+        };
+        let hostname = ("HOSTNAME".to_string(), Self::get_hostname_val());
+        let path_env = get_env(
+            "PATH",
+            "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/usr/games:/usr/local/games",
+        );
+        let user_name = ("USER".to_string(), user_name);
+        let user_home = ("HOME".to_string(), user_home);
+
+        let env: HashMap<String, String> = vec![hostname, path_env, user_name, user_home]
+            .into_iter()
+            .collect();
+        // The variables from env have always precedence over initial. E.g. home, and user might differ.
+        initial.extend(env);
+
+        // Since I don't know a sane default:
+        if let Ok(term) = std::env::var("TERM") {
+            initial.entry("TERM".to_string()).or_insert(term);
+        }
+
+        let re_export: HashMap<String, String> = self
+            .re_export
+            .iter()
+            .filter_map(|key| {
+                std::env::var(key)
+                    .map_err(|err| error!("Error getting env key: {}, error: {} ", key, err))
+                    .ok()
+                    .map(|value| (key.clone(), value))
+            })
+            .collect();
+
+        // If a variable is re_export, then it has precedence over initial + env.
+        initial.extend(re_export);
+
+        // Finally, additional has the higher precedence:
+        initial.into_iter().for_each(|(k, v)| {
+            additional.entry(k).or_insert(v);
+        });
+
+        // This is the suitable format for `exec`
+        additional
+            .into_iter()
+            .map(|(k, v)| format!("{}={}", k, v))
+            .collect()
+    }
 }
 
 #[derive(Serialize, Clone, Deserialize, Debug, Eq, PartialEq)]
@@ -96,41 +190,10 @@ impl Service {
     /// Create the environment K=V variables, used for exec into the new process.
     /// User defined environment variables overwrite the predefined variables.
     pub fn get_environment(&self) -> Vec<String> {
-        let mut additional = self
-            .environment
-            .clone()
-            .map(|env| env.key_val)
-            .unwrap_or_else(HashMap::new);
-        let get_env = |name: &str, default: &str| {
-            (
-                name.to_string(),
-                std::env::var(name).unwrap_or_else(|_| default.to_string()),
-            )
-        };
-        let hostname = get_env("HOSTNAME", "localhost");
-        let path = get_env(
-            "PATH",
-            "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin",
-        );
-        let user = ("USER".to_string(), self.user.get_name());
-        let home = (
-            "HOME".to_string(),
+        self.environment.get_environment(
+            self.user.get_name().clone(),
             self.user.get_home().display().to_string(),
-        );
-        let env: HashMap<String, String> = vec![hostname, path, user, home].into_iter().collect();
-        env.into_iter().for_each(|(k, v)| {
-            additional.entry(k).or_insert(v);
-        });
-
-        // Since I don't know a sane default:
-        if let Ok(term) = std::env::var("TERM") {
-            additional.insert("TERM".into(), term);
-        }
-
-        additional
-            .into_iter()
-            .map(|(k, v)| format!("{}={}", k, v))
-            .collect()
+        )
     }
 
     pub fn from_command(command: String) -> Self {
@@ -138,7 +201,7 @@ impl Service {
             name: command.clone(),
             start_after: Default::default(),
             user: Default::default(),
-            environment: None,
+            environment: Default::default(),
             working_directory: Some("/".into()),
             restart: Default::default(),
             start_delay: Duration::from_secs(0),
@@ -183,7 +246,12 @@ impl Default for User {
 impl User {
     pub(crate) fn get_uid(&self) -> unistd::Uid {
         match &self {
-            User::Name(name) => unistd::User::from_name(name).unwrap().unwrap().uid,
+            User::Name(name) => {
+                unistd::User::from_name(name)
+                    .expect("Failed getting the user")
+                    .expect("User does not exists")
+                    .uid
+            }
             User::Uid(uid) => unistd::Uid::from_raw(*uid),
         }
     }
@@ -474,7 +542,7 @@ mod test {
                 command: "".to_string(),
                 healthiness: None,
                 signal_rewrite: None,
-                environment: None,
+                environment: Default::default(),
                 last_mtime_sec: 0,
                 failure: Default::default(),
                 termination: Default::default(),
@@ -492,12 +560,13 @@ mod test {
             name: "".to_string(),
             command: "/bin/bash -c \'echo hello world\'".to_string(),
             user: Name("root".into()),
-            environment: Some(Environment {
-                key_val: vec![("key", "value"), ("DB_PASS", "MyPassword")]
+            environment: Environment {
+                keep_env: false,
+                re_export: vec!["PATH".to_string(), "DB_PASS".to_string()],
+                additional: vec![("key".to_string(), "value".to_string())]
                     .into_iter()
-                    .map(|(v, k)| (v.to_string(), k.to_string()))
                     .collect(),
-            }),
+            },
             working_directory: Some("/tmp/".into()),
             start_delay: Duration::from_secs(2),
             start_after: vec!["another.toml".into(), "second.toml".into()],

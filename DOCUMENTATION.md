@@ -96,10 +96,20 @@ By using this parameter, you can specify which exit codes will make this service
 ### Environment section
 ``toml
 [environment]
-key = "value"
-DB_PASS = "MyPassword"
+keep-env = false
+re-export = [ "PATH", "DB_PASS"]
+additional = { key = "value"} 
 ``
-This section will be used as environment.
+* **`keep-env` = `bool`**: default: true. Pass over all the environment variables.
+Regardless the value of keep-env, the following keys will be updated / defined:
+* `USER`
+* `HOSTNAME`
+* `HOME`
+* `PATH`
+Use `re-export` for keeping them.
+* **`re-export` = `[\<string>]`**: Environment variables to keep and re-export.
+This is useful for fine-grained exports or if you want for example to rexport the `PATH`.
+* **`additional` = `{ key = <string> }`**: Defined as key-values, other environment variables to use.
 
 ### Termination section
 ```toml
@@ -133,7 +143,6 @@ Success => Initial : "Restart policy applied";
 Success => Finished : "Based on restart policy";
 Failed => Initial : "restart = always|on-failure";
 ```
-
 
 ## Horust's configuration
 Horust's configuration is still work in progress, thus not available yet.
