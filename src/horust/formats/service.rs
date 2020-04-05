@@ -56,21 +56,21 @@ pub struct Service {
     pub command: String,
     #[serde(default)]
     pub user: User,
-    #[serde(default)]
-    pub environment: Environment,
     pub working_directory: Option<PathBuf>,
     #[serde(default, with = "humantime_serde")]
     pub start_delay: Duration,
     #[serde(default = "Vec::new")]
     pub start_after: Vec<ServiceName>,
+    #[serde(skip)]
+    pub last_mtime_sec: i64,
+    pub signal_rewrite: Option<String>,
     #[serde(default)]
     pub restart: Restart,
     pub healthiness: Option<Healthness>,
-    pub signal_rewrite: Option<String>,
-    #[serde(skip)]
-    pub last_mtime_sec: i64,
     #[serde(default)]
     pub failure: Failure,
+    #[serde(default)]
+    pub environment: Environment,
     #[serde(default)]
     pub termination: Termination,
 }
