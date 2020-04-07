@@ -139,6 +139,7 @@ mod test {
     use crate::horust::formats::{Event, Healthiness, Service, ServiceName, ServiceStatus};
     use crate::horust::healthcheck;
     use crate::horust::healthcheck::healthchecks;
+    use crate::horust::healthcheck::check_http_endpoint;
     use std::collections::HashMap;
     use tempdir::TempDir;
 
@@ -179,6 +180,13 @@ file-path = "{}""#,
         assert!(healthchecks(&healthiness));
         let healthiness: Healthiness = Default::default();
         assert!(healthchecks(&healthiness));
+        Ok(())
+    }
+    #[test]
+    fn test_http_healthiness_check() -> Result<()> {
+        let test_http_endpoint = "http://localhost:3000";
+        println!("{}", check_http_endpoint(test_http_endpoint));
+        assert!(check_http_endpoint(test_http_endpoint));
         Ok(())
     }
 }
