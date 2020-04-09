@@ -1,6 +1,6 @@
 [<img src="https://github.com/FedericoPonzi/Horust/raw/master/res/horust-logo.png" width="300" align="center">](https://github.com/FedericoPonzi/Horust/raw/master/res/horust-logo.png)
 
-[![GHA Build Status](https://github.com/FedericoPonzi/horust/workflows/CI/badge.svg)](https://github.com/FedericoPonzi/horust/actions?query=workflow%3ACI) [![MIT licensed](https://img.shields.io/badge/license-MIT-blue.svg)](./LICENSE)
+![CI](https://github.com/FedericoPonzi/horust/workflows/CI/badge.svg?branch=master&event=push) [![MIT licensed](https://img.shields.io/badge/license-MIT-blue.svg)](./LICENSE)
 
 [Horust](https://github.com/FedericoPonzi/Horust) is a supervisor system written in rust and designed to be run in containers. 
 
