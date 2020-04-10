@@ -141,25 +141,30 @@ pub fn prepare_service(healthiness: &Healthiness) -> Result<(), std::io::Error> 
 }
 
 fn client_mock() -> bool {
-    match TcpStream::connect("127.0.0.1:3333") {
-        Ok(mut _stream) => {
-            println!("Successfully connected to server in port 3333");
-            return true;
-        }
-        Err(e) => {
-            println!("Failed to connect: {}", e);
-            return false;
+    loop {
+        match TcpStream::connect("127.0.0.1:9999") {
+            Ok(mut _stream) => {
+                println!("Successfully connected to server in port 9999");
+                return true;
+            }
+            Err(e) if e.kind() == ErrorKind::ConnectionRefused => {
+                continue;
+            }
+            Err(e) => {
+                println!("Failed to connect: {}", e);
+                return false;
+            }
         }
     }
 }
 
 fn start_server() {
-    let listener = TcpListener::bind("127.0.0.1:3333").unwrap();
+    let listener = TcpListener::bind("127.0.0.1:9999").unwrap();
     listener
         .set_nonblocking(true)
         .expect("Cannot set to non-blocking");
     // accept connections and process them, spawning a new thread for each one
-    println!("Server listening on port 3333");
+    println!("Server listening on port 9999");
     for stream in listener.incoming() {
         match stream {
             Ok(stream) => {
