@@ -1,7 +1,8 @@
 use crate::horust::bus::BusConnector;
 use crate::horust::error::Result;
 use crate::horust::formats::{
-    Event, FailureStrategy, RestartStrategy, Service, ServiceHandler, ServiceName, ServiceStatus,
+    Event, ExitStatus, FailureStrategy, RestartStrategy, Service, ServiceHandler, ServiceName,
+    ServiceStatus,
 };
 use crate::horust::{healthcheck, signal_handling};
 use nix::sys::signal::{self, Signal};
@@ -111,8 +112,8 @@ impl Repo {
 }
 
 // Spawns and runs this component in a new thread.
-pub fn spawn(bus: BusConnector, services: Vec<Service>) {
-    thread::spawn(move || Runtime::new(bus, services).run());
+pub fn spawn(bus: BusConnector, services: Vec<Service>) -> std::thread::JoinHandle<ExitStatus> {
+    thread::spawn(move || Runtime::new(bus, services).run())
 }
 
 impl Runtime {
@@ -155,19 +156,26 @@ impl Runtime {
                     }
                     ServiceStatus::ToBeRun => {
                         if service_handler.status == ServiceStatus::Initial {
-                            service_handler.status = ServiceStatus::ToBeRun;
-                            healthcheck::prepare_service(&service_handler.service().healthiness)
+                            //TODO: double check
+                            if self.is_shutting_down {
+                                service_handler.status = ServiceStatus::Finished;
+                            } else {
+                                service_handler.status = ServiceStatus::ToBeRun;
+                                healthcheck::prepare_service(
+                                    &service_handler.service().healthiness,
+                                )
                                 .unwrap();
-                            let backoff = service_handler
-                                .service()
-                                .restart
-                                .backoff
-                                .mul(service_handler.restart_attempts.clone());
-                            run_spawning_thread(
-                                service_handler.service().clone(),
-                                backoff,
-                                self.repo.clone(),
-                            );
+                                let backoff = service_handler
+                                    .service()
+                                    .restart
+                                    .backoff
+                                    .mul(service_handler.restart_attempts.clone());
+                                run_spawning_thread(
+                                    service_handler.service().clone(),
+                                    backoff,
+                                    self.repo.clone(),
+                                );
+                            }
                         } else {
                             debug!("{}: Ignoring ToBeRun event", service_name);
                         }
@@ -245,6 +253,9 @@ impl Runtime {
                 service_handler.pid = Some(pid);
             }
             Event::ShuttingDownInitiated => self.is_shutting_down = true,
+            ev => {
+                trace!("ignoring: {:?}", ev);
+            }
         }
     }
 
@@ -337,7 +348,7 @@ impl Runtime {
     }
 
     /// Blocking call. Tries to move state machines forward
-    pub fn run(&mut self) {
+    pub fn run(mut self) -> ExitStatus {
         loop {
             // Ingest updates
             let events = if self.repo.should_block() {
@@ -363,14 +374,27 @@ impl Runtime {
                 .collect();
             debug!("Going to emit events: {:?}", events);
             events.into_iter().for_each(|ev| self.repo.send_ev(ev));
+            std::thread::sleep(Duration::from_millis(300));
+
             // TODO: apply some clever check and exit if no service will never be started again.
             if self.repo.all_finished() {
                 debug!("All services have finished, exiting...");
                 break;
             }
-            thread::sleep(Duration::from_millis(200));
         }
-        std::process::exit(0);
+
+        let res = if self.repo.services.iter().any(|sh| sh.is_finished_failed()) {
+            ExitStatus::SomeServiceFailed
+        } else {
+            ExitStatus::Successful
+        };
+
+        if !self.is_shutting_down {
+            self.repo.send_ev(Event::ShuttingDownInitiated);
+        }
+        self.repo
+            .send_ev(Event::Exiting("Runtime".into(), ExitStatus::Successful));
+        return res;
     }
 }
 
@@ -509,6 +533,7 @@ fn exec_service(service: &Service) {
     let env_cptr: Vec<&CStr> = env_cstrings.iter().map(|c| c.as_c_str()).collect();
 
     //arg_cstrings.insert(0, program_name.clone());
+    //TODO: if ENOENT exit status is 0
     nix::unistd::execvpe(program_name.as_ref(), arg_cptr.as_ref(), env_cptr.as_ref())
         .expect("Execvpe() failed: ");
 }

@@ -7,16 +7,40 @@ mod runtime;
 mod signal_handling;
 
 pub use self::error::HorustError;
-pub use self::formats::get_sample_service;
+pub use self::formats::{get_sample_service, ExitStatus};
 use crate::horust::bus::Bus;
 use crate::horust::error::Result;
 use crate::horust::formats::{validate, Service};
 pub use formats::Event;
 use libc::{prctl, PR_SET_CHILD_SUBREAPER};
+use serde::{Deserialize, Serialize};
 use std::ffi::OsStr;
 use std::fmt::Debug;
 use std::fs;
 use std::path::{Path, PathBuf};
+use structopt::StructOpt;
+
+#[derive(Debug, StructOpt, Serialize, Deserialize)]
+pub struct HorustConfig {
+    #[structopt(long)]
+    /// Exits with an unsuccessful exit code if any process is in FinishedFailed state
+    pub unsuccessful_exit_finished_failed: bool,
+}
+
+impl Default for HorustConfig {
+    fn default() -> Self {
+        Self {
+            unsuccessful_exit_finished_failed: false,
+        }
+    }
+}
+
+impl HorustConfig {
+    pub fn from_file(path: &Path) -> Result<Self> {
+        let content = std::fs::read_to_string(path)?;
+        toml::from_str::<HorustConfig>(content.as_str()).map_err(HorustError::from)
+    }
+}
 
 #[derive(Debug)]
 pub struct Horust {
@@ -47,7 +71,7 @@ impl Horust {
             .map(|services| Horust::new(services, Some(PathBuf::from(path))))
     }
 
-    pub fn run(&mut self) {
+    pub fn run(&mut self) -> ExitStatus {
         unsafe {
             prctl(PR_SET_CHILD_SUBREAPER, 1, 0, 0, 0);
         }
@@ -56,15 +80,16 @@ impl Horust {
         let mut dispatcher = Bus::new();
         debug!("Services: {:?}", self.services);
         // Spawn helper threads:
-        debug!("Going to spawn threads:, going to start running services now!");
-        runtime::spawn(dispatcher.join_bus(), self.services.clone());
+        debug!("Spawning threads:, going to start running services now!");
         reaper::spawn(dispatcher.join_bus());
         healthcheck::spawn(dispatcher.join_bus(), self.services.clone());
+        let handle = runtime::spawn(dispatcher.join_bus(), self.services.clone());
         dispatcher.run();
+        handle.join().unwrap()
     }
 }
 
-/// List files in p, filtering out directories.
+/// List files in path, filtering out directories
 fn list_files<P: AsRef<Path>>(path: P) -> std::io::Result<Vec<PathBuf>> {
     fs::read_dir(path)?
         .filter_map(|entry| entry.ok())

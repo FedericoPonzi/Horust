@@ -21,7 +21,7 @@ impl Bus {
 
     /// Blocking
     pub fn run(mut self) {
-        self.dispatch();
+        self.dispatch()
     }
 
     /// Add another connection to the bus
@@ -31,15 +31,18 @@ impl Bus {
         BusConnector::new(self.public_sender.clone(), rx)
     }
 
-    // Infinite dispatching loop.
-    // TODO: handle error or try_send or send_timeout
+    /// Dispatching loop
+    /// As soon as we don't have anymore senders it will exit
     pub fn dispatch(&mut self) {
-        loop {
-            self.receiver.iter().for_each(|el| {
-                self.senders
-                    .iter()
-                    .for_each(|sender| sender.send(el.clone()).expect("Failed sending message"))
-            });
+        let receiver = self.receiver.clone();
+        for ev in receiver {
+            debug!("Received ev: {:?}", ev);
+            debug!("self.senders: {:?}", self.senders.len());
+            self.senders
+                .retain(|sender| sender.send(ev.clone()).is_ok());
+            if self.senders.is_empty() {
+                break;
+            }
         }
     }
 }

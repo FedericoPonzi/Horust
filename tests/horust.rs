@@ -64,28 +64,34 @@ fn run_async(mut cmd: Command, should_succeed: bool) -> RecvWrapper {
     let (sender, receiver) = mpsc::sync_channel(0);
 
     let _handle = thread::spawn(move || {
-        assert_eq!(
-            child.wait().expect("wait").success(),
-            should_succeed,
-            "horust failed with an error!"
-        );
-        println!("Going to send result back..");
-        sender.send(()).unwrap();
-        println!("Done!");
+        sender
+            .send(child.wait().expect("wait").success())
+            .expect("test didn't terminate in time, so chan is closed!");
     });
-    RecvWrapper(receiver, pid)
+    RecvWrapper {
+        receiver,
+        pid,
+        should_succeed,
+    }
 }
 
 /// A simple wrapper for the recv, used for ease of running multi-threaded tests
-struct RecvWrapper(mpsc::Receiver<()>, Pid);
+struct RecvWrapper {
+    receiver: mpsc::Receiver<bool>,
+    pid: Pid,
+    should_succeed: bool,
+}
 
 impl RecvWrapper {
     fn recv_or_kill(self, sleep: Duration) {
-        std::thread::sleep(sleep);
-        self.0.try_recv().unwrap_or_else(|_err| {
-            println!("test didn't terminate on time, going to kill horust...");
-            kill(self.1, Signal::SIGKILL).expect("horust kill");
-        });
+        match self.receiver.recv_timeout(sleep) {
+            Ok(is_success) => assert_eq!(is_success, self.should_succeed),
+            Err(_err) => {
+                println!("test didn't terminate on time, going to kill horust...");
+                kill(self.pid, Signal::SIGKILL).expect("horust kill");
+                panic!("Horust killed, test failed.");
+            }
+        }
     }
 }
 
@@ -169,8 +175,8 @@ wait = "1s""#;
     store_service(temp_dir.path(), script, Some(service), None);
 
     let recv = run_async(cmd, true);
-    kill(recv.1, Signal::SIGINT).expect("kill");
-    recv.recv_or_kill(Duration::from_secs(3));
+    kill(recv.pid, Signal::SIGINT).expect("kill");
+    recv.recv_or_kill(Duration::from_secs(5));
 }
 
 #[test]
@@ -281,7 +287,7 @@ sleep 30"#;
     //store_service(temp_dir.path(), sleep_script, None, None);
     store_service(temp_dir.path(), sleep_script, Some(sleep_service), None);
     let recv = run_async(cmd, true);
-    recv.recv_or_kill(Duration::from_secs(15));
+    recv.recv_or_kill(Duration::from_secs(5));
 }
 
 #[test]
@@ -331,6 +337,7 @@ attempts = {}
 fn test_restart_attempts() {
     restart_backoff(false, 0);
 }
+
 #[test]
 fn test_restart_attempts_succeed() {
     restart_backoff(true, 1);

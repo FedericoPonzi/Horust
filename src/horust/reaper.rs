@@ -1,5 +1,5 @@
 use crate::horust::bus::BusConnector;
-use crate::horust::formats::{Event, ServiceName, ServiceStatus};
+use crate::horust::formats::{Event, ExitStatus, ServiceName, ServiceStatus};
 use nix::sys::wait::{waitpid, WaitStatus};
 use nix::unistd::Pid;
 use std::collections::{HashMap, HashSet};
@@ -12,11 +12,13 @@ pub(crate) fn spawn(bus: BusConnector) {
 }
 
 struct Repo {
-    // Contains services which are possibly started but we don't know their pid yet
-    // Used to check if there is
+    // Contains services which are possibly started
+    // but we don't know their pid yet ( ToBeRun / Initial)
+    // Used to check if an exited process is a grandchild
     possibly_running: HashSet<ServiceName>,
-    bus: BusConnector,
     pids_map: HashMap<Pid, ServiceName>,
+    bus: BusConnector,
+    is_shutting_down: bool,
 }
 
 impl Repo {
@@ -25,11 +27,19 @@ impl Repo {
             possibly_running: HashSet::new(),
             pids_map: HashMap::new(),
             bus,
+            is_shutting_down: false,
         }
+    }
+
+    fn send_ev(&mut self, ev: Event) {
+        self.bus.send_event(ev)
     }
 
     fn consume(&mut self, ev: Event) {
         match ev {
+            Event::ShuttingDownInitiated => {
+                self.is_shutting_down = true;
+            }
             Event::PidChanged(service_name, pid) => {
                 self.pids_map.insert(pid, service_name);
             }
@@ -39,6 +49,11 @@ impl Repo {
                 } else {
                     self.possibly_running.remove(&service_name);
                 }
+            }
+            Event::ForceKill(service_name) => {
+                self.possibly_running.remove(&service_name);
+                // kill -9 won't trigger SIGCHILD.
+                self.pids_map.retain(|_pid, sname| &service_name != sname);
             }
             _ => (),
         }
@@ -90,6 +105,12 @@ pub(crate) fn supervisor_thread(bus: BusConnector) {
                 repo.possibly_running.is_empty()
             }
         });
+
+        if repo.is_shutting_down && repo.possibly_running.is_empty() && repo.pids_map.is_empty() {
+            debug!("Breaking the loop..");
+            break;
+        }
         std::thread::sleep(Duration::from_millis(500))
     }
+    repo.send_ev(Event::Exiting("Reaper".into(), ExitStatus::Successful));
 }

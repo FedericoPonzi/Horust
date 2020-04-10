@@ -93,13 +93,14 @@ By using this parameter, you can specify which exit codes will make this service
      * `kill-dependents`: Dependents are all the services start after this one. So if service `b` has service `a` in its `start-after` section,
         and `a` has strategy=kill-dependents, then b will be stopped if `a` fails.
      * `shutdown`: It will kill all the services.
+
 ### Environment section
-``toml
+```toml
 [environment]
 keep-env = false
 re-export = [ "PATH", "DB_PASS"]
 additional = { key = "value"} 
-``
+```
 * **`keep-env` = `bool`**: default: true. Pass over all the environment variables.
 Regardless the value of keep-env, the following keys will be updated / defined:
 * `USER`
@@ -120,8 +121,10 @@ die-if-failed = ["db.toml"]
 ```
 * **`signal` = `"TERM|HUP|INT|QUIT|KILL|USR1|USR2"`**: The _friendly_ signal used for shutting down the process.
 * **`wait` = `"time"`**: How much time to wait before sending a SIGKILL after `signal` has been sent.
-* **`die-if-failed` = `["<service-name>"]`**: If any of the services in the array dies, this service will be killed.
+* **`die-if-failed` = `["<service-name>"]`**: As soon as any of the services defined in this the array fails, this service will be terminated as well.
+
 ---
+
 ## State machine
 [![State machne](https://github.com/FedericoPonzi/Horust/raw/master/res/state-machine.png)](https://github.com/FedericoPonzi/Horust/raw/master/res/state-machine.png)
 

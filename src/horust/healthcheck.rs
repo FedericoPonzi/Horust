@@ -1,12 +1,12 @@
 use crate::horust::bus::BusConnector;
-use crate::horust::formats::{Event, Healthiness, Service, ServiceName, ServiceStatus};
+use crate::horust::formats::{Event, ExitStatus, Healthiness, Service, ServiceName, ServiceStatus};
 #[cfg(feature = "http-healthcheck")]
 use reqwest::blocking::Client;
 use std::collections::HashMap;
 use std::time::Duration;
 
 // TODO:
-// * Tunable healthchecks in horust's config
+// * Tunable healthchecks timing in horust's config
 // * If there are no checks to run, just exit the thread. or go sleep until an "service created" event is received.
 pub fn spawn(bus: BusConnector, services: Vec<Service>) {
     std::thread::spawn(move || {
@@ -14,27 +14,59 @@ pub fn spawn(bus: BusConnector, services: Vec<Service>) {
     });
 }
 
+//TODO: we don't really need "service" here, but just the Healthiness section.
+#[derive(Debug)]
 struct Repo {
     bus: BusConnector,
     services: HashMap<ServiceName, Service>,
+    /// Keep track of services which have a pid and need check for progressing to the running state
     starting: HashMap<ServiceName, Service>,
+    /// Keep track of running services
     running: HashMap<ServiceName, Service>,
+    /// Needed for exiting securely.
+    to_be_run: HashMap<ServiceName, Service>,
+    is_shutting_down: bool,
 }
 
 impl Repo {
+    fn can_exit(&self) -> bool {
+        self.is_shutting_down
+            && self.running.is_empty()
+            && self.starting.is_empty()
+            && self.to_be_run.is_empty()
+    }
+
     fn ingest(&mut self) {
         self.bus.try_get_events().into_iter().for_each(|ev| {
-            if let Event::StatusChanged(service_name, status) = ev {
+            if let Event::StatusChanged(service_name, new_status) = ev {
                 let svc = self.services.get(&service_name).unwrap();
-                if status == ServiceStatus::Starting {
-                    self.starting.insert(svc.name.clone(), svc.clone());
-                } else if status == ServiceStatus::Running {
+                if new_status == ServiceStatus::ToBeRun && !self.is_shutting_down {
+                    self.to_be_run.insert(svc.name.clone(), svc.clone());
+                } else if new_status == ServiceStatus::Starting {
+                    let svc = self.to_be_run.remove(&service_name);
+                    self.starting.insert(service_name, svc.unwrap());
+                } else if new_status == ServiceStatus::Running {
                     let svc = self.starting.remove(&service_name);
                     self.running.insert(service_name, svc.unwrap());
+                } else if vec![ServiceStatus::Finished, ServiceStatus::FinishedFailed]
+                    .contains(&new_status)
+                {
+                    // If a service is finished, we don't need to check anymore
+                    self.to_be_run.remove(&service_name);
+                    self.starting.remove(&service_name);
+                    self.running.remove(&service_name);
                 }
+            } else if ev == Event::ShuttingDownInitiated {
+                self.is_shutting_down = true;
+            } else if let Event::ForceKill(service_name) = ev {
+                // If a service is killed, we don't need to check anymore
+                self.to_be_run.remove(&service_name);
+                self.starting.remove(&service_name);
+                self.running.remove(&service_name);
             }
         });
     }
+
     fn new(bus: BusConnector, services: Vec<Service>) -> Self {
         Self {
             bus,
@@ -42,10 +74,13 @@ impl Repo {
                 .into_iter()
                 .map(|service| (service.name.clone(), service))
                 .collect(),
+            to_be_run: Default::default(),
             starting: Default::default(),
             running: Default::default(),
+            is_shutting_down: false,
         }
     }
+
     fn send_ev(&mut self, ev: Event) {
         self.bus.send_event(ev)
     }
@@ -99,6 +134,7 @@ fn next(
     running: &HashMap<ServiceName, Service>,
     starting: &HashMap<ServiceName, Service>,
 ) -> Vec<Event> {
+    debug!("next");
     let evs_starting = starting
         .iter()
         .filter(|(_s_name, service)| healthchecks(&service.healthiness))
@@ -121,8 +157,14 @@ fn run(bus: BusConnector, services: Vec<Service>) {
         for ev in events {
             repo.send_ev(ev);
         }
+        if repo.can_exit() {
+            debug!("Breaking the loop..");
+            break;
+        }
         std::thread::sleep(Duration::from_millis(300));
     }
+
+    repo.send_ev(Event::Exiting("Healthcheck".into(), ExitStatus::Successful));
 }
 
 /// Setup require for the service, before running the healthchecks and starting the service.

@@ -1,7 +1,5 @@
-use crate::horust::error::{ValidationError, ValidationErrorKind};
-use crate::horust::HorustError;
-use nix::sys::signal::Signal;
-use nix::sys::signal::{SIGHUP, SIGINT, SIGKILL, SIGQUIT, SIGTERM, SIGUSR1, SIGUSR2};
+use crate::horust::error::{HorustError, ValidationError, ValidationErrorKind};
+use nix::sys::signal::{Signal, SIGHUP, SIGINT, SIGKILL, SIGQUIT, SIGTERM, SIGUSR1, SIGUSR2};
 use nix::unistd;
 use serde::export::fmt::Error;
 use serde::export::Formatter;
@@ -80,7 +78,7 @@ impl Service {
     fn default_working_directory() -> PathBuf {
         PathBuf::from("/")
     }
-    pub fn from_file(path: &PathBuf) -> Result<Self, HorustError> {
+    pub fn from_file(path: &PathBuf) -> crate::horust::error::Result<Self> {
         let content = std::fs::read_to_string(path)?;
         toml::from_str::<Service>(content.as_str()).map_err(HorustError::from)
     }
@@ -449,10 +447,13 @@ impl From<&str> for FailureStrategy {
 #[serde(rename_all = "kebab-case", deny_unknown_fields)]
 pub struct Termination {
     #[serde(default)]
+    /// Use this signal instead of SIGTERM.
     pub(crate) signal: TerminationSignal,
     #[serde(default = "Termination::default_wait", with = "humantime_serde")]
+    /// Time to wait before SIGKILL
     pub wait: Duration,
     #[serde(default = "Vec::new")]
+    // Will kill this service if any of the services in Vec are failed
     pub die_if_failed: Vec<ServiceName>,
 }
 
