@@ -135,6 +135,7 @@ Initial => ToBeRun : "All dependencies are running, a thread has spawned and wil
 ToBeRun => Starting : "The ServiceHandler has a pid";
 Starting => Running : "The service has met healthiness policy";
 Starting => Failed : "Service cannot be started";
+Starting => Success : "Service finished very quickly";
 Failed => FinishedFailed : "Restart policy ";
 Running => ToBeKilled: "Marked for killing";
 ToBeKilled => InKilling : "Friendly TERM signal sent";
