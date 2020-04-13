@@ -220,6 +220,7 @@ impl Environment {
 
 #[derive(Serialize, Clone, Deserialize, Debug, Eq, PartialEq)]
 #[serde(rename_all = "kebab-case", deny_unknown_fields)]
+// TODO: Add a retry instead of instantly giving up.
 pub struct Healthiness {
     pub http_endpoint: Option<String>,
     pub file_path: Option<PathBuf>,

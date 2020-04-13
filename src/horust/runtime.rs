@@ -58,6 +58,11 @@ impl Repo {
         vec![self.bus.get_events_blocking()]
     }
 
+    /// Blocking
+    fn get_n_events_blocking(&mut self, quantity: usize) -> Vec<Event> {
+        self.bus.get_n_events_blocking(quantity)
+    }
+
     pub fn all_finished(&self) -> bool {
         self.services
             .iter()
@@ -156,28 +161,19 @@ impl Runtime {
                     }
                     ServiceStatus::ToBeRun => {
                         if service_handler.status == ServiceStatus::Initial {
-                            //TODO: double check
-                            if self.is_shutting_down {
-                                service_handler.status = ServiceStatus::Finished;
-                            } else {
-                                service_handler.status = ServiceStatus::ToBeRun;
-                                healthcheck::prepare_service(
-                                    &service_handler.service().healthiness,
-                                )
+                            service_handler.status = ServiceStatus::ToBeRun;
+                            healthcheck::prepare_service(&service_handler.service().healthiness)
                                 .unwrap();
-                                let backoff = service_handler
-                                    .service()
-                                    .restart
-                                    .backoff
-                                    .mul(service_handler.restart_attempts.clone());
-                                run_spawning_thread(
-                                    service_handler.service().clone(),
-                                    backoff,
-                                    self.repo.clone(),
-                                );
-                            }
-                        } else {
-                            debug!("{}: Ignoring ToBeRun event", service_name);
+                            let backoff = service_handler
+                                .service()
+                                .restart
+                                .backoff
+                                .mul(service_handler.restart_attempts.clone());
+                            run_spawning_thread(
+                                service_handler.service().clone(),
+                                backoff,
+                                self.repo.clone(),
+                            );
                         }
                     }
                     ServiceStatus::Running => {
@@ -349,10 +345,11 @@ impl Runtime {
 
     /// Blocking call. Tries to move state machines forward
     pub fn run(mut self) -> ExitStatus {
+        let mut has_emit_ev = 0;
         loop {
             // Ingest updates
-            let events = if self.repo.should_block() {
-                self.repo.get_events_blocking()
+            let events = if has_emit_ev > 0 {
+                self.repo.get_n_events_blocking(has_emit_ev)
             } else {
                 self.repo.get_events()
             };
@@ -373,14 +370,16 @@ impl Runtime {
                 .flatten()
                 .collect();
             debug!("Going to emit events: {:?}", events);
+            has_emit_ev = events.len();
             events.into_iter().for_each(|ev| self.repo.send_ev(ev));
-            std::thread::sleep(Duration::from_millis(300));
 
             // TODO: apply some clever check and exit if no service will never be started again.
             if self.repo.all_finished() {
                 debug!("All services have finished, exiting...");
                 break;
+            } else {
             }
+            std::thread::sleep(Duration::from_millis(300));
         }
 
         let res = if self.repo.services.iter().any(|sh| sh.is_finished_failed()) {

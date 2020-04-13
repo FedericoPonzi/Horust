@@ -1,6 +1,6 @@
 use crate::horust::bus::BusConnector;
 use crate::horust::formats::{Event, ExitStatus, ServiceName, ServiceStatus};
-use nix::sys::wait::{waitpid, WaitStatus};
+use nix::sys::wait::{waitpid, WaitPidFlag, WaitStatus};
 use nix::unistd::Pid;
 use std::collections::{HashMap, HashSet};
 use std::time::Duration;
@@ -59,11 +59,10 @@ impl Repo {
         }
     }
     fn send_pid_exited(&mut self, pid: Pid, exit_code: i32) {
-        if self.pids_map.contains_key(&pid) {
-            let service_name = self.pids_map.remove(&pid).unwrap();
-            self.bus
-                .send_event(Event::new_service_exited(service_name, exit_code));
-        }
+        let service_name = self.pids_map.remove(&pid).unwrap();
+        debug!("Sending Service exited event: {}", service_name);
+        self.bus
+            .send_event(Event::new_service_exited(service_name, exit_code));
     }
 
     fn ingest(&mut self) {
@@ -80,7 +79,7 @@ pub(crate) fn supervisor_thread(bus: BusConnector) {
 
     loop {
         repo.ingest();
-        match waitpid(Pid::from_raw(-1), None) {
+        match waitpid(Pid::from_raw(-1), Some(WaitPidFlag::WNOHANG)) {
             Ok(wait_status) => {
                 if let WaitStatus::Exited(pid, exit_code) = wait_status {
                     debug!("Pid has exited: {} with exitcode: {}", pid, exit_code);
@@ -98,11 +97,12 @@ pub(crate) fn supervisor_thread(bus: BusConnector) {
         reapable.retain(|pid, exit_code| {
             if repo.pids_map.contains_key(pid) {
                 repo.send_pid_exited(*pid, *exit_code);
-                true
+                false
             } else {
+                debug!("Pid exited was not in the map.");
                 // If is a grandchildren, we don't care about it:
                 // is grandchildren =
-                repo.possibly_running.is_empty()
+                !repo.possibly_running.is_empty()
             }
         });
 
@@ -110,7 +110,7 @@ pub(crate) fn supervisor_thread(bus: BusConnector) {
             debug!("Breaking the loop..");
             break;
         }
-        std::thread::sleep(Duration::from_millis(500))
+        std::thread::sleep(Duration::from_millis(300))
     }
     repo.send_ev(Event::Exiting("Reaper".into(), ExitStatus::Successful));
 }

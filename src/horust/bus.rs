@@ -21,7 +21,7 @@ impl Bus {
 
     /// Blocking
     pub fn run(mut self) {
-        self.dispatch()
+        self.dispatch();
     }
 
     /// Add another connection to the bus
@@ -32,7 +32,7 @@ impl Bus {
     }
 
     /// Dispatching loop
-    /// As soon as we don't have anymore senders it will exit
+    /// As soon as we don't have any senders it will exit
     pub fn dispatch(&mut self) {
         let receiver = self.receiver.clone();
         for ev in receiver {
@@ -61,6 +61,11 @@ impl BusConnector {
     /// Blocking
     pub fn get_events_blocking(&self) -> Event {
         self.receiver.recv().unwrap()
+    }
+
+    /// Blocking
+    pub fn get_n_events_blocking(&self, quantity: usize) -> Vec<Event> {
+        self.receiver.iter().take(quantity).collect()
     }
 
     /// Non blocking

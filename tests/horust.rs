@@ -45,12 +45,15 @@ fn store_service(
 fn get_cli() -> (Command, TempDir) {
     let temp_dir = TempDir::new("horust").unwrap();
     let mut cmd = Command::cargo_bin("horust").unwrap();
-    cmd.current_dir(&temp_dir).args(vec![
-        "--services-path",
-        temp_dir.path().display().to_string().as_str(),
-    ]);
-    //.stdout(Stdio::from(std::fs::File::create("/tmp/stdout").unwrap()))
-    //.stderr(Stdio::from(std::fs::File::create("/tmp/stderr").unwrap()));
+    cmd.current_dir(&temp_dir)
+        .args(vec![
+            "--services-path",
+            temp_dir.path().display().to_string().as_str(),
+        ])
+        //.stdout(Stdio::from(std::fs::File::create("/tmp/stdout").unwrap()))
+        .stderr(std::process::Stdio::from(
+            std::fs::File::create("/tmp/stderr").unwrap(),
+        ));
     (cmd, temp_dir)
 }
 
@@ -176,7 +179,7 @@ wait = "1s""#;
 
     let recv = run_async(cmd, true);
     kill(recv.pid, Signal::SIGINT).expect("kill");
-    recv.recv_or_kill(Duration::from_secs(5));
+    recv.recv_or_kill(Duration::from_secs(7));
 }
 
 #[test]
@@ -234,6 +237,8 @@ additional = { TERM = "bar" }
     store_service(temp_dir.path(), script, Some(service), None);
     cmd.assert().success().stdout(contains("bar"));
 
+    let (mut cmd, temp_dir) = get_cli();
+
     // keep-env should keep the env :D
     let service = r#"[environment]
 keep-env = true
@@ -244,6 +249,7 @@ keep-env = true
         .success()
         .stdout(contains("MyPassword"));
 
+    let (mut cmd, temp_dir) = get_cli();
     // If keep env is false, we can choose variables to export:
     let service = r#"[environment]
 keep-env = false
@@ -287,7 +293,7 @@ sleep 30"#;
     //store_service(temp_dir.path(), sleep_script, None, None);
     store_service(temp_dir.path(), sleep_script, Some(sleep_service), None);
     let recv = run_async(cmd, true);
-    recv.recv_or_kill(Duration::from_secs(5));
+    recv.recv_or_kill(Duration::from_secs(10));
 }
 
 #[test]

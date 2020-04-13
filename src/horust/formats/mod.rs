@@ -7,7 +7,6 @@ pub use service_handler::ServiceHandler;
 #[derive(Debug, Clone, PartialEq)]
 pub enum ExitStatus {
     Successful,
-    Error,
     SomeServiceFailed,
 }
 
