@@ -55,9 +55,7 @@ impl Repo {
 fn check_http_endpoint(endpoint: &str) -> bool {
     let client = Client::new();
     match client.head(endpoint).send() {
-        Ok(resp) => {
-            resp.status().is_success()
-        },
+        Ok(resp) => resp.status().is_success(),
         Err(e) => {
             println!("{}", e);
             false
@@ -193,8 +191,6 @@ mod test {
                 Err(_) => {}
             }
         }
-        // close the socket server
-        drop(listener);
     }
     fn handle_test_connection(mut stream: TcpStream) {
         let mut buffer = [0; 512];
@@ -244,11 +240,10 @@ file-path = "{}""#,
     }
 
     #[test]
-    fn test_http_healthiness_check() -> Result<()> {
+    fn test_http_healthiness_check() {
         thread::spawn(move || {
             start_server();
         });
         assert_eq!(check_http_endpoint("http://127.0.0.1:9999"), true);
-        Ok(())
     }
 }
