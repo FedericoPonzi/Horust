@@ -201,7 +201,7 @@ exit 1
 "#;
     store_service(temp_dir.path(), script, None, Some("a"));
     let recv = run_async(cmd, true);
-    recv.recv_or_kill(Duration::from_secs(5));
+    recv.recv_or_kill(Duration::from_secs(10));
 }
 
 // Test user
