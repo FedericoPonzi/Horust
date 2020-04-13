@@ -5,12 +5,6 @@ use reqwest::blocking::Client;
 use std::collections::HashMap;
 use std::time::Duration;
 
-use std::io::prelude::*;
-use std::io::ErrorKind;
-use std::net::TcpListener;
-use std::net::TcpStream;
-use std::net::{Ipv4Addr, SocketAddrV4};
-
 // TODO:
 // * Tunable healthchecks in horust's config
 // * If there are no checks to run, just exit the thread. or go sleep until an "service created" event is received.
@@ -60,9 +54,15 @@ impl Repo {
 #[cfg(feature = "http-healthcheck")]
 fn check_http_endpoint(endpoint: &str) -> bool {
     let client = Client::new();
-    let resp: reqwest::blocking::Response = client.head(endpoint).send().unwrap();
-    println!("Client");
-    resp.status().is_success()
+    match client.head(endpoint).send() {
+        Ok(resp) => {
+            resp.status().is_success()
+        },
+        Err(e) => {
+            println!("{}", e);
+            false
+        }
+    }
 }
 
 fn healthchecks(healthiness: &Healthiness) -> bool {
@@ -140,7 +140,7 @@ pub fn prepare_service(healthiness: &Healthiness) -> Result<(), std::io::Error> 
     Ok(())
 }
 
-fn client_mock() -> bool {
+/* fn client_mock() -> bool {
     loop {
         match TcpStream::connect("127.0.0.1:9999") {
             Ok(mut _stream) => {
@@ -157,56 +157,52 @@ fn client_mock() -> bool {
         }
     }
 }
-
-fn start_server() {
-    let listener = TcpListener::bind("127.0.0.1:9999").unwrap();
-    listener
-        .set_nonblocking(true)
-        .expect("Cannot set to non-blocking");
-    // accept connections and process them, spawning a new thread for each one
-    println!("Server listening on port 9999");
-    for stream in listener.incoming() {
-        match stream {
-            Ok(stream) => {
-                // connection succeeded
-                handle_test_connection(stream);
-            }
-            Err(e) if e.kind() == ErrorKind::WouldBlock => {
-                continue;
-                /* connection failed */
-            }
-            Err(_) => {}
-        }
-    }
-    // close the socket server
-    drop(listener);
-}
-
-fn handle_test_connection(mut stream: TcpStream) {
-    let mut buffer = [0; 512];
-
-    stream.read(&mut buffer).unwrap();
-
-    let response = "HTTP/1.1 200 OK\r\n\r\n";
-
-    stream.write(response.as_bytes()).unwrap();
-    stream.flush().unwrap();
-}
+ */
 
 #[cfg(test)]
 mod test {
     use crate::horust::error::Result;
     use crate::horust::formats::{Event, Healthiness, Service, ServiceName, ServiceStatus};
     use crate::horust::healthcheck;
-    // use crate::horust::healthcheck::check_http_endpoint;
+    use crate::horust::healthcheck::check_http_endpoint;
     use crate::horust::healthcheck::healthchecks;
-    use crate::horust::healthcheck::{client_mock, start_server};
-    use rand::Rng;
     use std::collections::HashMap;
-    use std::net::{Ipv4Addr, SocketAddrV4};
+    use std::io::prelude::*;
+    use std::io::ErrorKind;
+    use std::net::TcpListener;
+    use std::net::TcpStream;
     use std::thread;
     use tempdir::TempDir;
-
+    fn start_server() {
+        let listener = TcpListener::bind("127.0.0.1:9999").unwrap();
+        listener
+            .set_nonblocking(true)
+            .expect("Cannot set to non-blocking");
+        // accept connections and process them, spawning a new thread for each one
+        println!("Server listening on port 9999");
+        for stream in listener.incoming() {
+            match stream {
+                Ok(stream) => {
+                    // connection succeeded
+                    handle_test_connection(stream);
+                }
+                Err(e) if e.kind() == ErrorKind::WouldBlock => {
+                    continue;
+                    /* connection failed */
+                }
+                Err(_) => {}
+            }
+        }
+        // close the socket server
+        drop(listener);
+    }
+    fn handle_test_connection(mut stream: TcpStream) {
+        let mut buffer = [0; 512];
+        stream.read(&mut buffer).unwrap();
+        let response = "HTTP/1.1 200 OK\r\n\r\n";
+        stream.write(response.as_bytes()).unwrap();
+        stream.flush().unwrap();
+    }
     #[test]
     fn test_next() -> Result<()> {
         let tempdir = TempDir::new("health")?;
@@ -252,7 +248,7 @@ file-path = "{}""#,
         thread::spawn(move || {
             start_server();
         });
-        assert_eq!(client_mock(), true);
+        assert_eq!(check_http_endpoint("http://127.0.0.1:9999"), true);
         Ok(())
     }
 }
