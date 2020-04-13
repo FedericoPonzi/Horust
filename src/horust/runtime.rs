@@ -9,7 +9,6 @@ use nix::sys::signal::{self, Signal};
 use nix::unistd::{fork, getppid, ForkResult};
 use nix::unistd::{getpid, Pid};
 use shlex;
-use std::collections::HashMap;
 use std::ffi::{CStr, CString};
 use std::fmt::Debug;
 use std::ops::{Add, Mul};
