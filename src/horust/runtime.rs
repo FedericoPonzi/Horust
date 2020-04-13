@@ -9,6 +9,7 @@ use nix::sys::signal::{self, Signal};
 use nix::unistd::{fork, getppid, ForkResult};
 use nix::unistd::{getpid, Pid};
 use shlex;
+use std::collections::HashMap;
 use std::ffi::{CStr, CString};
 use std::fmt::Debug;
 use std::ops::{Add, Mul};
@@ -132,105 +133,106 @@ impl Runtime {
 
     // Apply side effects
     fn apply_event(&mut self, ev: Event) {
+        let allowed_transitions: HashMap<ServiceStatus, Vec<ServiceStatus>> = vec![
+            (
+                ServiceStatus::Initial,
+                vec![ServiceStatus::Success, ServiceStatus::Failed],
+            ),
+            (ServiceStatus::ToBeRun, vec![ServiceStatus::Initial]),
+            (ServiceStatus::Starting, vec![ServiceStatus::ToBeRun]),
+            (ServiceStatus::InKilling, vec![ServiceStatus::ToBeKilled]),
+            (
+                ServiceStatus::ToBeKilled,
+                vec![
+                    ServiceStatus::Running,
+                    ServiceStatus::Starting,
+                    ServiceStatus::Initial,
+                ],
+            ),
+            (ServiceStatus::Running, vec![ServiceStatus::Starting]),
+            (
+                ServiceStatus::FinishedFailed,
+                vec![ServiceStatus::Failed, ServiceStatus::InKilling],
+            ),
+            (
+                ServiceStatus::Success,
+                vec![ServiceStatus::Starting, ServiceStatus::Running],
+            ),
+            (
+                ServiceStatus::Failed,
+                vec![ServiceStatus::Starting, ServiceStatus::Running],
+            ),
+            (
+                ServiceStatus::Finished,
+                vec![
+                    ServiceStatus::Success,
+                    ServiceStatus::InKilling,
+                    ServiceStatus::Initial,
+                ],
+            ),
+        ]
+        .into_iter()
+        .collect();
+
         match ev {
             Event::StatusChanged(service_name, status) => {
                 let service_handler = self.repo.get_mut_service(&service_name);
+                let allowed = allowed_transitions.get(&status).unwrap();
                 match status {
-                    ServiceStatus::Initial => {
-                        let allowed = vec![ServiceStatus::Success, ServiceStatus::Failed];
-                        if allowed.contains(&service_handler.status) {
-                            service_handler.status = ServiceStatus::Initial;
-                        }
+                    ServiceStatus::Initial if allowed.contains(&service_handler.status) => {
+                        service_handler.status = ServiceStatus::Initial;
                     }
-
-                    ServiceStatus::ToBeKilled => {
-                        if service_handler.status == ServiceStatus::Initial {
-                            service_handler.status = ServiceStatus::Finished;
-                        } else if vec![ServiceStatus::Running, ServiceStatus::Starting]
-                            .contains(&service_handler.status)
-                        {
-                            service_handler.status = ServiceStatus::ToBeKilled;
-                            service_handler.shutting_down_start = Some(Instant::now());
-                            kill(
-                                service_handler,
-                                service_handler.service().termination.signal.clone().into(),
-                            );
-                        }
+                    ServiceStatus::ToBeKilled if allowed.contains(&service_handler.status) => {
+                        service_handler.status = ServiceStatus::ToBeKilled;
+                        service_handler.shutting_down_start = Some(Instant::now());
+                        kill(
+                            service_handler,
+                            service_handler.service().termination.signal.clone().into(),
+                        );
                     }
-                    ServiceStatus::ToBeRun => {
-                        if service_handler.status == ServiceStatus::Initial {
-                            service_handler.status = ServiceStatus::ToBeRun;
-                            healthcheck::prepare_service(&service_handler.service().healthiness)
-                                .unwrap();
-                            let backoff = service_handler
-                                .service()
-                                .restart
-                                .backoff
-                                .mul(service_handler.restart_attempts.clone());
-                            run_spawning_thread(
-                                service_handler.service().clone(),
-                                backoff,
-                                self.repo.clone(),
-                            );
-                        }
+                    ServiceStatus::ToBeRun if allowed.contains(&service_handler.status) => {
+                        service_handler.status = ServiceStatus::ToBeRun;
+                        healthcheck::prepare_service(&service_handler.service().healthiness)
+                            .unwrap();
+                        let backoff = service_handler
+                            .service()
+                            .restart
+                            .backoff
+                            .mul(service_handler.restart_attempts.clone());
+                        run_spawning_thread(
+                            service_handler.service().clone(),
+                            backoff,
+                            self.repo.clone(),
+                        );
                     }
-                    ServiceStatus::Starting => {
-                        if service_handler.status == ServiceStatus::ToBeRun {
-                            service_handler.status = ServiceStatus::Starting;
-                            service_handler.restart_attempts = 0;
-                        }
+                    ServiceStatus::Starting if allowed.contains(&service_handler.status) => {
+                        service_handler.status = ServiceStatus::Starting;
+                        service_handler.restart_attempts = 0;
                     }
-                    ServiceStatus::Running => {
-                        if service_handler.status == ServiceStatus::Starting {
-                            service_handler.status = ServiceStatus::Running;
-                        }
+                    ServiceStatus::Running if allowed.contains(&service_handler.status) => {
+                        service_handler.status = ServiceStatus::Running;
                     }
-                    ServiceStatus::Failed => {
-                        let allowed = vec![ServiceStatus::Starting, ServiceStatus::Running];
-                        if allowed.contains(&service_handler.status) {
-                            service_handler.status = ServiceStatus::Failed;
-                        }
+                    ServiceStatus::Failed if allowed.contains(&service_handler.status) => {
+                        service_handler.status = ServiceStatus::Failed;
                     }
-                    ServiceStatus::Success => {
-                        let allowed = vec![ServiceStatus::Starting, ServiceStatus::Running];
-                        if allowed.contains(&service_handler.status) {
-                            service_handler.status = ServiceStatus::Success;
-                        }
+                    ServiceStatus::Success if allowed.contains(&service_handler.status) => {
+                        service_handler.status = ServiceStatus::Success;
                     }
-                    ServiceStatus::FinishedFailed => {
-                        let allowed = vec![ServiceStatus::Failed, ServiceStatus::InKilling];
-                        if allowed.contains(&service_handler.status) {
-                            service_handler.status = ServiceStatus::FinishedFailed;
-                        }
+                    ServiceStatus::FinishedFailed if allowed.contains(&service_handler.status) => {
+                        service_handler.status = ServiceStatus::FinishedFailed;
                     }
-                    ServiceStatus::InKilling => {
-                        if service_handler.status == ServiceStatus::ToBeKilled {
-                            service_handler.status = ServiceStatus::InKilling;
-                        }
+                    ServiceStatus::InKilling if allowed.contains(&service_handler.status) => {
+                        service_handler.status = ServiceStatus::InKilling;
                     }
-
-                    ServiceStatus::Finished => {
-                        let allowed = vec![
-                            ServiceStatus::Success,
-                            ServiceStatus::InKilling,
-                            ServiceStatus::Initial,
-                        ];
-                        if allowed.contains(&service_handler.status) {
-                            service_handler.status = ServiceStatus::Finished;
-                        }
-                    } /*
-                          unhandled_status => {
-                              //TODO: handle all unhandled statuses and use if guards in various branches.
-                              // For example, a StatusChanged(Starting) can be applied only if service was in the
-                              // ToBeRun status. So:
-                              // `ServiceStatus::Starting if service_handler.status == ServiceStatus::ToBeRun => {...`
-                              debug!(
-                                  "Unhandled status, setting: {}, {}",
-                                  service_name, unhandled_status
-                              );
-                              service_handler.status = unhandled_status;
-                          }
-                      */
+                    ServiceStatus::Finished if allowed.contains(&service_handler.status) => {
+                        service_handler.status = ServiceStatus::Finished;
+                    }
+                    unhandled_status => {
+                        debug!(
+                            "Tried to make an illegal transition: (current) {} -> {} (received) for service: {}",
+                            service_handler.status, unhandled_status, service_name
+                        );
+                    }
                 }
             }
             Event::ServiceExited(service_name, exit_code) => {

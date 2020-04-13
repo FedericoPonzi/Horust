@@ -301,7 +301,7 @@ Success => Finished : "Based on restart policy";
 Failed => Initial : "restart = always|on-failure";
 */
 
-#[derive(Serialize, Clone, Deserialize, Debug, Eq, PartialEq)]
+#[derive(Serialize, Clone, Deserialize, Debug, Eq, PartialEq, Hash)]
 pub enum ServiceStatus {
     /// Has a pid,
     Starting,
