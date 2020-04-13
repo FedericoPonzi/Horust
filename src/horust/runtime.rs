@@ -153,7 +153,7 @@ impl Runtime {
                             service_handler.shutting_down_start = Some(Instant::now());
                             kill(
                                 service_handler,
-                                service_handler.service().termination.signal.as_signal(),
+                                service_handler.service().termination.signal.clone().into(),
                             );
                         }
                     }
@@ -210,7 +210,11 @@ impl Runtime {
                     }
 
                     ServiceStatus::Finished => {
-                        let allowed = vec![ServiceStatus::Success, ServiceStatus::InKilling];
+                        let allowed = vec![
+                            ServiceStatus::Success,
+                            ServiceStatus::InKilling,
+                            ServiceStatus::Initial,
+                        ];
                         if allowed.contains(&service_handler.status) {
                             service_handler.status = ServiceStatus::Finished;
                         }

@@ -486,9 +486,8 @@ pub enum TerminationSignal {
     USR1,
     USR2,
 }
-
-impl TerminationSignal {
-    pub(crate) fn as_signal(&self) -> Signal {
+impl Into<Signal> for TerminationSignal {
+    fn into(self) -> Signal {
         match self {
             TerminationSignal::TERM => SIGTERM,
             TerminationSignal::HUP => SIGHUP,
@@ -500,6 +499,7 @@ impl TerminationSignal {
         }
     }
 }
+
 impl Default for TerminationSignal {
     fn default() -> Self {
         TerminationSignal::TERM
