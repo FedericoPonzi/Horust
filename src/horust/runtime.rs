@@ -133,46 +133,22 @@ impl Runtime {
 
     // Apply side effects
     fn apply_event(&mut self, ev: Event) {
-        let allowed_transitions: HashMap<ServiceStatus, Vec<ServiceStatus>> = vec![
-            (
-                ServiceStatus::Initial,
-                vec![ServiceStatus::Success, ServiceStatus::Failed],
-            ),
-            (ServiceStatus::ToBeRun, vec![ServiceStatus::Initial]),
-            (ServiceStatus::Starting, vec![ServiceStatus::ToBeRun]),
-            (ServiceStatus::InKilling, vec![ServiceStatus::ToBeKilled]),
-            (
-                ServiceStatus::ToBeKilled,
-                vec![
-                    ServiceStatus::Running,
-                    ServiceStatus::Starting,
-                    ServiceStatus::Initial,
-                ],
-            ),
-            (ServiceStatus::Running, vec![ServiceStatus::Starting]),
-            (
-                ServiceStatus::FinishedFailed,
-                vec![ServiceStatus::Failed, ServiceStatus::InKilling],
-            ),
-            (
-                ServiceStatus::Success,
-                vec![ServiceStatus::Starting, ServiceStatus::Running],
-            ),
-            (
-                ServiceStatus::Failed,
-                vec![ServiceStatus::Starting, ServiceStatus::Running],
-            ),
-            (
-                ServiceStatus::Finished,
-                vec![
-                    ServiceStatus::Success,
-                    ServiceStatus::InKilling,
-                    ServiceStatus::Initial,
-                ],
-            ),
-        ]
-        .into_iter()
-        .collect();
+        let allowed_transitions = hashmap! {
+            ServiceStatus::Initial        => vec![ServiceStatus::Success, ServiceStatus::Failed],
+            ServiceStatus::ToBeRun        => vec![ServiceStatus::Initial],
+            ServiceStatus::Starting       => vec![ServiceStatus::ToBeRun],
+            ServiceStatus::InKilling      => vec![ServiceStatus::ToBeKilled],
+            ServiceStatus::ToBeKilled     => vec![ServiceStatus::Running,
+                                                  ServiceStatus::Starting,
+                                                  ServiceStatus::Initial],
+            ServiceStatus::Running        => vec![ServiceStatus::Starting],
+            ServiceStatus::FinishedFailed => vec![ServiceStatus::Failed, ServiceStatus::InKilling],
+            ServiceStatus::Success        => vec![ServiceStatus::Starting, ServiceStatus::Running],
+            ServiceStatus::Failed         => vec![ServiceStatus::Starting, ServiceStatus::Running],
+            ServiceStatus::Finished       => vec![ServiceStatus::Success,
+                                                 ServiceStatus::InKilling,
+                                                 ServiceStatus::Initial],
+        };
 
         match ev {
             Event::StatusChanged(service_name, status) => {
