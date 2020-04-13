@@ -350,6 +350,8 @@ impl Runtime {
             // Ingest updates
             let events = if has_emit_ev > 0 {
                 self.repo.get_n_events_blocking(has_emit_ev)
+            } else if self.repo.should_block() {
+                self.repo.get_events_blocking()
             } else {
                 self.repo.get_events()
             };
@@ -373,12 +375,11 @@ impl Runtime {
             has_emit_ev = events.len();
             events.into_iter().for_each(|ev| self.repo.send_ev(ev));
 
-            // TODO: apply some clever check and exit if no service will never be started again.
             if self.repo.all_finished() {
                 debug!("All services have finished, exiting...");
                 break;
-            } else {
             }
+
             std::thread::sleep(Duration::from_millis(300));
         }
 

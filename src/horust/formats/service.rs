@@ -49,8 +49,10 @@ pub type ServiceName = String;
 #[serde(rename_all = "kebab-case", deny_unknown_fields)]
 pub struct Service {
     #[serde(default)]
+    //todo: length should be > 0.
     pub name: ServiceName,
     #[serde()]
+    //todo: length should be > 0.
     pub command: String,
     #[serde(default)]
     pub user: User,

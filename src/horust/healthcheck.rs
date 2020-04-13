@@ -129,10 +129,13 @@ fn next(
     starting: &HashMap<ServiceName, Service>,
 ) -> Vec<Event> {
     debug!("next");
+    // Starting services don't go in failure state if they don't pass the healthcheck
+    // TODO: probably add a timeout or trials.
     let evs_starting = starting
         .iter()
         .filter(|(_s_name, service)| healthchecker(&service.healthiness))
         .map(|(s_name, _service)| Event::new_status_changed(s_name, ServiceStatus::Running));
+
     running
         .iter()
         .filter(|(_s_name, service)| !healthchecker(&service.healthiness))

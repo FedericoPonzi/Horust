@@ -20,7 +20,7 @@ impl Bus {
     }
 
     /// Blocking
-    pub fn run(mut self) {
+    pub fn run(self) {
         self.dispatch();
     }
 
@@ -33,9 +33,8 @@ impl Bus {
 
     /// Dispatching loop
     /// As soon as we don't have any senders it will exit
-    pub fn dispatch(&mut self) {
-        let receiver = self.receiver.clone();
-        for ev in receiver {
+    pub fn dispatch(mut self) {
+        for ev in self.receiver {
             debug!("Received ev: {:?}", ev);
             debug!("self.senders: {:?}", self.senders.len());
             self.senders

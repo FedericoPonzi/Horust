@@ -20,6 +20,7 @@ pub enum Event {
     ForceKill(ServiceName),
     Exiting(ComponentName, ExitStatus),
     ShuttingDownInitiated,
+    // TODO: to allow changes of service at runtime:
     //ServiceCreated(ServiceHandler),
 }
 
