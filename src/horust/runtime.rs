@@ -183,12 +183,16 @@ impl Runtime {
                         }
                     }
                     ServiceStatus::Starting => {
-                        if service_handler.status != ServiceStatus::InKilling {
+                        if service_handler.status == ServiceStatus::ToBeRun {
                             service_handler.status = ServiceStatus::Starting;
                             service_handler.restart_attempts = 0;
                         }
                     }
                     unhandled_status => {
+                        //TODO: handle all unhandled statuses and use if guards in various branches.
+                        // For example, a StatusChanged(Starting) can be applied only if service was in the
+                        // ToBeRun status. So:
+                        // `ServiceStatus::Starting if service_handler.status == ServiceStatus::ToBeRun => {...`
                         debug!(
                             "Unhandled status, setting: {}, {}",
                             service_name, unhandled_status

@@ -76,7 +76,6 @@ impl Repo {
 pub(crate) fn supervisor_thread(bus: BusConnector) {
     let mut reapable = HashMap::new();
     let mut repo = Repo::new(bus);
-
     loop {
         repo.ingest();
         match waitpid(Pid::from_raw(-1), Some(WaitPidFlag::WNOHANG)) {

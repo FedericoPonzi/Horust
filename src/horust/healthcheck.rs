@@ -28,6 +28,7 @@ struct Repo {
 
 impl Repo {
     fn apply(&mut self, ev: Event) {
+        debug!("received ev: {:?}", ev);
         if let Event::StatusChanged(service_name, new_status) = ev {
             let svc = self.services.get(&service_name).unwrap();
             if new_status == ServiceStatus::Starting {
@@ -87,6 +88,7 @@ fn check_http_endpoint(endpoint: &str) -> bool {
     resp.status().is_success()
 }
 
+/// Returns true if the service is healthy and all checks are passed.
 fn healthchecker(healthiness: &Healthiness) -> bool {
     // Count of required checks:
     let mut checks = 0;
@@ -115,12 +117,7 @@ fn healthchecker(healthiness: &Healthiness) -> bool {
         checks += check;
         checks_res += res
     }
-    /*
-        Edge case: [healthcheck] header section is defined, but then it's empty. This should pass.
-    */
-    let res = checks <= checks_res;
-    let empty_section = healthiness.file_path.is_some() || healthiness.http_endpoint.is_some();
-    res || !empty_section
+    checks == checks_res
 }
 
 /// Run the healthchecks, produce the event changes
@@ -133,7 +130,10 @@ fn next(
     // TODO: probably add a timeout or trials.
     let evs_starting = starting
         .iter()
-        .filter(|(_s_name, service)| healthchecker(&service.healthiness))
+        .filter(|(s_name, service)| {
+            debug!("going to check {}, which is starting...", s_name);
+            healthchecker(&service.healthiness)
+        })
         .map(|(s_name, _service)| Event::new_status_changed(s_name, ServiceStatus::Running));
 
     running
@@ -158,7 +158,7 @@ fn run(bus: BusConnector, services: Vec<Service>) {
             debug!("Breaking the loop..");
             break;
         }
-        std::thread::sleep(Duration::from_millis(300));
+        std::thread::sleep(Duration::from_millis(500));
     }
 
     repo.send_ev(Event::Exiting("Healthcheck".into(), ExitStatus::Successful));

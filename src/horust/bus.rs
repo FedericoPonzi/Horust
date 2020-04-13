@@ -40,6 +40,7 @@ impl Bus {
             self.senders
                 .retain(|sender| sender.send(ev.clone()).is_ok());
             if self.senders.is_empty() {
+                debug!("All senders are gone, breaking loop...");
                 break;
             }
         }
