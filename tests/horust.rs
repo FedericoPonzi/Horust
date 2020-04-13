@@ -217,7 +217,7 @@ whoami"#;
     store_service(temp_dir.path(), script, None, None);
     cmd.assert().success().stdout(contains("games"));
 }
-static environment_script: &str = r#"#!/bin/bash
+static ENVIRONMENT_SCRIPT: &str = r#"#!/bin/bash
 printenv"#;
 
 // Test environment section
@@ -225,7 +225,7 @@ printenv"#;
 fn test_environment_additional() {
     let (mut cmd, temp_dir) = get_cli();
 
-    store_service(temp_dir.path(), environment_script, None, None);
+    store_service(temp_dir.path(), ENVIRONMENT_SCRIPT, None, None);
     cmd.assert().success().stdout(contains("bar").not());
 
     let service = r#"[environment]
@@ -234,7 +234,7 @@ re-export = [ "TERM" ]
 additional = { TERM = "bar" }
 "#;
     // Additional should overwrite TERM
-    store_service(temp_dir.path(), environment_script, Some(service), None);
+    store_service(temp_dir.path(), ENVIRONMENT_SCRIPT, Some(service), None);
     cmd.assert().success().stdout(contains("bar"));
 }
 
@@ -245,7 +245,7 @@ fn test_environment_keep_env() {
     let service = r#"[environment]
 keep-env = true
 "#;
-    store_service(temp_dir.path(), environment_script, Some(service), None);
+    store_service(temp_dir.path(), ENVIRONMENT_SCRIPT, Some(service), None);
     cmd.env("DB_PASS", "MyPassword")
         .assert()
         .success()
@@ -260,7 +260,7 @@ fn test_environment_re_export() {
 keep-env = false
 re-export = [ "DB_PASS" ]
 "#;
-    store_service(temp_dir.path(), environment_script, Some(service), None);
+    store_service(temp_dir.path(), ENVIRONMENT_SCRIPT, Some(service), None);
     cmd.env("DB_PASS", "MyPassword")
         .assert()
         .success()
