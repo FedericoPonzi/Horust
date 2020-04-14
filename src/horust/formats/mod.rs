@@ -18,6 +18,8 @@ pub enum Event {
     StatusChanged(ServiceName, ServiceStatus),
     ServiceExited(ServiceName, i32),
     ForceKill(ServiceName),
+    Kill(ServiceName),
+    Run(ServiceName),
     Exiting(ComponentName, ExitStatus),
     ShuttingDownInitiated,
     // TODO: to allow changes of service at runtime:

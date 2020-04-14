@@ -284,10 +284,10 @@ impl User {
 
 #[derive(Serialize, Clone, Deserialize, Debug, Eq, PartialEq, Hash)]
 pub enum ServiceStatus {
-    /// Has a pid,
+    /// The service will be started asap
     Starting,
-    /// This is just an intermediate state between Initial and Running.
-    ToBeRun,
+    /// Service has a pid
+    Started,
     /// The service is up and healthy
     Running,
     /// Friendly signal sent, waiting for the process to terminate.
@@ -300,8 +300,6 @@ pub enum ServiceStatus {
     FinishedFailed,
     /// A Failed service might be restarted if the restart policy demands so.
     Failed,
-    // A Service that will be killed soon.
-    ToBeKilled,
     /// This is the initial state: A service in Initial state is marked to be runnable:
     /// it will be run as soon as possible.
     Initial,
@@ -310,16 +308,15 @@ pub enum ServiceStatus {
 impl std::fmt::Display for ServiceStatus {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), Error> {
         f.write_str(match self {
-            ServiceStatus::Starting => "Starting",
-            ServiceStatus::ToBeRun => "ToBeRun",
-            ServiceStatus::Running => "Running",
-            ServiceStatus::InKilling => "InKilling",
-            ServiceStatus::Finished => "Finished",
             ServiceStatus::Failed => "Failed",
-            ServiceStatus::ToBeKilled => "ToBeKilled",
-            ServiceStatus::Initial => "Initial",
-            ServiceStatus::Success => "Success",
+            ServiceStatus::Finished => "Finished",
             ServiceStatus::FinishedFailed => "FinishedFailed",
+            ServiceStatus::InKilling => "InKilling",
+            ServiceStatus::Initial => "Initial",
+            ServiceStatus::Running => "Running",
+            ServiceStatus::Started => "Started",
+            ServiceStatus::Starting => "Starting",
+            ServiceStatus::Success => "Success",
         })
     }
 }

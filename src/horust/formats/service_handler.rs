@@ -48,7 +48,6 @@ impl ServiceHandler {
     }
 
     pub fn set_pid(&mut self, pid: Pid) {
-        self.status = ServiceStatus::Starting;
         self.pid = Some(pid);
     }
 
@@ -61,10 +60,6 @@ impl ServiceHandler {
         );
 
         self.status = status;
-    }
-
-    pub fn is_to_be_run(&self) -> bool {
-        self.status == ServiceStatus::ToBeRun
     }
 
     pub fn is_failed(&self) -> bool {
@@ -84,7 +79,7 @@ impl ServiceHandler {
     }
 
     pub fn is_starting(&self) -> bool {
-        self.status == ServiceStatus::Starting
+        self.status == ServiceStatus::Started
     }
 
     pub fn is_initial(&self) -> bool {
