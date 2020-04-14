@@ -14,13 +14,12 @@ pub fn spawn(bus: BusConnector, services: Vec<Service>) {
     });
 }
 
-//TODO: we don't really need "service" here, but just the Healthiness section.
 #[derive(Debug)]
 struct Repo {
     bus: BusConnector,
     services: HashMap<ServiceName, Service>,
     /// Keep track of services which have a pid and need check for progressing to the running state
-    starting: HashMap<ServiceName, Service>,
+    started: HashMap<ServiceName, Service>,
     /// Keep track of running services
     running: HashMap<ServiceName, Service>,
     is_shutting_down: bool,
@@ -31,10 +30,10 @@ impl Repo {
         debug!("received ev: {:?}", ev);
         if let Event::StatusChanged(service_name, new_status) = ev {
             let svc = self.services.get(&service_name).unwrap();
-            if new_status == ServiceStatus::Starting {
-                self.starting.insert(svc.name.clone(), svc.clone());
+            if new_status == ServiceStatus::Started {
+                self.started.insert(svc.name.clone(), svc.clone());
             } else if new_status == ServiceStatus::Running {
-                let svc = self.starting.remove(&service_name);
+                let svc = self.started.remove(&service_name);
                 self.running.insert(service_name, svc.unwrap());
             } else if vec![
                 ServiceStatus::Finished,
@@ -45,14 +44,14 @@ impl Repo {
             .contains(&new_status)
             {
                 // If a service is finished, we don't need to check anymore
-                self.starting.remove(&service_name);
+                self.started.remove(&service_name);
                 self.running.remove(&service_name);
             }
         } else if ev == Event::ShuttingDownInitiated {
             self.is_shutting_down = true;
         } else if let Event::ForceKill(service_name) = ev {
             // If a service is killed, we don't need to check anymore
-            self.starting.remove(&service_name);
+            self.started.remove(&service_name);
             self.running.remove(&service_name);
         }
     }
@@ -70,7 +69,7 @@ impl Repo {
                 .into_iter()
                 .map(|service| (service.name.clone(), service))
                 .collect(),
-            starting: Default::default(),
+            started: Default::default(),
             running: Default::default(),
             is_shutting_down: false,
         }
@@ -150,7 +149,7 @@ fn run(bus: BusConnector, services: Vec<Service>) {
     let mut repo = Repo::new(bus, services);
     loop {
         repo.ingest();
-        let events = next(&repo.starting, &repo.running);
+        let events = next(&repo.started, &repo.running);
         for ev in events {
             repo.send_ev(ev);
         }

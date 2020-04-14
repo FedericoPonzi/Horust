@@ -44,7 +44,7 @@ impl Repo {
                 self.pids_map.insert(pid, service_name);
             }
             Event::StatusChanged(service_name, status) => {
-                if vec![ServiceStatus::ToBeRun, ServiceStatus::Initial].contains(&status) {
+                if vec![ServiceStatus::Starting, ServiceStatus::Initial].contains(&status) {
                     self.possibly_running.insert(service_name);
                 } else {
                     self.possibly_running.remove(&service_name);
