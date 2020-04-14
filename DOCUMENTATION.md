@@ -132,7 +132,7 @@ You can compile this on https://state-machine-cat.js.org/
 ```
 initial => Initial : "Will eventually be run";
 Initial => ToBeRun : "All dependencies are running, a thread has spawned and will run the fork/exec the process";
-Initial => Finished : "System shutdown before service had a chance to run";
+Initial => ToBeKilled : "System shutdown before service had a chance to run"; 
 ToBeRun => Starting : "The ServiceHandler has a pid";
 Starting => Running : "The service has met healthiness policy";
 Starting => Failed : "Service cannot be started";
