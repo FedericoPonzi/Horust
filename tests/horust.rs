@@ -350,3 +350,15 @@ fn test_restart_attempts() {
 fn test_restart_attempts_succeed() {
     restart_backoff(true, 1);
 }
+
+#[test]
+fn test_config_unsuccessful_exit_finished_failed() {
+    let (mut cmd, temp_dir) = get_cli();
+    let failing_script = r#"#!/bin/bash
+exit 1
+"#;
+    store_service(temp_dir.path(), failing_script, None, None);
+    cmd.assert().success();
+    let cmd = cmd.args(vec!["--unsuccessful-exit-finished-failed"]);
+    cmd.assert().failure();
+}
