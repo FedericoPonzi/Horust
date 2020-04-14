@@ -162,22 +162,21 @@ mod test {
     use crate::horust::error::Result;
     use crate::horust::formats::{Event, Healthiness, Service, ServiceName, ServiceStatus};
     use crate::horust::healthcheck;
-    use crate::horust::healthcheck::check_http_endpoint;
     use crate::horust::healthcheck::healthchecks;
     use std::collections::HashMap;
     use std::io::prelude::*;
     use std::io::ErrorKind;
-    use std::net::TcpListener;
     use std::net::TcpStream;
+    use std::net::{Ipv4Addr, SocketAddrV4, TcpListener};
     use std::thread;
     use tempdir::TempDir;
-    fn start_server() {
-        let listener = TcpListener::bind("127.0.0.1:9999").unwrap();
+    fn start_server(socket: SocketAddrV4) {
+        let listener = TcpListener::bind(socket).unwrap();
         listener
             .set_nonblocking(true)
             .expect("Cannot set to non-blocking");
         // accept connections and process them, spawning a new thread for each one
-        println!("Server listening on port 9999");
+        println!("Server listening on port: {}", socket.port());
         for stream in listener.incoming() {
             match stream {
                 Ok(stream) => {
@@ -241,9 +240,18 @@ file-path = "{}""#,
 
     #[test]
     fn test_http_healthiness_check() {
+        let loopback = Ipv4Addr::new(127, 0, 0, 1);
+        let socket = SocketAddrV4::new(loopback, 22222);
+        let listener = TcpListener::bind(socket).unwrap();
+        let local_addr = listener.local_addr().unwrap();
+        let endpoint = format!("http://127.0.0.1:{}", local_addr.port());
         thread::spawn(move || {
-            start_server();
+            start_server(socket);
         });
-        assert_eq!(check_http_endpoint("http://127.0.0.1:9999"), true);
+        let healthiness = Healthiness {
+            file_path: None,
+            http_endpoint: Some(endpoint),
+        };
+        assert!(!healthchecks(&healthiness));
     }
 }
