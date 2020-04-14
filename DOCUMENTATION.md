@@ -132,17 +132,18 @@ You can compile this on https://state-machine-cat.js.org/
 ```
 initial => Initial : "Will eventually be run";
 Initial => Starting : "All dependencies are running, a thread has spawned and will run the fork/exec the process";
-Initial => Finished : "System shutdown before service had a chance to run"; 
+Initial => Finished : "System shutdown before service had a chance to run (Kill Event)"; 
 Starting => Started : "The service has a pid";
 Started => Running : "The service has met healthiness policy";
 Started => Failed : "Service cannot be started";
 Started => Success : "Service finished very quickly";
 Failed => FinishedFailed : "Restart policy";
-Running => InKilling: "Received a Kill event";
+Started => InKilling : "Received a Kill event";
 InKilling => Finished : "Successfully killed";
 InKilling => FinishedFailed : "Forcefully killed (SIGKILL)";
 Running => Failed  : "Exit status is not successful";
 Running => Success  : "Exit status == 0";
+Running => InKilling: "Received a Kill event";
 Success => Initial : "Restart policy applied";
 Success => Finished : "Based on restart policy";
 Failed => Initial : "restart = always|on-failure";
