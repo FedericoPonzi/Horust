@@ -21,19 +21,19 @@
 At this point, this should be considered Alpha software.
 
 ## Usage
-Let's go through a simple example usage. We will create a website healthchecker using horust and a python script.
-1. Create a directory: `mkdir -p /etc/horust/services`
-2. Create your first service: `/etc/horust/services/healthchecker.toml`
+Let's go through a simple usage example. We will create a website healthchecker using horust and a python script.
+#### 1. Create a directory: `mkdir -p /etc/horust/services`
+#### 2. Create your first service: `/etc/horust/services/healthchecker.toml`
 ```toml
 command = "/tmp/healthcheck.py"
 start-delay = "10s"
 [restart]
 strategy = "always"
 ``` 
-There are many supported properties for your service file, but they are all optional. This is as minimal as we can get.
+There are many [supported](https://github.com/FedericoPonzi/Horust/blob/master/DOCUMENTATION.md) properties for your service file, but only `command` is required.
 As soon as we run horust, this service will be read and the command run. As soon as the service is over it won't be restarted, and horust will exit.
 
-3. Create a new file called `healthcheck.py` and in tmp:
+#### 3. Create a new file called `healthcheck.py` and in tmp:
 ```
 #!/usr/bin/python3
 import urllib.request
@@ -47,7 +47,7 @@ else:
 ```
 Add execution permissions to it: `chmod +x /tmp/healthcheck.py`.
 
-4. Run horust: "./horust". By default it will search services inside the `/etc/horust/services` folder.
+#### 4. Run horust: "./horust". By default it will search services inside the `/etc/horust/services` folder.
 
 Now every 10 seconds, this will send an http head request to google.it. If the response is different than 200, then there is an issue!
 
