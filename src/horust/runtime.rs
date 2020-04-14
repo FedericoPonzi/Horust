@@ -135,7 +135,7 @@ impl Runtime {
         match ev {
             Event::StatusChanged(service_name, new_status) => {
                 let mut service_handler = self.repo.get_mut_service(&service_name);
-                handle_status_change_event(service_name, new_status, &mut service_handler);
+                handle_status_changed_event(service_name, new_status, &mut service_handler);
             }
             Event::ServiceExited(service_name, exit_code) => {
                 let service_handler = self.repo.get_mut_service(&service_name);
