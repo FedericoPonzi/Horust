@@ -24,6 +24,8 @@ Run Horust in single command mode:
 ```bash
 HORUST_LOG=debug cargo run -- /bin/bash
 ```
+
+## For PRs:
 Before almost every commit, you might want to check your fmt:
 ```
 cargo fmt

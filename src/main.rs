@@ -1,3 +1,5 @@
+use horust::horust::ExitStatus;
+use horust::horust::HorustConfig;
 use horust::Horust;
 use std::path::PathBuf;
 use structopt::StructOpt;
@@ -10,14 +12,20 @@ extern crate log;
 /// Horust is a complete supervisor and init system, designed for running in containers.
 struct Opts {
     #[structopt(long, default_value = "/etc/horust/horust.toml")]
-    /// Horust's config.
-    config: String,
+    /// Horust's path to config.
+    config_path: PathBuf,
+
+    #[structopt(flatten)]
+    horust_config: HorustConfig,
+
     #[structopt(long)]
-    /// Prints a service file with all the possible options
+    /// Prints a sample service file with all the possible options
     sample_service: bool,
+
     #[structopt(long, default_value = "/etc/horust/services")]
     /// Path to the directory containing the services
     services_path: PathBuf,
+
     #[structopt(required = false, multiple = true, min_values = 0, last = true)]
     /// Specify a command to run instead of load services path. Useful if you just want to use the reaping capability. Preceed it with --.
     command: Vec<String>,
@@ -36,8 +44,11 @@ fn main() -> Result<(), horust::HorustError> {
         println!("{}", horust::get_sample_service());
         return Ok(());
     }
+
+    let config = HorustConfig::load_and_merge(opts.horust_config, &opts.config_path)?;
+
     let mut horust = if !opts.command.is_empty() {
-        debug!("Going to run command: {:?}", opts.command);
+        debug!("Running command: {:?}", opts.command);
 
         Horust::from_command(
             opts.command
@@ -46,12 +57,16 @@ fn main() -> Result<(), horust::HorustError> {
         )
     } else {
         debug!(
-            "Going to load services from directory: {}",
+            "Loading services from directory: {}",
             opts.services_path.display()
         );
         Horust::from_services_dir(&opts.services_path)?
     };
 
-    horust.run();
+    if let ExitStatus::SomeServiceFailed = horust.run() {
+        if config.unsuccessful_exit_finished_failed {
+            std::process::exit(101);
+        }
+    }
     Ok(())
 }

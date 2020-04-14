@@ -20,7 +20,7 @@ impl Bus {
     }
 
     /// Blocking
-    pub fn run(mut self) {
+    pub fn run(self) {
         self.dispatch();
     }
 
@@ -31,15 +31,18 @@ impl Bus {
         BusConnector::new(self.public_sender.clone(), rx)
     }
 
-    // Infinite dispatching loop.
-    // TODO: handle error or try_send or send_timeout
-    pub fn dispatch(&mut self) {
-        loop {
-            self.receiver.iter().for_each(|el| {
-                self.senders
-                    .iter()
-                    .for_each(|sender| sender.send(el.clone()).expect("Failed sending message"))
-            });
+    /// Dispatching loop
+    /// As soon as we don't have any senders it will exit
+    pub fn dispatch(mut self) {
+        for ev in self.receiver {
+            debug!("Received ev: {:?}", ev);
+            debug!("self.senders: {:?}", self.senders.len());
+            self.senders
+                .retain(|sender| sender.send(ev.clone()).is_ok());
+            if self.senders.is_empty() {
+                debug!("All senders are gone, breaking loop...");
+                break;
+            }
         }
     }
 }
@@ -58,6 +61,11 @@ impl BusConnector {
     /// Blocking
     pub fn get_events_blocking(&self) -> Event {
         self.receiver.recv().unwrap()
+    }
+
+    /// Blocking
+    pub fn get_n_events_blocking(&self, quantity: usize) -> Vec<Event> {
+        self.receiver.iter().take(quantity).collect()
     }
 
     /// Non blocking

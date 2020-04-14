@@ -1,12 +1,12 @@
 use crate::horust::bus::BusConnector;
-use crate::horust::formats::{Event, Healthiness, Service, ServiceName, ServiceStatus};
+use crate::horust::formats::{Event, ExitStatus, Healthiness, Service, ServiceName, ServiceStatus};
 #[cfg(feature = "http-healthcheck")]
 use reqwest::blocking::Client;
 use std::collections::HashMap;
 use std::time::Duration;
 
 // TODO:
-// * Tunable healthchecks in horust's config
+// * Tunable healthchecks timing in horust's config
 // * If there are no checks to run, just exit the thread. or go sleep until an "service created" event is received.
 pub fn spawn(bus: BusConnector, services: Vec<Service>) {
     std::thread::spawn(move || {
@@ -14,26 +14,54 @@ pub fn spawn(bus: BusConnector, services: Vec<Service>) {
     });
 }
 
+//TODO: we don't really need "service" here, but just the Healthiness section.
+#[derive(Debug)]
 struct Repo {
     bus: BusConnector,
     services: HashMap<ServiceName, Service>,
+    /// Keep track of services which have a pid and need check for progressing to the running state
     starting: HashMap<ServiceName, Service>,
+    /// Keep track of running services
     running: HashMap<ServiceName, Service>,
+    is_shutting_down: bool,
 }
 
 impl Repo {
-    fn ingest(&mut self) {
-        self.bus.try_get_events().into_iter().for_each(|ev| {
-            if let Event::StatusChanged(service_name, status) = ev {
-                let svc = self.services.get(&service_name).unwrap();
-                if status == ServiceStatus::Starting {
-                    self.starting.insert(svc.name.clone(), svc.clone());
-                } else if status == ServiceStatus::Running {
-                    let svc = self.starting.remove(&service_name);
-                    self.running.insert(service_name, svc.unwrap());
-                }
+    fn apply(&mut self, ev: Event) {
+        debug!("received ev: {:?}", ev);
+        if let Event::StatusChanged(service_name, new_status) = ev {
+            let svc = self.services.get(&service_name).unwrap();
+            if new_status == ServiceStatus::Starting {
+                self.starting.insert(svc.name.clone(), svc.clone());
+            } else if new_status == ServiceStatus::Running {
+                let svc = self.starting.remove(&service_name);
+                self.running.insert(service_name, svc.unwrap());
+            } else if vec![
+                ServiceStatus::Finished,
+                ServiceStatus::FinishedFailed,
+                ServiceStatus::Failed,
+                ServiceStatus::Finished,
+            ]
+            .contains(&new_status)
+            {
+                // If a service is finished, we don't need to check anymore
+                self.starting.remove(&service_name);
+                self.running.remove(&service_name);
             }
-        });
+        } else if ev == Event::ShuttingDownInitiated {
+            self.is_shutting_down = true;
+        } else if let Event::ForceKill(service_name) = ev {
+            // If a service is killed, we don't need to check anymore
+            self.starting.remove(&service_name);
+            self.running.remove(&service_name);
+        }
+    }
+
+    fn ingest(&mut self) {
+        self.bus
+            .try_get_events()
+            .into_iter()
+            .for_each(|ev| self.apply(ev))
     }
     fn new(bus: BusConnector, services: Vec<Service>) -> Self {
         Self {
@@ -44,8 +72,10 @@ impl Repo {
                 .collect(),
             starting: Default::default(),
             running: Default::default(),
+            is_shutting_down: false,
         }
     }
+
     fn send_ev(&mut self, ev: Event) {
         self.bus.send_event(ev)
     }
@@ -58,7 +88,8 @@ fn check_http_endpoint(endpoint: &str) -> bool {
     resp.status().is_success()
 }
 
-fn healthchecks(healthiness: &Healthiness) -> bool {
+/// Returns true if the service is healthy and all checks are passed.
+fn healthchecker(healthiness: &Healthiness) -> bool {
     // Count of required checks:
     let mut checks = 0;
     // Count of passed checks:
@@ -86,26 +117,28 @@ fn healthchecks(healthiness: &Healthiness) -> bool {
         checks += check;
         checks_res += res
     }
-    /*
-        Edge case: [healthcheck] header section is defined, but then it's empty. This should pass.
-    */
-    let res = checks <= checks_res;
-    let empty_section = healthiness.file_path.is_some() || healthiness.http_endpoint.is_some();
-    res || !empty_section
+    checks == checks_res
 }
 
-// Run the healthcheck, produce the event changes
+/// Run the healthchecks, produce the event changes
 fn next(
     running: &HashMap<ServiceName, Service>,
     starting: &HashMap<ServiceName, Service>,
 ) -> Vec<Event> {
+    debug!("next");
+    // Starting services don't go in failure state if they don't pass the healthcheck
+    // TODO: probably add a timeout or trials.
     let evs_starting = starting
         .iter()
-        .filter(|(_s_name, service)| healthchecks(&service.healthiness))
+        .filter(|(s_name, service)| {
+            debug!("going to check {}, which is starting...", s_name);
+            healthchecker(&service.healthiness)
+        })
         .map(|(s_name, _service)| Event::new_status_changed(s_name, ServiceStatus::Running));
+
     running
         .iter()
-        .filter(|(_s_name, service)| !healthchecks(&service.healthiness))
+        .filter(|(_s_name, service)| !healthchecker(&service.healthiness))
         .map(|(service_name, _service)| {
             // TODO: change to ToBeKilled. If the healthcheck fails, maybe it's a transient failure and process might be still running.
             Event::new_status_changed(service_name, ServiceStatus::Failed)
@@ -121,8 +154,14 @@ fn run(bus: BusConnector, services: Vec<Service>) {
         for ev in events {
             repo.send_ev(ev);
         }
-        std::thread::sleep(Duration::from_millis(300));
+        if repo.is_shutting_down {
+            debug!("Breaking the loop..");
+            break;
+        }
+        std::thread::sleep(Duration::from_millis(500));
     }
+
+    repo.send_ev(Event::Exiting("Healthcheck".into(), ExitStatus::Successful));
 }
 
 /// Setup require for the service, before running the healthchecks and starting the service.
@@ -138,7 +177,7 @@ mod test {
     use crate::horust::error::Result;
     use crate::horust::formats::{Event, Healthiness, Service, ServiceName, ServiceStatus};
     use crate::horust::healthcheck;
-    use crate::horust::healthcheck::healthchecks;
+    use crate::horust::healthcheck::healthchecker;
     use std::collections::HashMap;
     use tempdir::TempDir;
 
@@ -174,11 +213,11 @@ file-path = "{}""#,
             file_path: Some(file_path.clone()),
             http_endpoint: None,
         };
-        assert!(!healthchecks(&healthiness));
+        assert!(!healthchecker(&healthiness));
         std::fs::write(file_path, "Hello world!")?;
-        assert!(healthchecks(&healthiness));
+        assert!(healthchecker(&healthiness));
         let healthiness: Healthiness = Default::default();
-        assert!(healthchecks(&healthiness));
+        assert!(healthchecker(&healthiness));
         Ok(())
     }
 }

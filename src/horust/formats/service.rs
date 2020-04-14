@@ -1,7 +1,5 @@
-use crate::horust::error::{ValidationError, ValidationErrorKind};
-use crate::horust::HorustError;
-use nix::sys::signal::Signal;
-use nix::sys::signal::{SIGHUP, SIGINT, SIGKILL, SIGQUIT, SIGTERM, SIGUSR1, SIGUSR2};
+use crate::horust::error::{HorustError, ValidationError, ValidationErrorKind};
+use nix::sys::signal::{Signal, SIGHUP, SIGINT, SIGKILL, SIGQUIT, SIGTERM, SIGUSR1, SIGUSR2};
 use nix::unistd;
 use serde::export::fmt::Error;
 use serde::export::Formatter;
@@ -51,8 +49,10 @@ pub type ServiceName = String;
 #[serde(rename_all = "kebab-case", deny_unknown_fields)]
 pub struct Service {
     #[serde(default)]
+    //todo: length should be > 0.
     pub name: ServiceName,
     #[serde()]
+    //todo: length should be > 0.
     pub command: String,
     #[serde(default)]
     pub user: User,
@@ -80,7 +80,7 @@ impl Service {
     fn default_working_directory() -> PathBuf {
         PathBuf::from("/")
     }
-    pub fn from_file(path: &PathBuf) -> Result<Self, HorustError> {
+    pub fn from_file(path: &PathBuf) -> crate::horust::error::Result<Self> {
         let content = std::fs::read_to_string(path)?;
         toml::from_str::<Service>(content.as_str()).map_err(HorustError::from)
     }
@@ -222,6 +222,7 @@ impl Environment {
 
 #[derive(Serialize, Clone, Deserialize, Debug, Eq, PartialEq)]
 #[serde(rename_all = "kebab-case", deny_unknown_fields)]
+// TODO: Add a retry instead of instantly giving up.
 pub struct Healthiness {
     pub http_endpoint: Option<String>,
     pub file_path: Option<PathBuf>,
@@ -281,26 +282,7 @@ impl User {
     }
 }
 
-/// Visualize: https://state-machine-cat.js.org/
-/*
-initial => Initial : "Will eventually be run";
-Initial => ToBeRun : "All dependencies are running, a thread has spawned and will run the fork/exec the process";
-ToBeRun => Starting : "The ServiceHandler has a pid";
-Starting => Running : "The service has met healthiness policy";
-Starting => Failed : "Service cannot be started";
-Failed => FinishedFailed : "Restart policy ";
-Running => ToBeKilled: "Marked for killing";
-ToBeKilled => InKilling : "Friendly TERM signal sent";
-InKilling => Finished : "Successfully killed";
-InKilling => FinishedFailed : "Forcefully killed (SIGKILL)";
-Running => Failed  : "Exit status is not successful";
-Running => Success  : "Exit status == 0";
-Success => Initial : "Restart policy applied";
-Success => Finished : "Based on restart policy";
-Failed => Initial : "restart = always|on-failure";
-*/
-
-#[derive(Serialize, Clone, Deserialize, Debug, Eq, PartialEq)]
+#[derive(Serialize, Clone, Deserialize, Debug, Eq, PartialEq, Hash)]
 pub enum ServiceStatus {
     /// Has a pid,
     Starting,
@@ -449,10 +431,13 @@ impl From<&str> for FailureStrategy {
 #[serde(rename_all = "kebab-case", deny_unknown_fields)]
 pub struct Termination {
     #[serde(default)]
+    /// Use this signal instead of SIGTERM.
     pub(crate) signal: TerminationSignal,
     #[serde(default = "Termination::default_wait", with = "humantime_serde")]
+    /// Time to wait before SIGKILL
     pub wait: Duration,
     #[serde(default = "Vec::new")]
+    // Will kill this service if any of the services in Vec are failed
     pub die_if_failed: Vec<ServiceName>,
 }
 
@@ -482,9 +467,8 @@ pub enum TerminationSignal {
     USR1,
     USR2,
 }
-
-impl TerminationSignal {
-    pub(crate) fn as_signal(&self) -> Signal {
+impl Into<Signal> for TerminationSignal {
+    fn into(self) -> Signal {
         match self {
             TerminationSignal::TERM => SIGTERM,
             TerminationSignal::HUP => SIGHUP,
@@ -496,6 +480,7 @@ impl TerminationSignal {
         }
     }
 }
+
 impl Default for TerminationSignal {
     fn default() -> Self {
         TerminationSignal::TERM

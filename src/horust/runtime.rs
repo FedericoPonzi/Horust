@@ -1,7 +1,8 @@
 use crate::horust::bus::BusConnector;
 use crate::horust::error::Result;
 use crate::horust::formats::{
-    Event, FailureStrategy, RestartStrategy, Service, ServiceHandler, ServiceName, ServiceStatus,
+    Event, ExitStatus, FailureStrategy, RestartStrategy, Service, ServiceHandler, ServiceName,
+    ServiceStatus,
 };
 use crate::horust::{healthcheck, signal_handling};
 use nix::sys::signal::{self, Signal};
@@ -55,6 +56,11 @@ impl Repo {
     /// Blocking
     fn get_events_blocking(&mut self) -> Vec<Event> {
         vec![self.bus.get_events_blocking()]
+    }
+
+    /// Blocking
+    fn get_n_events_blocking(&mut self, quantity: usize) -> Vec<Event> {
+        self.bus.get_n_events_blocking(quantity)
     }
 
     pub fn all_finished(&self) -> bool {
@@ -111,8 +117,8 @@ impl Repo {
 }
 
 // Spawns and runs this component in a new thread.
-pub fn spawn(bus: BusConnector, services: Vec<Service>) {
-    thread::spawn(move || Runtime::new(bus, services).run());
+pub fn spawn(bus: BusConnector, services: Vec<Service>) -> std::thread::JoinHandle<ExitStatus> {
+    thread::spawn(move || Runtime::new(bus, services).run())
 }
 
 impl Runtime {
@@ -126,70 +132,85 @@ impl Runtime {
 
     // Apply side effects
     fn apply_event(&mut self, ev: Event) {
+        let allowed_transitions = hashmap! {
+            ServiceStatus::Initial        => vec![ServiceStatus::Success, ServiceStatus::Failed],
+            ServiceStatus::ToBeRun        => vec![ServiceStatus::Initial],
+            ServiceStatus::Starting       => vec![ServiceStatus::ToBeRun],
+            ServiceStatus::InKilling      => vec![ServiceStatus::ToBeKilled],
+            ServiceStatus::ToBeKilled     => vec![ServiceStatus::Running,
+                                                  ServiceStatus::Starting,
+                                                  ServiceStatus::Initial],
+            ServiceStatus::Running        => vec![ServiceStatus::Starting],
+            ServiceStatus::FinishedFailed => vec![ServiceStatus::Failed, ServiceStatus::InKilling],
+            ServiceStatus::Success        => vec![ServiceStatus::Starting, ServiceStatus::Running],
+            ServiceStatus::Failed         => vec![ServiceStatus::Starting, ServiceStatus::Running],
+            ServiceStatus::Finished       => vec![ServiceStatus::Success,
+                                                 ServiceStatus::InKilling,
+                                                 ServiceStatus::Initial],
+        };
+
         match ev {
             Event::StatusChanged(service_name, status) => {
                 let service_handler = self.repo.get_mut_service(&service_name);
+                let allowed = allowed_transitions.get(&status).unwrap();
                 match status {
-                    ServiceStatus::ToBeKilled => {
+                    ServiceStatus::Initial if allowed.contains(&service_handler.status) => {
+                        service_handler.status = ServiceStatus::Initial;
+                    }
+                    ServiceStatus::ToBeKilled if allowed.contains(&service_handler.status) => {
                         if service_handler.status == ServiceStatus::Initial {
                             service_handler.status = ServiceStatus::Finished;
-                        } else if vec![
-                            ServiceStatus::Running,
-                            ServiceStatus::Starting,
-                            ServiceStatus::ToBeRun,
-                        ]
-                        .contains(&service_handler.status)
-                        {
+                        } else {
                             service_handler.status = ServiceStatus::ToBeKilled;
                             service_handler.shutting_down_start = Some(Instant::now());
                             kill(
                                 service_handler,
-                                service_handler.service().termination.signal.as_signal(),
-                            );
-                        } else {
-                            error!(
-                                "Service ToBeKilled was in status: {}",
-                                service_handler.status
+                                service_handler.service().termination.signal.clone().into(),
                             );
                         }
                     }
-                    ServiceStatus::ToBeRun => {
-                        if service_handler.status == ServiceStatus::Initial {
-                            service_handler.status = ServiceStatus::ToBeRun;
-                            healthcheck::prepare_service(&service_handler.service().healthiness)
-                                .unwrap();
-                            let backoff = service_handler
-                                .service()
-                                .restart
-                                .backoff
-                                .mul(service_handler.restart_attempts.clone());
-                            run_spawning_thread(
-                                service_handler.service().clone(),
-                                backoff,
-                                self.repo.clone(),
-                            );
-                        } else {
-                            debug!("{}: Ignoring ToBeRun event", service_name);
-                        }
+                    ServiceStatus::ToBeRun if allowed.contains(&service_handler.status) => {
+                        service_handler.status = ServiceStatus::ToBeRun;
+                        healthcheck::prepare_service(&service_handler.service().healthiness)
+                            .unwrap();
+                        let backoff = service_handler
+                            .service()
+                            .restart
+                            .backoff
+                            .mul(service_handler.restart_attempts.clone());
+                        run_spawning_thread(
+                            service_handler.service().clone(),
+                            backoff,
+                            self.repo.clone(),
+                        );
                     }
-                    ServiceStatus::Running => {
-                        if service_handler.status == ServiceStatus::Starting {
-                            service_handler.status = ServiceStatus::Running;
-                            service_handler.restart_attempts = 0;
-                        }
+                    ServiceStatus::Starting if allowed.contains(&service_handler.status) => {
+                        service_handler.status = ServiceStatus::Starting;
+                        service_handler.restart_attempts = 0;
                     }
-                    ServiceStatus::Starting => {
-                        if service_handler.status != ServiceStatus::InKilling {
-                            service_handler.status = ServiceStatus::Starting;
-                            service_handler.restart_attempts = 0;
-                        }
+                    ServiceStatus::Running if allowed.contains(&service_handler.status) => {
+                        service_handler.status = ServiceStatus::Running;
+                    }
+                    ServiceStatus::Failed if allowed.contains(&service_handler.status) => {
+                        service_handler.status = ServiceStatus::Failed;
+                    }
+                    ServiceStatus::Success if allowed.contains(&service_handler.status) => {
+                        service_handler.status = ServiceStatus::Success;
+                    }
+                    ServiceStatus::FinishedFailed if allowed.contains(&service_handler.status) => {
+                        service_handler.status = ServiceStatus::FinishedFailed;
+                    }
+                    ServiceStatus::InKilling if allowed.contains(&service_handler.status) => {
+                        service_handler.status = ServiceStatus::InKilling;
+                    }
+                    ServiceStatus::Finished if allowed.contains(&service_handler.status) => {
+                        service_handler.status = ServiceStatus::Finished;
                     }
                     unhandled_status => {
                         debug!(
-                            "Unhandled status, setting: {}, {}",
-                            service_name, unhandled_status
+                            "Tried to make an illegal transition: (current) {} -> {} (received) for service: {}",
+                            service_handler.status, unhandled_status, service_name
                         );
-                        service_handler.status = unhandled_status;
                     }
                 }
             }
@@ -245,39 +266,29 @@ impl Runtime {
                 service_handler.pid = Some(pid);
             }
             Event::ShuttingDownInitiated => self.is_shutting_down = true,
+            ev => {
+                trace!("ignoring: {:?}", ev);
+            }
         }
     }
 
     /// Compute next state for each sh
     pub fn next(&self, service_handler: &ServiceHandler) -> Vec<Event> {
+        let ev_status =
+            |status: ServiceStatus| Event::new_status_changed(service_handler.name(), status);
+        let vev_status = |status: ServiceStatus| vec![ev_status(status)];
         if self.repo.is_service_runnable(&service_handler) {
             if self.is_shutting_down {
-                vec![Event::new_status_changed(
-                    service_handler.name(),
-                    ServiceStatus::Finished,
-                )]
+                vev_status(ServiceStatus::Finished)
             } else {
-                vec![Event::new_status_changed(
-                    service_handler.name(),
-                    ServiceStatus::ToBeRun,
-                )]
+                vev_status(ServiceStatus::ToBeRun)
             }
         } else {
             match service_handler.status {
-                ServiceStatus::Initial => {
-                    if self.is_shutting_down {
-                        vec![Event::new_status_changed(
-                            service_handler.name(),
-                            ServiceStatus::Finished,
-                        )]
-                    } else {
-                        vec![]
-                    }
+                ServiceStatus::Initial if self.is_shutting_down => {
+                    vev_status(ServiceStatus::Finished)
                 }
-                ServiceStatus::Success => {
-                    let service_ev = handle_restart_strategy(service_handler, false);
-                    vec![service_ev]
-                }
+                ServiceStatus::Success => vec![handle_restart_strategy(service_handler, false)],
                 ServiceStatus::Failed => {
                     let attempts_are_over = service_handler.restart_attempts
                         > service_handler.service().restart.attempts;
@@ -295,10 +306,7 @@ impl Runtime {
                         });
 
                     let service_ev = if !attempts_are_over {
-                        Event::new_status_changed(
-                            service_handler.name(),
-                            ServiceStatus::FinishedFailed,
-                        )
+                        ev_status(ServiceStatus::FinishedFailed)
                     } else {
                         handle_restart_strategy(service_handler, true)
                     };
@@ -314,33 +322,25 @@ impl Runtime {
                         vec![]
                     }
                 }
-                ServiceStatus::Running | ServiceStatus::Starting => {
-                    if self.is_shutting_down {
-                        vec![Event::new_status_changed(
-                            service_handler.name(),
-                            ServiceStatus::ToBeKilled,
-                        )]
-                    } else {
-                        vec![]
-                    }
+                ServiceStatus::Initial | ServiceStatus::Running | ServiceStatus::Starting
+                    if self.is_shutting_down =>
+                {
+                    vev_status(ServiceStatus::ToBeKilled)
                 }
-                ServiceStatus::ToBeKilled => {
-                    // Change to service in killing event.
-                    vec![Event::new_status_changed(
-                        service_handler.name(),
-                        ServiceStatus::InKilling,
-                    )]
-                }
+                ServiceStatus::ToBeKilled => vev_status(ServiceStatus::InKilling),
                 _ => vec![],
             }
         }
     }
 
     /// Blocking call. Tries to move state machines forward
-    pub fn run(&mut self) {
+    pub fn run(mut self) -> ExitStatus {
+        let mut has_emit_ev = 0;
         loop {
             // Ingest updates
-            let events = if self.repo.should_block() {
+            let events = if has_emit_ev > 0 {
+                self.repo.get_n_events_blocking(has_emit_ev)
+            } else if self.repo.should_block() {
                 self.repo.get_events_blocking()
             } else {
                 self.repo.get_events()
@@ -362,15 +362,29 @@ impl Runtime {
                 .flatten()
                 .collect();
             debug!("Going to emit events: {:?}", events);
+            has_emit_ev = events.len();
             events.into_iter().for_each(|ev| self.repo.send_ev(ev));
-            // TODO: apply some clever check and exit if no service will never be started again.
+
             if self.repo.all_finished() {
                 debug!("All services have finished, exiting...");
                 break;
             }
-            thread::sleep(Duration::from_millis(200));
+
+            std::thread::sleep(Duration::from_millis(300));
         }
-        std::process::exit(0);
+
+        let res = if self.repo.services.iter().any(|sh| sh.is_finished_failed()) {
+            ExitStatus::SomeServiceFailed
+        } else {
+            ExitStatus::Successful
+        };
+
+        if !self.is_shutting_down {
+            self.repo.send_ev(Event::ShuttingDownInitiated);
+        }
+        self.repo
+            .send_ev(Event::Exiting("Runtime".into(), ExitStatus::Successful));
+        return res;
     }
 }
 
@@ -427,6 +441,7 @@ fn handle_failure_strategy(deps: Vec<ServiceName>, failed_sh: &ServiceHandler) -
     }
 }
 
+/// Kill wrapper, will send signal to sh and handles the result.
 fn kill(sh: &ServiceHandler, signal: Signal) {
     debug!("Going to send {} signal to pid {:?}", signal, sh.pid());
     if let Some(pid) = sh.pid() {
@@ -442,7 +457,11 @@ fn kill(sh: &ServiceHandler, signal: Signal) {
             }
         }
     } else {
-        error!("Missing pid to kill but process was in running state.");
+        error!(
+            "{}: Missing pid to kill but service was in {:?} state.",
+            sh.name(),
+            sh.status
+        );
     }
 }
 
@@ -509,6 +528,7 @@ fn exec_service(service: &Service) {
     let env_cptr: Vec<&CStr> = env_cstrings.iter().map(|c| c.as_c_str()).collect();
 
     //arg_cstrings.insert(0, program_name.clone());
+    //TODO: if ENOENT exit status is 0
     nix::unistd::execvpe(program_name.as_ref(), arg_cptr.as_ref(), env_cptr.as_ref())
         .expect("Execvpe() failed: ");
 }

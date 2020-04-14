@@ -96,3 +96,4 @@ Thanks for considering contributing to horust! For getting started have a look o
 
 ## License
 Horust is provided under the MIT license. Please read the attached [license](https://github.com/FedericoPonzi/horust/blob/master/LICENSE) file.
+

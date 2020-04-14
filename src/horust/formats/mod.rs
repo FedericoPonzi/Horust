@@ -5,12 +5,22 @@ pub use service::*;
 pub use service_handler::ServiceHandler;
 
 #[derive(Debug, Clone, PartialEq)]
+pub enum ExitStatus {
+    Successful,
+    SomeServiceFailed,
+}
+
+pub type ComponentName = String;
+
+#[derive(Debug, Clone, PartialEq)]
 pub enum Event {
     PidChanged(ServiceName, Pid),
     StatusChanged(ServiceName, ServiceStatus),
     ServiceExited(ServiceName, i32),
     ForceKill(ServiceName),
+    Exiting(ComponentName, ExitStatus),
     ShuttingDownInitiated,
+    // TODO: to allow changes of service at runtime:
     //ServiceCreated(ServiceHandler),
 }
 

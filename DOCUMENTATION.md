@@ -93,13 +93,14 @@ By using this parameter, you can specify which exit codes will make this service
      * `kill-dependents`: Dependents are all the services start after this one. So if service `b` has service `a` in its `start-after` section,
         and `a` has strategy=kill-dependents, then b will be stopped if `a` fails.
      * `shutdown`: It will kill all the services.
+
 ### Environment section
-``toml
+```toml
 [environment]
 keep-env = false
 re-export = [ "PATH", "DB_PASS"]
 additional = { key = "value"} 
-``
+```
 * **`keep-env` = `bool`**: default: true. Pass over all the environment variables.
 Regardless the value of keep-env, the following keys will be updated / defined:
 * `USER`
@@ -120,8 +121,10 @@ die-if-failed = ["db.toml"]
 ```
 * **`signal` = `"TERM|HUP|INT|QUIT|KILL|USR1|USR2"`**: The _friendly_ signal used for shutting down the process.
 * **`wait` = `"time"`**: How much time to wait before sending a SIGKILL after `signal` has been sent.
-* **`die-if-failed` = `["<service-name>"]`**: If any of the services in the array dies, this service will be killed.
+* **`die-if-failed` = `["<service-name>"]`**: As soon as any of the services defined in this the array fails, this service will be terminated as well.
+
 ---
+
 ## State machine
 [![State machne](https://github.com/FedericoPonzi/Horust/raw/master/res/state-machine.png)](https://github.com/FedericoPonzi/Horust/raw/master/res/state-machine.png)
 
@@ -129,9 +132,11 @@ You can compile this on https://state-machine-cat.js.org/
 ```
 initial => Initial : "Will eventually be run";
 Initial => ToBeRun : "All dependencies are running, a thread has spawned and will run the fork/exec the process";
+Initial => ToBeKilled : "System shutdown before service had a chance to run"; 
 ToBeRun => Starting : "The ServiceHandler has a pid";
 Starting => Running : "The service has met healthiness policy";
 Starting => Failed : "Service cannot be started";
+Starting => Success : "Service finished very quickly";
 Failed => FinishedFailed : "Restart policy ";
 Running => ToBeKilled: "Marked for killing";
 ToBeKilled => InKilling : "Friendly TERM signal sent";
@@ -145,12 +150,13 @@ Failed => Initial : "restart = always|on-failure";
 ```
 
 ## Horust's configuration
-Horust's configuration is still work in progress, thus not available yet.
 Horust can be configured by using the following parameters:
 ```toml
 # Default time to wait after sending a `sigterm` to a process before sending a SIGKILL.
-timeout-before-sigkill = "10s"
+unsuccessful-exit-finished-failed = true
 ```
+All the parameters can be passed via the cli (use `horust --help`) or via a config file.
+The default path for the config file is `/etc/horust/horust.toml`.
 
 ## Single command
 WIP. It's already supported, but it needs some love.
