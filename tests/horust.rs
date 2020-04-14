@@ -176,7 +176,7 @@ wait = "1s""#;
 
     let recv = run_async(cmd, true);
     kill(recv.pid, Signal::SIGINT).expect("kill");
-    recv.recv_or_kill(Duration::from_secs(7));
+    recv.recv_or_kill(Duration::from_secs(15));
 }
 
 #[test]
@@ -361,4 +361,10 @@ exit 1
     cmd.assert().success();
     let cmd = cmd.args(vec!["--unsuccessful-exit-finished-failed"]);
     cmd.assert().failure();
+}
+
+#[test]
+fn test_stress_test() {
+    let script = r#"#!/bin/bash 
+:"#;
 }
