@@ -150,12 +150,13 @@ Failed => Initial : "restart = always|on-failure";
 ```
 
 ## Horust's configuration
-Horust's configuration is still work in progress, thus not available yet.
 Horust can be configured by using the following parameters:
 ```toml
 # Default time to wait after sending a `sigterm` to a process before sending a SIGKILL.
-timeout-before-sigkill = "10s"
+unsuccessful-exit-finished-failed = true
 ```
+All the parameters can be passed via the cli (use `horust --help`) or via a config file.
+The default path for the config file is `/etc/horust/horust.toml`.
 
 ## Single command
 WIP. It's already supported, but it needs some love.

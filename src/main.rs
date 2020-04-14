@@ -11,15 +11,15 @@ extern crate log;
 #[structopt(author, about)]
 /// Horust is a complete supervisor and init system, designed for running in containers.
 struct Opts {
-    #[structopt(long)]
-    /// Horust's config.
-    config: Option<PathBuf>,
+    #[structopt(long, default_value = "/etc/horust/horust.toml")]
+    /// Horust's path to config.
+    config_path: PathBuf,
 
     #[structopt(flatten)]
     horust_config: HorustConfig,
 
     #[structopt(long)]
-    /// Prints a service file with all the possible options
+    /// Prints a sample service file with all the possible options
     sample_service: bool,
 
     #[structopt(long, default_value = "/etc/horust/services")]
@@ -45,11 +45,7 @@ fn main() -> Result<(), horust::HorustError> {
         return Ok(());
     }
 
-    let config = if let Some(config_path) = opts.config {
-        HorustConfig::from_file(&config_path)?
-    } else {
-        opts.horust_config
-    };
+    let config = HorustConfig::load_and_merge(opts.horust_config, &opts.config_path)?;
 
     let mut horust = if !opts.command.is_empty() {
         debug!("Running command: {:?}", opts.command);

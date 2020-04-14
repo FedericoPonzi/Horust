@@ -27,18 +27,31 @@ pub struct HorustConfig {
     pub unsuccessful_exit_finished_failed: bool,
 }
 
+impl HorustConfig {
+    /// Load the config file, and handles the merge with the options defined in the cmdline.
+    /// Cmdline defined values have precedence over config based values.
+    pub fn load_and_merge(cmd_line: HorustConfig, path: &Path) -> Result<Self> {
+        let config_file = if path.exists() {
+            let content = std::fs::read_to_string(path)?;
+            toml::from_str::<HorustConfig>(content.as_str()).map_err(HorustError::from)?
+        } else {
+            Default::default()
+        };
+
+        let unsuccessful_exit_finished_failed = cmd_line.unsuccessful_exit_finished_failed
+            || config_file.unsuccessful_exit_finished_failed;
+
+        Ok(HorustConfig {
+            unsuccessful_exit_finished_failed,
+        })
+    }
+}
+
 impl Default for HorustConfig {
     fn default() -> Self {
         Self {
             unsuccessful_exit_finished_failed: false,
         }
-    }
-}
-
-impl HorustConfig {
-    pub fn from_file(path: &Path) -> Result<Self> {
-        let content = std::fs::read_to_string(path)?;
-        toml::from_str::<HorustConfig>(content.as_str()).map_err(HorustError::from)
     }
 }
 
