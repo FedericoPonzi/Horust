@@ -132,63 +132,10 @@ impl Runtime {
 
     // Apply side effects
     fn apply_event(&mut self, ev: Event) {
-        let allowed_transitions = hashmap! {
-            ServiceStatus::Initial        => vec![ServiceStatus::Success, ServiceStatus::Failed],
-            ServiceStatus::Started       => vec![ServiceStatus::Starting],
-            ServiceStatus::InKilling      => vec![ServiceStatus::Running,
-                                                  ServiceStatus::Starting,
-                                                  ServiceStatus::Initial],
-            ServiceStatus::Running        => vec![ServiceStatus::Started],
-            ServiceStatus::FinishedFailed => vec![ServiceStatus::Failed, ServiceStatus::InKilling],
-            ServiceStatus::Success        => vec![ServiceStatus::Starting, ServiceStatus::Running],
-            ServiceStatus::Failed         => vec![ServiceStatus::Starting, ServiceStatus::Running],
-            ServiceStatus::Finished       => vec![ServiceStatus::Success,
-                                                 ServiceStatus::InKilling,
-                                                 ServiceStatus::Initial],
-        };
-
         match ev {
-            Event::StatusChanged(service_name, status) => {
-                let service_handler = self.repo.get_mut_service(&service_name);
-                let allowed = allowed_transitions.get(&status).unwrap();
-                match status {
-                    ServiceStatus::Initial if allowed.contains(&service_handler.status) => {
-                        service_handler.status = ServiceStatus::Initial;
-                    }
-                    ServiceStatus::Started if allowed.contains(&service_handler.status) => {
-                        service_handler.status = ServiceStatus::Started;
-                        service_handler.restart_attempts = 0;
-                    }
-                    ServiceStatus::Running if allowed.contains(&service_handler.status) => {
-                        service_handler.status = ServiceStatus::Running;
-                    }
-                    ServiceStatus::Failed if allowed.contains(&service_handler.status) => {
-                        service_handler.status = ServiceStatus::Failed;
-                    }
-                    ServiceStatus::Success if allowed.contains(&service_handler.status) => {
-                        service_handler.status = ServiceStatus::Success;
-                    }
-                    ServiceStatus::FinishedFailed if allowed.contains(&service_handler.status) => {
-                        service_handler.status = ServiceStatus::FinishedFailed;
-                    }
-                    ServiceStatus::InKilling if allowed.contains(&service_handler.status) => {
-                        service_handler.status = if service_handler.status == ServiceStatus::Initial
-                        {
-                            ServiceStatus::Finished
-                        } else {
-                            ServiceStatus::InKilling
-                        };
-                    }
-                    ServiceStatus::Finished if allowed.contains(&service_handler.status) => {
-                        service_handler.status = ServiceStatus::Finished;
-                    }
-                    unhandled_status => {
-                        debug!(
-                            "Tried to make an illegal transition: (current) {} -> {} (received) for service: {}",
-                            service_handler.status, unhandled_status, service_name
-                        );
-                    }
-                }
+            Event::StatusChanged(service_name, new_status) => {
+                let mut service_handler = self.repo.get_mut_service(&service_name);
+                handle_status_change_event(service_name, new_status, &mut service_handler);
             }
             Event::ServiceExited(service_name, exit_code) => {
                 let service_handler = self.repo.get_mut_service(&service_name);
@@ -351,7 +298,6 @@ impl Runtime {
             };
 
             debug!("Applying events.. {:?}", events);
-            //debug!("Service status: {:?}", self.repo.services);
             if signal_handling::is_sigterm_received() && !self.is_shutting_down {
                 self.repo.send_ev(Event::ShuttingDownInitiated);
             }
@@ -405,6 +351,55 @@ fn should_force_kill(service_handler: &ServiceHandler) -> bool {
     } else {
         error!("There is no shutting down elapsed secs!!");
         false
+    }
+}
+
+// TODO: test
+/// Handles the status changed event
+fn handle_status_changed_event(
+    service_name: ServiceName,
+    new_status: ServiceStatus,
+    service_handler: &mut ServiceHandler,
+) {
+    // A -> [B,C] means that transition to A is allowed only if service is in state B or C.
+    let allowed_transitions = hashmap! {
+        ServiceStatus::Initial        => vec![ServiceStatus::Success, ServiceStatus::Failed],
+        ServiceStatus::Started        => vec![ServiceStatus::Starting],
+        ServiceStatus::InKilling      => vec![ServiceStatus::Running,
+                                              ServiceStatus::Starting,
+                                              ServiceStatus::Initial],
+        ServiceStatus::Running        => vec![ServiceStatus::Started],
+        ServiceStatus::FinishedFailed => vec![ServiceStatus::Failed, ServiceStatus::InKilling],
+        ServiceStatus::Success        => vec![ServiceStatus::Starting, ServiceStatus::Running],
+        ServiceStatus::Failed         => vec![ServiceStatus::Starting, ServiceStatus::Running],
+        ServiceStatus::Finished       => vec![ServiceStatus::Success,
+                                             ServiceStatus::InKilling,
+                                             ServiceStatus::Initial],
+    };
+    let allowed = allowed_transitions.get(&new_status).unwrap();
+    if allowed.contains(&service_handler.status) {
+        service_handler.status = ServiceStatus::Initial;
+        match new_status {
+            ServiceStatus::Started if allowed.contains(&service_handler.status) => {
+                service_handler.status = ServiceStatus::Started;
+                service_handler.restart_attempts = 0;
+            }
+            ServiceStatus::InKilling if allowed.contains(&service_handler.status) => {
+                service_handler.status = if service_handler.status == ServiceStatus::Initial {
+                    ServiceStatus::Finished
+                } else {
+                    ServiceStatus::InKilling
+                };
+            }
+            new_status => {
+                service_handler.status = new_status;
+            }
+        }
+    } else {
+        debug!(
+            "Tried to make an illegal transition: (current) {} -> {} (received) for service: {}",
+            service_handler.status, new_status, service_name
+        );
     }
 }
 
