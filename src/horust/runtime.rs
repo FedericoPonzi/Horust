@@ -6,8 +6,7 @@ use crate::horust::formats::{
 };
 use crate::horust::{healthcheck, signal_handling};
 use nix::sys::signal::{self, Signal};
-use nix::unistd::{fork, getppid, ForkResult};
-use nix::unistd::{getpid, Pid};
+use nix::unistd::{fork, ForkResult, Pid};
 use shlex;
 use std::ffi::{CStr, CString};
 use std::fmt::Debug;
@@ -228,12 +227,8 @@ impl Runtime {
         let ev_status =
             |status: ServiceStatus| Event::new_status_changed(service_handler.name(), status);
         let vev_status = |status: ServiceStatus| vec![ev_status(status)];
-        if self.repo.is_service_runnable(&service_handler) {
-            if self.is_shutting_down {
-                vev_status(ServiceStatus::Finished)
-            } else {
-                vec![Event::Run(service_handler.name().clone())]
-            }
+        if self.repo.is_service_runnable(&service_handler) && !self.is_shutting_down {
+            vec![Event::Run(service_handler.name().clone())]
         } else {
             match service_handler.status {
                 ServiceStatus::Initial if self.is_shutting_down => {
@@ -287,7 +282,7 @@ impl Runtime {
     /// Blocking call. Tries to move state machines forward
     pub fn run(mut self) -> ExitStatus {
         let mut has_emit_ev = 0;
-        loop {
+        while !self.repo.all_finished() {
             // Ingest updates
             let events = if has_emit_ev > 0 {
                 self.repo.get_n_events_blocking(has_emit_ev)
@@ -314,14 +309,10 @@ impl Runtime {
             debug!("Going to emit events: {:?}", events);
             has_emit_ev = events.len();
             events.into_iter().for_each(|ev| self.repo.send_ev(ev));
-
-            if self.repo.all_finished() {
-                debug!("All services have finished, exiting...");
-                break;
-            }
-
             std::thread::sleep(Duration::from_millis(300));
         }
+
+        debug!("All services have finished, exiting...");
 
         let res = if self.repo.services.iter().any(|sh| sh.is_finished_failed()) {
             ExitStatus::SomeServiceFailed
@@ -474,6 +465,7 @@ fn kill(sh: &ServiceHandler, signal: Signal) {
 fn run_spawning_thread(service: Service, backoff: Duration, mut repo: Repo) {
     std::thread::spawn(move || {
         // todo: we should wake up every second, in case someone wants to kill this process.
+        debug!("going to sleep: {:?}", service.start_delay.add(backoff));
         std::thread::sleep(service.start_delay.add(backoff));
         let evs = match spawn_process(&service) {
             Ok(pid) => {
@@ -499,7 +491,8 @@ fn run_spawning_thread(service: Service, backoff: Duration, mut repo: Repo) {
 fn spawn_process(service: &Service) -> Result<Pid> {
     match fork() {
         Ok(ForkResult::Child) => {
-            debug!("Child PID: {}, PPID: {}.", getpid(), getppid());
+            // Use stdout/stderr at your own risk: #20
+            //debug!("Child PID: {}, PPID: {}.", getpid(), getppid());
             exec_service(service);
             unreachable!()
         }
@@ -511,9 +504,10 @@ fn spawn_process(service: &Service) -> Result<Pid> {
     }
 }
 
+/// Use stdout/stderr at your own risk: #20
 fn exec_service(service: &Service) {
     let cwd = service.working_directory.clone();
-    debug!("Set cwd: {:?}, ", cwd);
+    //debug!("Set cwd: {:?}, ", cwd);
 
     std::env::set_current_dir(cwd).expect("Set cwd");
     nix::unistd::setsid().expect("Set sid");

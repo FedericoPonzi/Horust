@@ -66,8 +66,9 @@ impl Repo {
     }
 
     fn ingest(&mut self) {
-        let updates: Vec<Event> = self.bus.try_get_events();
-        updates.into_iter().for_each(|ev| self.consume(ev));
+        let events: Vec<Event> = self.bus.try_get_events();
+        debug!("Ingesting events: {:?}", events);
+        events.into_iter().for_each(|ev| self.consume(ev));
     }
 }
 

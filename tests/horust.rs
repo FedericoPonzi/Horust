@@ -57,6 +57,7 @@ fn get_cli() -> (Command, TempDir) {
 /// Run the cmd and send a message on receiver when it's done.
 /// This allows for ensuring termination of a test.
 fn run_async(mut cmd: Command, should_succeed: bool) -> RecvWrapper {
+    println!("Cmd: {:?}", cmd);
     let mut child = cmd.spawn().unwrap();
     thread::sleep(Duration::from_millis(500));
 
@@ -364,7 +365,28 @@ exit 1
 }
 
 #[test]
-fn test_stress_test() {
+fn test_stress_test_chained_services() {
+    let (cmd, temp_dir) = get_cli();
     let script = r#"#!/bin/bash 
 :"#;
+    //
+    let max = 10;
+
+    for i in 1..max {
+        let service = format!(r#"start-after = ["{}.toml"]"#, i - 1);
+        store_service(
+            temp_dir.path(),
+            script,
+            Some(service.as_str()),
+            Some(format!("{}", i).as_str()),
+        );
+    }
+    store_service(
+        temp_dir.path(),
+        script,
+        None,
+        Some(format!("{}", 0).as_str()),
+    );
+    let recv = run_async(cmd, true);
+    recv.recv_or_kill(Duration::from_secs(max * 2));
 }
