@@ -365,11 +365,27 @@ exit 1
 }
 
 #[test]
+fn test_command_not_found() {
+    let (mut cmd, temp_dir) = get_cli();
+    let dir = temp_dir.path();
+    let rnd_name = thread_rng()
+        .sample_iter(&Alphanumeric)
+        .take(5)
+        .collect::<String>();
+    let service_name = format!("{}.toml", rnd_name.as_str());
+    let service = format!(r#"command = ",sorry_not_found{}""#, rnd_name);
+    std::fs::write(dir.join(&service_name), service).unwrap();
+    cmd.assert().success();
+    let cmd = cmd.args(vec!["--unsuccessful-exit-finished-failed"]);
+    cmd.assert().failure();
+}
+
+#[test]
 fn test_stress_test_chained_services() {
     let (cmd, temp_dir) = get_cli();
     let script = r#"#!/bin/bash 
 :"#;
-    //
+
     let max = 10;
 
     for i in 1..max {

@@ -489,11 +489,16 @@ fn run_spawning_thread(service: Service, backoff: Duration, mut repo: Repo) {
 
 /// Fork the process
 fn spawn_process(service: &Service) -> Result<Pid> {
+    // Avoiding issues with
+    let environment = service.get_environment();
+
     match fork() {
         Ok(ForkResult::Child) => {
-            // Use stdout/stderr at your own risk: #20
-            //debug!("Child PID: {}, PPID: {}.", getpid(), getppid());
-            exec_service(service);
+            if let Err(error) = exec_service(service, environment) {
+                let error = format!("Error spawning process: {}", error);
+                eprint_safe(error.as_str());
+                exit_safe(102);
+            }
             unreachable!()
         }
         Ok(ForkResult::Parent { child, .. }) => {
@@ -504,32 +509,51 @@ fn spawn_process(service: &Service) -> Result<Pid> {
     }
 }
 
-/// Use stdout/stderr at your own risk: #20
-fn exec_service(service: &Service) {
+fn exec_service(service: &Service, environment: Vec<String>) -> Result<()> {
     let cwd = service.working_directory.clone();
     //debug!("Set cwd: {:?}, ", cwd);
-
-    std::env::set_current_dir(cwd).expect("Set cwd");
-    nix::unistd::setsid().expect("Set sid");
-    nix::unistd::setuid(service.user.get_uid()).expect("setuid");
-    let chunks: Vec<String> = shlex::split(service.command.as_ref()).unwrap();
-    let program_name = CString::new(chunks.get(0).unwrap().as_str()).unwrap();
+    std::env::set_current_dir(cwd)?;
+    nix::unistd::setsid()?;
+    nix::unistd::setuid(service.user.get_uid())?;
+    let chunks: Vec<String> = shlex::split(service.command.as_ref()).ok_or_else(|| {
+        std::io::Error::new(
+            std::io::ErrorKind::InvalidInput,
+            format!("Invalid command: {}", service.command,),
+        )
+    })?;
+    let program_name = CString::new(chunks.get(0).unwrap().as_str())?;
     let to_cstring = |s: Vec<String>| {
         s.into_iter()
             .map(|arg| CString::new(arg).map_err(Into::into))
             .collect::<Result<Vec<_>>>()
-            .unwrap()
     };
-    let arg_cstrings = to_cstring(chunks);
+    let arg_cstrings = to_cstring(chunks)?;
     let arg_cptr: Vec<&CStr> = arg_cstrings.iter().map(|c| c.as_c_str()).collect();
 
-    let env_cstrings = to_cstring(service.get_environment());
+    let env_cstrings = to_cstring(environment)?;
     let env_cptr: Vec<&CStr> = env_cstrings.iter().map(|c| c.as_c_str()).collect();
 
-    //arg_cstrings.insert(0, program_name.clone());
-    //TODO: if ENOENT exit status is 0
-    nix::unistd::execvpe(program_name.as_ref(), arg_cptr.as_ref(), env_cptr.as_ref())
-        .expect("Execvpe() failed: ");
+    nix::unistd::execvpe(program_name.as_ref(), arg_cptr.as_ref(), env_cptr.as_ref())?;
+    Ok(())
+}
+
+/// Async-signal-safe stderr print
+fn eprint_safe(s: &str) {
+    use libc::{write, STDERR_FILENO};
+    use std::ffi::c_void;
+    unsafe {
+        write(STDERR_FILENO, s.as_ptr() as *const c_void, s.len());
+        let s = "\n";
+        write(STDERR_FILENO, s.as_ptr() as *const c_void, s.len());
+    }
+}
+
+/// Async-signal-safe exit
+fn exit_safe(status: i32) {
+    use libc::_exit;
+    unsafe {
+        _exit(status);
+    }
 }
 
 #[cfg(test)]
