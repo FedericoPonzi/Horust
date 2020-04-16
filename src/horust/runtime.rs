@@ -6,11 +6,13 @@ use crate::horust::formats::{
 };
 use crate::horust::{healthcheck, signal_handling};
 use nix::sys::signal::{self, Signal};
+use nix::unistd;
 use nix::unistd::{fork, ForkResult, Pid};
 use shlex;
 use std::ffi::{CStr, CString};
 use std::fmt::Debug;
 use std::ops::{Add, Mul};
+use std::path::PathBuf;
 use std::thread;
 use std::time::{Duration, Instant};
 
@@ -33,28 +35,9 @@ impl Repo {
         Self { bus, services }
     }
 
-    /// Returns true, if the repository is in a state for which fuhrer state transitions can be triggered
-    /// only by external events.
-    fn should_block(&self) -> bool {
-        let triggering_states = vec![
-            ServiceStatus::Running,
-            ServiceStatus::Finished,
-            ServiceStatus::FinishedFailed,
-        ];
-
-        self.services
-            .iter()
-            .all(|sh| triggering_states.contains(&sh.status))
-    }
-
     // Non blocking
     fn get_events(&mut self) -> Vec<Event> {
         self.bus.try_get_events()
-    }
-
-    /// Blocking
-    fn get_events_blocking(&mut self) -> Vec<Event> {
-        vec![self.bus.get_events_blocking()]
     }
 
     /// Blocking
@@ -147,7 +130,7 @@ impl Runtime {
                     .successful_exit_code
                     .contains(&exit_code);
                 if has_failed {
-                    error!(
+                    warn!(
                         "Service: {} has failed, exit code: {}",
                         service_handler.name(),
                         exit_code
@@ -187,7 +170,7 @@ impl Runtime {
                     .restart
                     .backoff
                     .mul(service_handler.restart_attempts.clone());
-                run_spawning_thread(
+                spawn_fork_exec_handler(
                     service_handler.service().clone(),
                     backoff,
                     self.repo.clone(),
@@ -286,8 +269,6 @@ impl Runtime {
             // Ingest updates
             let events = if has_emit_ev > 0 {
                 self.repo.get_n_events_blocking(has_emit_ev)
-            } else if self.repo.should_block() {
-                self.repo.get_events_blocking()
             } else {
                 self.repo.get_events()
             };
@@ -453,7 +434,7 @@ fn kill(sh: &ServiceHandler, signal: Signal) {
             }
         }
     } else {
-        error!(
+        warn!(
             "{}: Missing pid to kill but service was in {:?} state.",
             sh.name(),
             sh.status
@@ -461,8 +442,8 @@ fn kill(sh: &ServiceHandler, signal: Signal) {
     }
 }
 
-/// Run another thread that will wait for the start delay, and handle the fork / exec.
-fn run_spawning_thread(service: Service, backoff: Duration, mut repo: Repo) {
+/// Run another thread that will wait for the start delay and handle the fork / exec
+fn spawn_fork_exec_handler(service: Service, backoff: Duration, mut repo: Repo) {
     std::thread::spawn(move || {
         // todo: we should wake up every second, in case someone wants to kill this process.
         debug!("going to sleep: {:?}", service.start_delay.add(backoff));
@@ -486,15 +467,33 @@ fn run_spawning_thread(service: Service, backoff: Duration, mut repo: Repo) {
         evs.into_iter().for_each(|ev| repo.send_ev(ev));
     });
 }
+fn exec_args(service: &Service) -> Result<(CString, Vec<CString>, Vec<CString>)> {
+    let chunks: Vec<String> = shlex::split(service.command.as_ref()).ok_or_else(|| {
+        std::io::Error::new(
+            std::io::ErrorKind::InvalidInput,
+            format!("Invalid command: {}", service.command,),
+        )
+    })?;
+    let program_name = CString::new(chunks.get(0).unwrap().as_str())?;
+    let to_cstring = |s: Vec<String>| {
+        s.into_iter()
+            .map(|arg| CString::new(arg).map_err(Into::into))
+            .collect::<Result<Vec<_>>>()
+    };
+    let arg_cstrings = to_cstring(chunks)?;
+    let environment = service.get_environment();
+    let env_cstrings = to_cstring(environment)?;
 
+    Ok((program_name, arg_cstrings, env_cstrings))
+}
 /// Fork the process
 fn spawn_process(service: &Service) -> Result<Pid> {
-    // Avoiding issues with
-    let environment = service.get_environment();
-
+    let (program_name, arg_cstrings, env_cstrings) = exec_args(service)?;
+    let uid = service.user.get_uid();
+    let cwd = service.working_directory.clone();
     match fork() {
         Ok(ForkResult::Child) => {
-            if let Err(error) = exec_service(service, environment) {
+            if let Err(error) = exec(program_name, arg_cstrings, env_cstrings, uid, cwd) {
                 let error = format!("Error spawning process: {}", error);
                 eprint_safe(error.as_str());
                 exit_safe(102);
@@ -509,30 +508,19 @@ fn spawn_process(service: &Service) -> Result<Pid> {
     }
 }
 
-fn exec_service(service: &Service, environment: Vec<String>) -> Result<()> {
-    let cwd = service.working_directory.clone();
+fn exec(
+    program_name: CString,
+    arg_cstrings: Vec<CString>,
+    env_cstrings: Vec<CString>,
+    uid: unistd::Uid,
+    cwd: PathBuf,
+) -> Result<()> {
+    let arg_cptr: Vec<&CStr> = arg_cstrings.iter().map(|c| c.as_c_str()).collect();
+    let env_cptr: Vec<&CStr> = env_cstrings.iter().map(|c| c.as_c_str()).collect();
     //debug!("Set cwd: {:?}, ", cwd);
     std::env::set_current_dir(cwd)?;
     nix::unistd::setsid()?;
-    nix::unistd::setuid(service.user.get_uid())?;
-    let chunks: Vec<String> = shlex::split(service.command.as_ref()).ok_or_else(|| {
-        std::io::Error::new(
-            std::io::ErrorKind::InvalidInput,
-            format!("Invalid command: {}", service.command,),
-        )
-    })?;
-    let program_name = CString::new(chunks.get(0).unwrap().as_str())?;
-    let to_cstring = |s: Vec<String>| {
-        s.into_iter()
-            .map(|arg| CString::new(arg).map_err(Into::into))
-            .collect::<Result<Vec<_>>>()
-    };
-    let arg_cstrings = to_cstring(chunks)?;
-    let arg_cptr: Vec<&CStr> = arg_cstrings.iter().map(|c| c.as_c_str()).collect();
-
-    let env_cstrings = to_cstring(environment)?;
-    let env_cptr: Vec<&CStr> = env_cstrings.iter().map(|c| c.as_c_str()).collect();
-
+    nix::unistd::setuid(uid)?;
     nix::unistd::execvpe(program_name.as_ref(), arg_cptr.as_ref(), env_cptr.as_ref())?;
     Ok(())
 }

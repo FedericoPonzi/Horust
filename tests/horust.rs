@@ -56,7 +56,7 @@ fn get_cli() -> (Command, TempDir) {
 
 /// Run the cmd and send a message on receiver when it's done.
 /// This allows for ensuring termination of a test.
-fn run_async(mut cmd: Command, should_succeed: bool) -> RecvWrapper {
+fn run_async(cmd: &mut Command, should_succeed: bool) -> RecvWrapper {
     println!("Cmd: {:?}", cmd);
     let mut child = cmd.spawn().unwrap();
     thread::sleep(Duration::from_millis(500));
@@ -88,9 +88,9 @@ impl RecvWrapper {
         match self.receiver.recv_timeout(sleep) {
             Ok(is_success) => assert_eq!(is_success, self.should_succeed),
             Err(_err) => {
-                println!("test didn't terminate on time, going to kill horust...");
+                println!("Test didn't terminate on time, going to kill horust...");
                 kill(self.pid, Signal::SIGKILL).expect("horust kill");
-                panic!("Horust killed, test failed.");
+                panic!("Test didn't terminate on time: Horust killed, test failed.");
             }
         }
     }
@@ -151,10 +151,9 @@ echo "c""#;
 // TODO: add a test for termination / signal
 #[test]
 fn test_termination_wait() {
-    let (cmd, temp_dir) = get_cli();
+    let (mut cmd, temp_dir) = get_cli();
     // this script captures traps SIGINT / SIGTERM / SIGEXIT
     let script = r#"#!/bin/bash
-
 trap_with_arg() {
     func="$1" ; shift
     for sig ; do
@@ -165,24 +164,22 @@ func_trap() {
     :
 }
 trap_with_arg func_trap INT TERM EXIT
-echo "Send signals to PID $$ and type [enter] when done."
 while true ; do
-sleep 1 
-done 
-# Wait so the script doesn't exit.
+    sleep 1 
+done
 "#;
     let service = r#"[termination]
 wait = "1s""#;
     store_service(temp_dir.path(), script, Some(service), None);
 
-    let recv = run_async(cmd, true);
+    let recv = run_async(&mut cmd, true);
     kill(recv.pid, Signal::SIGINT).expect("kill");
     recv.recv_or_kill(Duration::from_secs(15));
 }
 
 #[test]
 fn test_termination_die_if_failed() {
-    let (cmd, temp_dir) = get_cli();
+    let (mut cmd, temp_dir) = get_cli();
     let script = r#"#!/bin/bash
 while true ; do
     sleep 1
@@ -198,7 +195,7 @@ sleep 1
 exit 1
 "#;
     store_service(temp_dir.path(), script, None, Some("a"));
-    let recv = run_async(cmd, true);
+    let recv = run_async(&mut cmd, true);
     recv.recv_or_kill(Duration::from_secs(10));
 }
 
@@ -268,7 +265,7 @@ re-export = [ "DB_PASS" ]
 // Test failure strategies
 fn test_failure_strategy(strategy: &str) {
     //debug!("running test: {}", strategy);
-    let (cmd, temp_dir) = get_cli();
+    let (mut cmd, temp_dir) = get_cli();
     let failing_service = format!(
         r#"[failure]
 strategy = "{}"
@@ -295,7 +292,7 @@ sleep 30"#;
 
     //store_service(temp_dir.path(), sleep_script, None, None);
     store_service(temp_dir.path(), sleep_script, Some(sleep_service), None);
-    let recv = run_async(cmd, true);
+    let recv = run_async(&mut cmd, true);
     recv.recv_or_kill(Duration::from_secs(15));
 }
 
@@ -359,9 +356,11 @@ fn test_config_unsuccessful_exit_finished_failed() {
 exit 1
 "#;
     store_service(temp_dir.path(), failing_script, None, None);
-    cmd.assert().success();
-    let cmd = cmd.args(vec!["--unsuccessful-exit-finished-failed"]);
-    cmd.assert().failure();
+    let recv = run_async(&mut cmd, true);
+    recv.recv_or_kill(Duration::from_secs(15));
+    let mut cmd = cmd.args(vec!["--unsuccessful-exit-finished-failed"]);
+    let recv = run_async(&mut cmd, false);
+    recv.recv_or_kill(Duration::from_secs(15));
 }
 
 #[test]
@@ -382,7 +381,7 @@ fn test_command_not_found() {
 
 #[test]
 fn test_stress_test_chained_services() {
-    let (cmd, temp_dir) = get_cli();
+    let (mut cmd, temp_dir) = get_cli();
     let script = r#"#!/bin/bash 
 :"#;
 
@@ -403,6 +402,6 @@ fn test_stress_test_chained_services() {
         None,
         Some(format!("{}", 0).as_str()),
     );
-    let recv = run_async(cmd, true);
+    let recv = run_async(&mut cmd, true);
     recv.recv_or_kill(Duration::from_secs(max * 2));
 }

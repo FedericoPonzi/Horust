@@ -7,6 +7,7 @@ pub struct Bus {
     public_sender: Sender<Event>,
     receiver: Receiver<Event>,
     senders: Vec<Sender<Event>>,
+    senders_left: u8,
 }
 
 impl Bus {
@@ -16,6 +17,7 @@ impl Bus {
             public_sender: pub_sx,
             receiver: rx,
             senders: Vec::new(),
+            senders_left: 0,
         }
     }
 
@@ -28,6 +30,7 @@ impl Bus {
     pub fn join_bus(&mut self) -> BusConnector {
         let (mysx, rx) = unbounded();
         self.senders.push(mysx);
+        self.senders_left += 1;
         BusConnector::new(self.public_sender.clone(), rx)
     }
 
@@ -35,12 +38,13 @@ impl Bus {
     /// As soon as we don't have any senders it will exit
     pub fn dispatch(mut self) {
         for ev in self.receiver {
-            debug!("Received ev: {:?}", ev);
-            debug!("self.senders: {:?}", self.senders.len());
             self.senders
                 .retain(|sender| sender.send(ev.clone()).is_ok());
-            if self.senders.is_empty() {
-                debug!("All senders are gone, breaking loop...");
+            if let Event::Exiting(_, _) = ev {
+                self.senders_left -= 1;
+            }
+            if self.senders_left == 0 {
+                info!("All senders are gone, breaking loop...");
                 break;
             }
         }
@@ -56,11 +60,6 @@ pub struct BusConnector {
 impl BusConnector {
     pub fn new(sender: Sender<Event>, receiver: Receiver<Event>) -> Self {
         BusConnector { sender, receiver }
-    }
-
-    /// Blocking
-    pub fn get_events_blocking(&self) -> Event {
-        self.receiver.recv().unwrap()
     }
 
     /// Blocking

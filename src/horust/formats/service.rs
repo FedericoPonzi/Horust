@@ -257,6 +257,7 @@ impl Default for User {
     }
 }
 impl User {
+    // TODO: use result and remove unwraps
     pub(crate) fn get_uid(&self) -> unistd::Uid {
         match &self {
             User::Name(name) => {
