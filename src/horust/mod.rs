@@ -154,11 +154,10 @@ where
                 error
             })
         })
-        .filter(Result::is_ok)
-        .map(Result::unwrap)
+        .filter_map(Result::ok)
         .collect::<Vec<Service>>();
     if services.is_empty() {
-        println!("Horust: No services found in: {:?}.", path);
+        error!("Horust: No services found in: {:?}", path);
     }
     Ok(services)
 }

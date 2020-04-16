@@ -1,5 +1,5 @@
 use crate::horust::bus::BusConnector;
-use crate::horust::formats::{Event, ExitStatus, Healthiness, Service, ServiceName, ServiceStatus};
+use crate::horust::formats::{Event, Healthiness, Service, ServiceName, ServiceStatus};
 #[cfg(feature = "http-healthcheck")]
 use reqwest::blocking::Client;
 use std::collections::HashMap;

@@ -381,6 +381,13 @@ fn test_command_not_found() {
 }
 
 #[test]
+fn test_single_command() {
+    let (mut cmd, _temp_dir) = get_cli();
+    cmd.args(vec!["--", "/bin/bash -c 'echo hello world'"]);
+    cmd.assert().success().stdout(contains("hello world"));
+}
+
+#[test]
 fn test_stress_test_chained_services() {
     let (mut cmd, temp_dir) = get_cli();
     let script = r#"#!/bin/bash 
