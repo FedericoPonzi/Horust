@@ -1,5 +1,5 @@
 use crate::horust::bus::BusConnector;
-use crate::horust::formats::{Event, ExitStatus, ServiceName, ServiceStatus};
+use crate::horust::formats::{Event, ServiceName, ServiceStatus};
 use nix::sys::wait::{waitpid, WaitPidFlag, WaitStatus};
 use nix::unistd::Pid;
 use std::collections::{HashMap, HashSet};
@@ -112,5 +112,5 @@ pub(crate) fn supervisor_thread(bus: BusConnector) {
         }
         std::thread::sleep(Duration::from_millis(300))
     }
-    repo.send_ev(Event::Exiting("Reaper".into(), ExitStatus::Successful));
+    repo.send_ev(Event::new_exit_success("Reaper"));
 }

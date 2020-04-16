@@ -6,14 +6,6 @@ pub(crate) fn is_sigterm_received() -> bool {
     unsafe { SIGTERM_RECEIVED }
 }
 
-/// Signal safe print
-/*fn print(s: &str) {
-    unsafe {
-        libc::write(STDOUT_FILENO, s.as_ptr() as *const c_void, s.len());
-    }
-}
-*/
-
 /// Setup the signal handlers
 pub(crate) fn init() {
     // To allow auto restart on some syscalls,

@@ -165,9 +165,10 @@ where
 
 #[cfg(test)]
 mod test {
-    use crate::horust::fetch_services;
     use crate::horust::formats::Service;
+    use crate::horust::{fetch_services, list_files};
     use std::io;
+    use std::path::PathBuf;
     use tempdir::TempDir;
 
     fn create_test_dir() -> io::Result<TempDir> {
@@ -190,6 +191,29 @@ mod test {
         let mut names: Vec<String> = res.into_iter().map(|serv| serv.name).collect();
         names.sort();
         assert_eq!(vec!["a", "b"], names);
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_list_files() -> io::Result<()> {
+        let tempdir = TempDir::new("horust").unwrap();
+        let files = vec!["a", "b", "c"];
+        let files: Vec<PathBuf> = files
+            .into_iter()
+            .map(|f| tempdir.path().join(f).to_path_buf())
+            .collect();
+
+        for f in &files {
+            std::fs::write(f, "Hello world")?;
+        }
+        let dirs = vec!["1", "2", "3"];
+        for d in dirs {
+            std::fs::create_dir(tempdir.path().join(d))?;
+        }
+        let mut res = list_files(tempdir.path())?;
+        res.sort();
+        assert_eq!(res, files);
 
         Ok(())
     }

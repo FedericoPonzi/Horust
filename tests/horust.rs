@@ -1,7 +1,6 @@
 use assert_cmd::prelude::*;
 use libc::pid_t;
-use nix::sys::signal::kill;
-use nix::sys::signal::Signal;
+use nix::sys::signal::{kill, Signal};
 use nix::unistd::Pid;
 use predicates::prelude::*;
 use predicates::str::contains;
@@ -151,6 +150,8 @@ echo "c""#;
 // TODO: add a test for termination / signal
 #[test]
 fn test_termination_wait() {
+    // A signal handler will capture our gentle signal,
+    // So horust will use the force to stop it:
     let (mut cmd, temp_dir) = get_cli();
     // this script captures traps SIGINT / SIGTERM / SIGEXIT
     let script = r#"#!/bin/bash

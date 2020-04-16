@@ -39,4 +39,7 @@ impl Event {
     pub(crate) fn new_force_kill(service_name: &ServiceName) -> Self {
         Self::ForceKill(service_name.clone())
     }
+    pub(crate) fn new_exit_success(comp_name: &str) -> Self {
+        Event::Exiting(comp_name.into(), ExitStatus::Successful)
+    }
 }

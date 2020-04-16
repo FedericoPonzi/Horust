@@ -304,8 +304,7 @@ impl Runtime {
         if !self.is_shutting_down {
             self.repo.send_ev(Event::ShuttingDownInitiated);
         }
-        self.repo
-            .send_ev(Event::Exiting("Runtime".into(), ExitStatus::Successful));
+        self.repo.send_ev(Event::new_exit_success("Runtime"));
         return res;
     }
 }

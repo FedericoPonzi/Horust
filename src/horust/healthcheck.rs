@@ -140,7 +140,7 @@ fn next(
         .filter(|(_s_name, service)| !healthchecker(&service.healthiness))
         .map(|(service_name, _service)| {
             // TODO: change to ToBeKilled. If the healthcheck fails, maybe it's a transient failure and process might be still running.
-            Event::new_status_changed(service_name, ServiceStatus::Failed)
+            Event::Kill(service_name.into())
         })
         .chain(evs_starting)
         .collect()
@@ -160,12 +160,13 @@ fn run(bus: BusConnector, services: Vec<Service>) {
         std::thread::sleep(Duration::from_millis(500));
     }
 
-    repo.send_ev(Event::Exiting("Healthcheck".into(), ExitStatus::Successful));
+    repo.send_ev(Event::new_exit_success("Healthcheck"));
 }
 
 /// Setup require for the service, before running the healthchecks and starting the service.
 pub fn prepare_service(healthiness: &Healthiness) -> Result<(), std::io::Error> {
     if let Some(file_path) = healthiness.file_path.as_ref() {
+        //TODO: check if user has permissions to remove this file.
         std::fs::remove_file(file_path)?;
     }
     Ok(())
