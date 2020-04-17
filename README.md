@@ -12,17 +12,20 @@
 * [License](#license)
 
 ## Goals
-* Supervision: A feature full supervision system, designed (but not limited) to be used in containers.
-* Init system: Use Horust as your init system.
-* Understandability: The code should be easy to understand and easy to modify.
-* Rock solid: You should be able to trust your favorite egyptian God.
+* **Supervision**: A feature full supervision system, designed (but not limited) to be used in containers.
+* **Understandability**: The code should be easy to understand and easy to modify.
+* **Init system**: Use Horust as your init system.
+* **Rock solid**: You should be able to trust your favorite egyptian God.
 
 ## Status
 At this point, this should be considered Alpha software.
 
 ## Usage
 Let's go through a simple usage example. We will create a website healthchecker using horust and a python script.
-#### 1. Create a directory: `mkdir -p /etc/horust/services`
+
+#### 1. Create a new directory: 
+This will contain our services: `mkdir -p /etc/horust/services`
+
 #### 2. Create your first service: `/etc/horust/services/healthchecker.toml`
 ```toml
 command = "/tmp/healthcheck.py"
@@ -33,9 +36,11 @@ strategy = "always"
 There are many [supported](https://github.com/FedericoPonzi/Horust/blob/master/DOCUMENTATION.md) properties for your service file, but only `command` is required.
 As soon as we run horust, this service will be read and the command run. As soon as the service is over it won't be restarted, and horust will exit.
 
-#### 3. Create a new file called `healthcheck.py` and in tmp:
+As you can see, it will run the script /tmp/healthcheck.py, which doesn't exists yet. Let's create it!
+
+#### 3. Create a new file called `/tmp/healthcheck.py`:
 ```
-#!/usr/bin/python3
+#!/usr/bin/env python3
 import urllib.request
 import sys
 req = urllib.request.Request("https://www.google.com", method="HEAD")
@@ -47,12 +52,17 @@ else:
 ```
 Add execution permissions to it: `chmod +x /tmp/healthcheck.py`.
 
-#### 4. Run horust: "./horust". By default it will search services inside the `/etc/horust/services` folder.
+#### 4. Build horust:
+This step is only required because we don't have a release yet, or if you like to live on the edge.
+For building horust, you will need [rust](https://www.rust-lang.org/learn/get-started). 
+As soon as it's installed, you can build Horust with cargo using: `cargo build --release`
 
-Now every 10 seconds, this will send an http head request to google.it. If the response is different than 200, then there is an issue!
+#### 4. Run horust: "./horust". By default it will search services inside the `/etc/horust/services` folder.
+Now every 10 seconds, this will send an http head request to google.it. 
+If the response is different than 200, then there is an issue!
 
 In this case, we're just exiting with a different exit code. But in real life, you could trigger other actions.
-Use ctrl+c for stopping horust. Horust will send a SIGTERM signal to all the running services, and if it doesn't hear back for a while, it will terminate them via a SIGKILL.
+Use ctrl+c to stop Horust. Horust will send a SIGTERM signal to all the running services, and if it doesn't hear back for a while, it will terminate them via a SIGKILL.
 
 ---
 

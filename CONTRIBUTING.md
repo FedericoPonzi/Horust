@@ -1,13 +1,15 @@
 # Contributing to Horust
 Thanks for considering contributing to Horust! 
 
-[Github Issue](https://github.com/FedericoPonzi/horust/issues) are a good place for getting started. You can also search the code for `TODO`s.
+[Github Issue](https://github.com/FedericoPonzi/horust/issues) are a good place for getting started. 
+You can also search the code for `TODO`s.
 
-If you're planning to add new features, it's super awesome but please open a new [issue](https://github.com/FedericoPonzi/Horust/issues/new) describing your proposal before you start working on it. 
-
+We should use [issues](https://github.com/FedericoPonzi/Horust/issues/new) to track things to do. Thus every PR should fix one or more issues. 
+So even if you want to fix a TODO, please create an issue first. 
+In this way it's easier to keep track of who's working on what.
 
 ## Development environment
-In order to start hacking on Horust, you will need to install [Rust](https://www.rust-lang.org/tools/install) (1.42).
+In order to start hacking on Horust, you will need to install [Rust](https://www.rust-lang.org/tools/install) (1.42.0).
 By using rustup, you will also automatically install cargo and other needed tools.
 
 You can run horust with debug logs by using:
@@ -22,7 +24,7 @@ HORUST_LOG=debug cargo run -- --sample-service
 
 Run Horust in single command mode:
 ```bash
-HORUST_LOG=debug cargo run -- /bin/bash
+HORUST_LOG=debug cargo run -- -- /bin/bash
 ```
 
 ## For PRs:
