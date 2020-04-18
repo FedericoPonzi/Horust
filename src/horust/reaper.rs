@@ -5,7 +5,7 @@ use nix::unistd::Pid;
 use std::collections::{HashMap, HashSet};
 use std::time::Duration;
 
-pub(crate) fn spawn(bus: BusConnector) {
+pub(crate) fn spawn(bus: BusConnector<Event>) {
     std::thread::spawn(move || {
         supervisor_thread(bus);
     });
@@ -17,12 +17,12 @@ struct Repo {
     // Used to check if an exited process is a grandchild
     possibly_running: HashSet<ServiceName>,
     pids_map: HashMap<Pid, ServiceName>,
-    bus: BusConnector,
+    bus: BusConnector<Event>,
     is_shutting_down: bool,
 }
 
 impl Repo {
-    fn new(bus: BusConnector) -> Self {
+    fn new(bus: BusConnector<Event>) -> Self {
         Repo {
             possibly_running: HashSet::new(),
             pids_map: HashMap::new(),
@@ -74,7 +74,7 @@ impl Repo {
 
 /// A endlessly running function meant to be run in a separate thread.
 /// Its purpose is to continuously try to reap possibly dead children.
-pub(crate) fn supervisor_thread(bus: BusConnector) {
+pub(crate) fn supervisor_thread(bus: BusConnector<Event>) {
     let mut reapable = HashMap::new();
     let mut repo = Repo::new(bus);
     loop {
