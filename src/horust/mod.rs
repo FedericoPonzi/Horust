@@ -7,53 +7,16 @@ mod runtime;
 mod signal_handling;
 
 pub use self::error::HorustError;
-pub use self::formats::{get_sample_service, ExitStatus};
+pub use self::formats::{get_sample_service, ExitStatus, HorustConfig};
 use crate::horust::bus::Bus;
 use crate::horust::error::Result;
 use crate::horust::formats::{validate, Service};
 pub use formats::Event;
 use libc::{prctl, PR_SET_CHILD_SUBREAPER};
-use serde::{Deserialize, Serialize};
 use std::ffi::OsStr;
 use std::fmt::Debug;
 use std::fs;
 use std::path::{Path, PathBuf};
-use structopt::StructOpt;
-
-#[derive(Debug, StructOpt, Serialize, Deserialize)]
-pub struct HorustConfig {
-    #[structopt(long)]
-    /// Exits with an unsuccessful exit code if any process is in FinishedFailed state
-    pub unsuccessful_exit_finished_failed: bool,
-}
-
-impl HorustConfig {
-    /// Load the config file, and handles the merge with the options defined in the cmdline.
-    /// Cmdline defined values have precedence over config based values.
-    pub fn load_and_merge(cmd_line: HorustConfig, path: &Path) -> Result<Self> {
-        let config_file = if path.exists() {
-            let content = std::fs::read_to_string(path)?;
-            toml::from_str::<HorustConfig>(content.as_str()).map_err(HorustError::from)?
-        } else {
-            Default::default()
-        };
-
-        let unsuccessful_exit_finished_failed = cmd_line.unsuccessful_exit_finished_failed
-            || config_file.unsuccessful_exit_finished_failed;
-
-        Ok(HorustConfig {
-            unsuccessful_exit_finished_failed,
-        })
-    }
-}
-
-impl Default for HorustConfig {
-    fn default() -> Self {
-        Self {
-            unsuccessful_exit_finished_failed: false,
-        }
-    }
-}
 
 #[derive(Debug)]
 pub struct Horust {
@@ -69,6 +32,8 @@ impl Horust {
         }
     }
 
+    /// Creates a new Horust instance from a command.
+    /// The command will be wrapped in a service and run with sane defaults
     pub fn from_command(command: String) -> Self {
         Self::new(vec![Service::from_command(command)], None)
     }
@@ -102,37 +67,20 @@ impl Horust {
     }
 }
 
-/// List files in path, filtering out directories
-fn list_files<P: AsRef<Path>>(path: P) -> std::io::Result<Vec<PathBuf>> {
-    fs::read_dir(path)?
-        .filter_map(|entry| entry.ok())
-        .try_fold(vec![], |mut ret, entry| {
-            entry.file_type().map(|ftype| {
-                if ftype.is_file() {
-                    ret.push(entry.path());
-                }
-                ret
-            })
-        })
-}
-
 /// Search for *.toml files in path, and deserialize them into Service.
 fn fetch_services<P>(path: &P) -> Result<Vec<Service>>
 where
     P: AsRef<Path> + ?Sized + AsRef<OsStr> + Debug,
 {
     debug!("Fetching services from : {:?}", path);
-    debug!("Files: {:?}", list_files(path));
-    let is_toml_file = |path: &PathBuf| {
-        let has_toml_extension = |path: &PathBuf| {
-            path.extension()
-                .unwrap_or_else(|| "".as_ref())
-                .to_str()
-                .unwrap()
-                .ends_with("toml")
-        };
-        path.is_file() && has_toml_extension(path)
+    let has_toml_extension = |path: &PathBuf| {
+        path.extension()
+            .unwrap_or_else(|| "".as_ref())
+            .to_str()
+            .unwrap_or("")
+            .ends_with("toml")
     };
+    let is_toml_file = |path: &PathBuf| path.is_file() && has_toml_extension(path);
     let dir = fs::read_dir(path)?;
 
     //TODO: option to decide to not start if the deserialization of any service failed.

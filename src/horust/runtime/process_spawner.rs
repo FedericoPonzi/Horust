@@ -34,6 +34,8 @@ pub(crate) fn spawn_fork_exec_handler(service: Service, backoff: Duration, mut r
         evs.into_iter().for_each(|ev| repo.send_ev(ev));
     });
 }
+
+/// Creates the execvpe arguments out of a Service
 fn exec_args(service: &Service) -> Result<(CString, Vec<CString>, Vec<CString>)> {
     let chunks: Vec<String> = shlex::split(service.command.as_ref()).ok_or_else(|| {
         std::io::Error::new(
@@ -76,6 +78,8 @@ fn spawn_process(service: &Service) -> Result<Pid> {
     }
 }
 
+/// Exec wrapper.
+/// Warning: use only async-signal-safe, otherwise it might lock
 fn exec(
     program_name: CString,
     arg_cstrings: Vec<CString>,

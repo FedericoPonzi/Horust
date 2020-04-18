@@ -62,8 +62,7 @@ pub struct Service {
     pub start_delay: Duration,
     #[serde(default = "Vec::new")]
     pub start_after: Vec<ServiceName>,
-    #[serde(skip)]
-    pub last_mtime_sec: i64,
+    #[serde()]
     pub signal_rewrite: Option<String>,
     #[serde(default)]
     pub restart: Restart,
@@ -94,6 +93,7 @@ impl Service {
         )
     }
 
+    /// Wrapper for single command executions
     pub fn from_command(command: String) -> Self {
         Service {
             name: command.clone(),
@@ -106,7 +106,6 @@ impl Service {
             command,
             healthiness: Default::default(),
             signal_rewrite: None,
-            last_mtime_sec: 0,
             failure: Default::default(),
             termination: Default::default(),
         }
@@ -538,7 +537,6 @@ mod test {
                 healthiness: Default::default(),
                 signal_rewrite: None,
                 environment: Default::default(),
-                last_mtime_sec: 0,
                 failure: Default::default(),
                 termination: Default::default(),
             }
@@ -575,7 +573,6 @@ mod test {
                 file_path: Some("/var/myservice/up".into()),
             },
             signal_rewrite: None,
-            last_mtime_sec: 0,
             failure: Failure {
                 successful_exit_code: vec![0, 1, 255],
                 strategy: FailureStrategy::Ignore,
