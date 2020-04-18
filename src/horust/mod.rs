@@ -112,11 +112,26 @@ where
 
 #[cfg(test)]
 mod test {
+    use crate::horust::fetch_services;
     use crate::horust::formats::Service;
-    use crate::horust::{fetch_services, list_files};
+    use std::fs;
     use std::io;
-    use std::path::PathBuf;
+    use std::path::{Path, PathBuf};
     use tempdir::TempDir;
+
+    /// List files in path, filtering out directories
+    fn list_files<P: AsRef<Path>>(path: P) -> std::io::Result<Vec<PathBuf>> {
+        fs::read_dir(path)?
+            .filter_map(|entry| entry.ok())
+            .try_fold(vec![], |mut ret, entry| {
+                entry.file_type().map(|ftype| {
+                    if ftype.is_file() {
+                        ret.push(entry.path());
+                    }
+                    ret
+                })
+            })
+    }
 
     fn create_test_dir() -> io::Result<TempDir> {
         let ret = TempDir::new("horust").unwrap();
