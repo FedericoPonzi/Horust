@@ -22,11 +22,11 @@ pub struct Runtime {
 pub(crate) struct Repo {
     // TODO: make it a map ServiceName: ServiceHandler
     pub services: Vec<ServiceHandler>,
-    pub(crate) bus: BusConnector,
+    pub(crate) bus: BusConnector<Event>,
 }
 
 impl Repo {
-    fn new<T: Into<ServiceHandler>>(bus: BusConnector, services: Vec<T>) -> Self {
+    fn new<T: Into<ServiceHandler>>(bus: BusConnector<Event>, services: Vec<T>) -> Self {
         let services = services.into_iter().map(Into::into).collect();
         Self { bus, services }
     }
@@ -95,12 +95,15 @@ impl Repo {
 }
 
 // Spawns and runs this component in a new thread.
-pub fn spawn(bus: BusConnector, services: Vec<Service>) -> std::thread::JoinHandle<ExitStatus> {
+pub fn spawn(
+    bus: BusConnector<Event>,
+    services: Vec<Service>,
+) -> std::thread::JoinHandle<ExitStatus> {
     thread::spawn(move || Runtime::new(bus, services).run())
 }
 
 impl Runtime {
-    fn new(bus: BusConnector, services: Vec<Service>) -> Self {
+    fn new(bus: BusConnector<Event>, services: Vec<Service>) -> Self {
         let repo = Repo::new(bus, services);
         Self {
             repo,

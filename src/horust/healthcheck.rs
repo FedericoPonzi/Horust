@@ -8,7 +8,7 @@ use std::time::Duration;
 // TODO:
 // * Tunable healthchecks timing in horust's config
 // * If there are no checks to run, just exit the thread. or go sleep until an "service created" event is received.
-pub fn spawn(bus: BusConnector, services: Vec<Service>) {
+pub fn spawn(bus: BusConnector<Event>, services: Vec<Service>) {
     std::thread::spawn(move || {
         run(bus, services);
     });
@@ -16,7 +16,7 @@ pub fn spawn(bus: BusConnector, services: Vec<Service>) {
 
 #[derive(Debug)]
 struct Repo {
-    bus: BusConnector,
+    bus: BusConnector<Event>,
     services: HashMap<ServiceName, Service>,
     /// Keep track of services which have a pid and need check for progressing to the running state
     started: HashMap<ServiceName, Service>,
@@ -62,7 +62,7 @@ impl Repo {
             .into_iter()
             .for_each(|ev| self.apply(ev))
     }
-    fn new(bus: BusConnector, services: Vec<Service>) -> Self {
+    fn new(bus: BusConnector<Event>, services: Vec<Service>) -> Self {
         Self {
             bus,
             services: services
@@ -145,7 +145,7 @@ fn next(
         .chain(evs_starting)
         .collect()
 }
-fn run(bus: BusConnector, services: Vec<Service>) {
+fn run(bus: BusConnector<Event>, services: Vec<Service>) {
     let mut repo = Repo::new(bus, services);
     loop {
         repo.ingest();

@@ -1,23 +1,28 @@
-use crate::horust::formats::Event;
 use crossbeam::channel::{unbounded, Receiver, Sender};
 
 /// A simple bus implementation: distributes the messages among the queues
+/// There is one single input pipe (`public_sender` ; `receiver`). The sender side is shared among
+/// all the publishers. The bus reads from the receiver, and publishes to all the `senders`.
 #[derive(Debug)]
-pub struct Bus {
-    public_sender: Sender<Event>,
-    receiver: Receiver<Event>,
-    senders: Vec<Sender<Event>>,
-    senders_left: u8,
+pub struct Bus<T> {
+    /// Bus input - sender side
+    public_sender: Sender<T>,
+    /// Bus input - receiver side
+    receiver: Receiver<T>,
+    /// Bus output - all the senders
+    senders: Vec<Sender<T>>,
 }
 
-impl Bus {
+impl<T> Bus<T>
+where
+    T: Clone + std::fmt::Debug,
+{
     pub fn new() -> Self {
-        let (pub_sx, rx) = unbounded();
+        let (public_sender, receiver) = unbounded();
         Bus {
-            public_sender: pub_sx,
-            receiver: rx,
-            senders: Vec::new(),
-            senders_left: 0,
+            public_sender,
+            receiver,
+            senders: Default::default(),
         }
     }
 
@@ -27,52 +32,45 @@ impl Bus {
     }
 
     /// Add another connection to the bus
-    pub fn join_bus(&mut self) -> BusConnector {
-        let (mysx, rx) = unbounded();
-        self.senders.push(mysx);
-        self.senders_left += 1;
-        BusConnector::new(self.public_sender.clone(), rx)
+    pub fn join_bus(&mut self) -> BusConnector<T> {
+        let (sender, receiver) = unbounded();
+        self.senders.push(sender);
+        BusConnector::new(self.public_sender.clone(), receiver)
     }
 
     /// Dispatching loop
     /// As soon as we don't have any senders it will exit
     fn dispatch(mut self) {
+        drop(self.public_sender);
         for ev in self.receiver {
             self.senders
                 .retain(|sender| sender.send(ev.clone()).is_ok());
-            if let Event::Exiting(_, _) = ev {
-                self.senders_left -= 1;
-            }
-            if self.senders_left == 0 {
-                info!("All senders are gone, breaking loop...");
-                break;
-            }
         }
     }
 }
 
 /// A connector to the shared bus
 #[derive(Debug, Clone)]
-pub struct BusConnector {
-    sender: Sender<Event>,
-    receiver: Receiver<Event>,
+pub struct BusConnector<T> {
+    sender: Sender<T>,
+    receiver: Receiver<T>,
 }
-impl BusConnector {
-    pub fn new(sender: Sender<Event>, receiver: Receiver<Event>) -> Self {
+impl<T> BusConnector<T> {
+    pub fn new(sender: Sender<T>, receiver: Receiver<T>) -> Self {
         BusConnector { sender, receiver }
     }
 
     /// Blocking
-    pub fn get_n_events_blocking(&self, quantity: usize) -> Vec<Event> {
+    pub fn get_n_events_blocking(&self, quantity: usize) -> Vec<T> {
         self.receiver.iter().take(quantity).collect()
     }
 
     /// Non blocking
-    pub fn try_get_events(&self) -> Vec<Event> {
+    pub fn try_get_events(&self) -> Vec<T> {
         self.receiver.try_iter().collect()
     }
 
-    pub(crate) fn send_event(&self, ev: Event) {
+    pub(crate) fn send_event(&self, ev: T) {
         self.sender.send(ev).expect("Failed sending update event!");
     }
 }
@@ -81,15 +79,19 @@ impl BusConnector {
 mod test {
     use crate::horust::bus::{Bus, BusConnector};
     use crate::horust::formats::{Event, ServiceStatus};
-    use std::sync::mpsc;
+    use crossbeam::channel;
     use std::thread;
     use std::time::Duration;
 
-    fn init_bus() -> (BusConnector, BusConnector, mpsc::Receiver<()>) {
+    fn init_bus() -> (
+        BusConnector<Event>,
+        BusConnector<Event>,
+        channel::Receiver<()>,
+    ) {
         let mut bus = Bus::new();
         let a = bus.join_bus();
         let b = bus.join_bus();
-        let (sender, receiver) = mpsc::sync_channel(0);
+        let (sender, receiver) = channel::bounded(48);
 
         let _handle = thread::spawn(move || {
             bus.run();
@@ -105,7 +107,7 @@ mod test {
     fn test_get_events() {
         let (a, b, receiver_a) = init_bus();
         let ev = Event::new_status_changed(&"sample".to_string(), ServiceStatus::Initial);
-        let (sender, receiver_b) = mpsc::sync_channel(0);
+        let (sender, receiver_b) = channel::bounded(48);
 
         let _handle = thread::spawn(move || {
             a.send_event(ev.clone());
@@ -123,7 +125,6 @@ mod test {
 
             a.send_event(Event::new_exit_success("serv"));
             b.send_event(Event::new_exit_success("serv"));
-
             sender.send(()).unwrap();
         });
 
@@ -145,6 +146,8 @@ mod test {
         assert_eq!(b.receiver.recv().unwrap(), ev);
         a.send_event(Event::new_exit_success("serv"));
         b.send_event(Event::new_exit_success("serv"));
+        drop(a);
+        drop(b);
         receiver
             .recv_timeout(Duration::from_secs(3))
             .expect("Didn't receive an answer on time.");
@@ -158,7 +161,7 @@ mod test {
         for _i in 0..100 {
             connectors.push(bus.join_bus());
         }
-        let (sender, receiver) = mpsc::sync_channel(0);
+        let (sender, receiver) = channel::bounded(48);
         let _handle = thread::spawn(move || {
             bus.run();
             sender
@@ -180,6 +183,8 @@ mod test {
             }
         }
         last.send_event(Event::new_exit_success("serv"));
+        drop(connectors);
+        drop(last);
         receiver
             .recv_timeout(Duration::from_secs(15))
             .expect("Didn't receive an answer on time.");
