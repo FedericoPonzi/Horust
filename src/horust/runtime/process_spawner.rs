@@ -89,9 +89,11 @@ fn exec(
 ) -> Result<()> {
     let arg_cptr: Vec<&CStr> = arg_cstrings.iter().map(|c| c.as_c_str()).collect();
     let env_cptr: Vec<&CStr> = env_cstrings.iter().map(|c| c.as_c_str()).collect();
-    //debug!("Set cwd: {:?}, ", cwd);
+    /// Changes the current working directory to the specified path.
     std::env::set_current_dir(cwd)?;
+    /// Create new session and set process group id
     nix::unistd::setsid()?;
+    /// Set the user ID
     nix::unistd::setuid(uid)?;
     nix::unistd::execvpe(program_name.as_ref(), arg_cptr.as_ref(), env_cptr.as_ref())?;
     Ok(())

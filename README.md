@@ -102,7 +102,7 @@ additional = { key = "value"}
 ```
 
 ## Contributing
-Thanks for considering contributing to horust! For getting started have a look on [CONTRIBUTING.md](https://github.com/FedericoPonzi/Horust/blob/master/DEVELOPMENT.md).
+Thanks for considering contributing to horust! For getting started have a look on [CONTRIBUTING.md](https://github.com/FedericoPonzi/Horust/blob/master/CONTRIBUTING.md).
 
 ## License
 Horust is provided under the MIT license. Please read the attached [license](https://github.com/FedericoPonzi/horust/blob/master/LICENSE) file.
