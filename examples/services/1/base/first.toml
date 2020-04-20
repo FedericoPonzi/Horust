@@ -1,5 +1,0 @@
-command = "/home/isaacisback/dev/rust/horust/examples/services/1/base/first.sh"
-[environment]
-keep-env = true
-re-export = [ "TERM" ]
-additional = { TERM = "bar" }

@@ -1,7 +1,0 @@
-name = "my-second-service"
-command = "/home/isaacisback/dev/rust/horust/examples/services/healthcheck/http.sh first!"
-working-directory = "/tmp/"
-file_path = "/tmp/horust-ready"
-
-[healthness]
-http_endpoint = "http://localhost:1234"
