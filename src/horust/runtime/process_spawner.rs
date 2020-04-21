@@ -1,6 +1,6 @@
 use crate::horust::error::Result;
 use crate::horust::formats::{Event, Service, ServiceStatus};
-use crate::horust::runtime::Repo;
+use crate::horust::runtime::repo::Repo;
 use nix::unistd;
 use nix::unistd::{fork, ForkResult, Pid};
 use shlex;

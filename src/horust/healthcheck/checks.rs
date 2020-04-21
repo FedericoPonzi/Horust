@@ -1,6 +1,7 @@
 use crate::horust::formats::Healthiness;
 #[cfg(feature = "http-healthcheck")]
 use reqwest::blocking::Client;
+use std::time::Duration;
 
 pub(crate) trait Check {
     fn run(&self, healthiness: &Healthiness) -> bool;
@@ -19,7 +20,9 @@ impl Check for HttpCheck {
                 }
                 #[cfg(feature = "http-healthcheck")]
                     {
-                        let client = Client::new();
+                        let client = Client::builder()
+                            .timeout(Duration::from_secs(1))
+                            .build().expect("Http client");
                         let resp: Result<reqwest::blocking::Response, reqwest::Error> = client.head(endpoint).send();
                         resp.map(|resp| resp.status().is_success()).unwrap_or(false)
                     }
