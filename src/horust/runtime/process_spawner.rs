@@ -50,7 +50,7 @@ fn exec_args(service: &Service) -> Result<(CString, Vec<CString>, Vec<CString>)>
             .collect::<Result<Vec<_>>>()
     };
     let arg_cstrings = to_cstring(chunks)?;
-    let environment = service.get_environment();
+    let environment = service.get_environment()?;
     let env_cstrings = to_cstring(environment)?;
 
     Ok((program_name, arg_cstrings, env_cstrings))
@@ -59,7 +59,7 @@ fn exec_args(service: &Service) -> Result<(CString, Vec<CString>, Vec<CString>)>
 /// Fork the process
 fn spawn_process(service: &Service) -> Result<Pid> {
     let (program_name, arg_cstrings, env_cstrings) = exec_args(service)?;
-    let uid = service.user.get_uid();
+    let uid = service.user.get_uid()?;
     let cwd = service.working_directory.clone();
     match fork() {
         Ok(ForkResult::Child) => {

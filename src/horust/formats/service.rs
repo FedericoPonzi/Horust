@@ -84,11 +84,11 @@ impl Service {
 
     /// Create the environment K=V variables, used for exec into the new process.
     /// User defined environment variables overwrite the predefined variables.
-    pub fn get_environment(&self) -> Vec<String> {
-        self.environment.get_environment(
-            self.user.get_name().clone(),
-            self.user.get_home().display().to_string(),
-        )
+    pub fn get_environment(&self) -> crate::horust::error::Result<Vec<String>> {
+        Ok(self.environment.get_environment(
+            self.user.clone().get_name()?,
+            self.user.clone().get_home()?.display().to_string(),
+        ))
     }
 
     /// Wrapper for single command executions
@@ -255,28 +255,40 @@ impl Default for User {
 }
 impl User {
     // TODO: use result and remove unwraps
-    pub(crate) fn get_uid(&self) -> unistd::Uid {
+    pub(crate) fn get_uid(&self) -> crate::horust::error::Result<unistd::Uid> {
         match &self {
-            User::Name(name) => {
-                unistd::User::from_name(name)
-                    .expect("Failed getting the user")
-                    .expect("User does not exists")
-                    .uid
-            }
-            User::Uid(uid) => unistd::Uid::from_raw(*uid),
+            User::Name(name) => unistd::User::from_name(name)
+                .map_err(HorustError::from)
+                .and_then(|opt| {
+                    opt.ok_or(std::io::Error::new(
+                        std::io::ErrorKind::NotFound,
+                        "User not found",
+                    ))
+                    .map_err(HorustError::from)
+                    .map(|user| user.uid)
+                }),
+            User::Uid(uid) => Ok(unistd::Uid::from_raw(*uid)),
         }
     }
 
-    fn get_raw_user(&self) -> unistd::User {
-        unistd::User::from_uid(self.get_uid()).unwrap().unwrap()
+    fn get_raw_user(&self) -> crate::horust::error::Result<unistd::User> {
+        unistd::User::from_uid(self.get_uid()?)
+            .map_err(HorustError::from)
+            .and_then(|opt| {
+                opt.ok_or(std::io::Error::new(
+                    std::io::ErrorKind::NotFound,
+                    "User not found",
+                ))
+                .map_err(HorustError::from)
+            })
     }
 
-    fn get_home(&self) -> PathBuf {
-        self.get_raw_user().dir
+    fn get_home(&self) -> crate::horust::error::Result<PathBuf> {
+        Ok(self.get_raw_user()?.dir)
     }
 
-    fn get_name(&self) -> String {
-        self.get_raw_user().name
+    fn get_name(&self) -> crate::horust::error::Result<String> {
+        Ok(self.get_raw_user()?.name)
     }
 }
 
