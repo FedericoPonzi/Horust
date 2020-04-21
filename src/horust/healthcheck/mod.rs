@@ -1,7 +1,5 @@
 use crate::horust::bus::BusConnector;
 use crate::horust::formats::{Event, Healthiness, Service, ServiceName, ServiceStatus};
-#[cfg(feature = "http-healthcheck")]
-use reqwest::blocking::Client;
 use std::collections::HashMap;
 use std::time::Duration;
 
@@ -83,19 +81,6 @@ impl Repo {
     fn send_ev(&mut self, ev: Event) {
         self.bus.send_event(ev)
     }
-}
-
-#[cfg(feature = "http-healthcheck")]
-#[cfg(not(test))]
-fn check_http_endpoint(endpoint: &str) -> bool {
-    let client = Client::new();
-    let resp: reqwest::blocking::Response = client.head(endpoint).send().unwrap();
-    resp.status().is_success()
-}
-
-#[cfg(test)]
-fn check_http_endpoint(endpoint: &str) -> bool {
-    return true;
 }
 
 /// Returns true if the service is healthy and all checks are passed.

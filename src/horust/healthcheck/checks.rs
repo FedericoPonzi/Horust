@@ -1,3 +1,7 @@
+use crate::horust::formats::Healthiness;
+#[cfg(feature = "http-healthcheck")]
+use reqwest::blocking::Client;
+
 pub(crate) trait Check {
     fn run(&self, healthiness: &Healthiness) -> bool;
 }
@@ -24,6 +28,7 @@ impl Check for HttpCheck {
 }
 
 pub(crate) struct FilePathCheck;
+
 impl Check for FilePathCheck {
     fn run(&self, healthiness: &Healthiness) -> bool {
         healthiness
