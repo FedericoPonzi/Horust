@@ -7,6 +7,7 @@ pub(crate) trait Check {
 }
 
 pub(crate) struct HttpCheck;
+
 impl Check for HttpCheck {
     fn run(&self, healthiness: &Healthiness) -> bool {
         healthiness
@@ -19,8 +20,8 @@ impl Check for HttpCheck {
                 #[cfg(feature = "http-healthcheck")]
                     {
                         let client = Client::new();
-                        let resp: reqwest::blocking::Response = client.head(endpoint).send().unwrap();
-                        resp.status().is_success()
+                        let resp: Result<reqwest::blocking::Response, reqwest::Error> = client.head(endpoint).send();
+                        resp.map(|resp| resp.status().is_success()).unwrap_or(false)
                     }
             })
             .unwrap_or(true)
