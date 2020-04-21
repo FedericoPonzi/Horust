@@ -49,10 +49,8 @@ pub type ServiceName = String;
 #[serde(rename_all = "kebab-case", deny_unknown_fields)]
 pub struct Service {
     #[serde(default)]
-    //todo: length should be > 0.
     pub name: ServiceName,
     #[serde()]
-    //todo: length should be > 0.
     pub command: String,
     #[serde(default)]
     pub user: User,
@@ -488,6 +486,10 @@ impl Default for TerminationSignal {
 pub fn validate(services: Vec<Service>) -> Result<Vec<Service>, Vec<ValidationError>> {
     let mut errors = vec![];
     services.iter().for_each(|service| {
+        if service.command.is_empty() {
+            let err = format!("Command is defined, but it is empty for service: {}", service.name);
+            errors.push(ValidationError::new(err.as_str(), ValidationErrorKind::CommandEmpty));
+        }
         if !service.start_after.is_empty() {
             debug!(
                 "Checking if all depedencies of '{}' exists, deps: {:?}",
@@ -533,7 +535,7 @@ mod test {
                 user: Default::default(),
                 restart: Default::default(),
                 start_delay: Duration::from_secs(0),
-                command: "".to_string(),
+                command: "something".to_string(),
                 healthiness: Default::default(),
                 signal_rewrite: None,
                 environment: Default::default(),
@@ -591,6 +593,10 @@ mod test {
     fn test_validate() {
         // Service does not exists:
         let services = vec![Service::start_after("a", vec!["b"])];
+        validate(services).unwrap_err();
+
+        // Command is empty:
+        let services = vec![Service::from_command("".into())];
         validate(services).unwrap_err();
 
         // Should pass validation:

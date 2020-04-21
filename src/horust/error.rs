@@ -85,6 +85,7 @@ pub struct ValidationError {
 #[derive(Debug)]
 pub enum ValidationErrorKind {
     MissingDependency,
+    CommandEmpty,
 }
 
 impl std::error::Error for ValidationError {}
