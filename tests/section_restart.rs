@@ -4,6 +4,7 @@ use predicates::str::contains;
 
 #[allow(dead_code)]
 mod utils;
+use std::time::Duration;
 use utils::*;
 
 fn restart_attempts(should_contain: bool, attempts: u32) {
@@ -43,9 +44,39 @@ attempts = {}
 #[test]
 fn test_restart_attempts() {
     restart_attempts(false, 0);
+    restart_attempts(true, 1);
 }
 
 #[test]
-fn test_restart_attempts_succeed() {
-    restart_attempts(true, 1);
+fn test_restart_strategy_on_failure() {
+    let (mut cmd, temp_dir) = get_cli();
+
+    let failing_once_script = format!(
+        r#"#!/usr/bin/env bash
+        echo starting
+if [ ! -f {0} ]; then
+    echo "I'm in!"
+    touch {0} && exit 1
+    echo "Done O.o"
+fi
+echo "File is there!:D"
+"#,
+        temp_dir.path().join("file.temp").display()
+    );
+    let service = format!(
+        r#"
+[restart]
+attempts = 0
+strategy = "on-failure"
+"#,
+    );
+    store_service(
+        temp_dir.path(),
+        failing_once_script.as_str(),
+        Some(service.as_str()),
+        None,
+    );
+    let mut cmd = cmd.args(vec!["--unsuccessful-exit-finished-failed"]);
+    let recv = run_async(&mut cmd, true);
+    recv.recv_or_kill(Duration::from_secs(15));
 }
