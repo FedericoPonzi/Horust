@@ -7,6 +7,8 @@ mod checks;
 mod repo;
 use checks::*;
 use repo::Repo;
+use std::thread;
+use std::thread::JoinHandle;
 
 // TODO:
 // * Tunable healthchecks timing in horust's config
@@ -29,32 +31,49 @@ fn check_health(healthiness: &Healthiness) -> bool {
         == 0
 }
 
+// TODO: emit HEALTHY / UNHEALTHY and let runtime decide the new state change.
+fn run_check(s_name: ServiceName, service: Service, status: ServiceStatus) -> Option<Event> {
+    let has_passed_checks = check_health(&service.healthiness);
+    if has_passed_checks && ServiceStatus::Started == status {
+        Some(Event::new_status_changed(&s_name, ServiceStatus::Running))
+    } else if !has_passed_checks && ServiceStatus::Started == status {
+        // TODO: change to ToBeKilled. If the healthcheck fails, maybe it's a transient failure and process might be still running.
+        Some(Event::Kill(s_name.into()))
+    } else {
+        // Starting services don't go in failure state if they don't pass the healthcheck
+        None
+    }
+}
+
 /// Run the healthchecks, produce the event changes
 fn next(
     services: &HashMap<ServiceName, Service>,
     running: &HashSet<ServiceName>,
-    starting: &HashSet<ServiceName>,
+    started: &HashSet<ServiceName>,
 ) -> Vec<Event> {
     debug!("next");
-    // TODO: probably add a timeout or trials.
-    starting
+    let running_sh = running
         .iter()
-        .chain(running)
-        .map(|s_name| (s_name, services.get(s_name).unwrap()))
-        .filter_map(|(s_name, service)| {
-            let has_passed_checks = check_health(&service.healthiness);
-            if has_passed_checks && starting.contains(s_name) {
-                Some(Event::new_status_changed(s_name, ServiceStatus::Running))
-            } else if !has_passed_checks && running.contains(s_name) {
-                // TODO: change to ToBeKilled. If the healthcheck fails, maybe it's a transient failure and process might be still running.
-                Some(Event::Kill(s_name.into()))
-            } else {
-                // Starting services don't go in failure state if they don't pass the healthcheck
-                None
-            }
+        .map(|s_name| (s_name, ServiceStatus::Running));
+    let started_sh = started
+        .iter()
+        .map(|s_name| (s_name, ServiceStatus::Started));
+
+    let handles: Vec<JoinHandle<Option<Event>>> = started_sh
+        .chain(running_sh)
+        .map(|(s_name, service_status)| {
+            let s_name = s_name.clone();
+            let sh = services.get(&s_name).unwrap().clone();
+            thread::spawn(move || run_check(s_name, sh, service_status))
         })
+        .collect();
+
+    handles
+        .into_iter()
+        .filter_map(|handle| handle.join().unwrap_or(None))
         .collect()
 }
+
 fn run(bus: BusConnector<Event>, services: Vec<Service>) {
     let mut repo = Repo::new(bus, services);
     loop {
