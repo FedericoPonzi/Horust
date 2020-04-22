@@ -136,54 +136,53 @@ impl Runtime {
             |status: ServiceStatus| Event::new_status_changed(service_handler.name(), status);
         let vev_status = |status: ServiceStatus| vec![ev_status(status)];
         if self.repo.is_service_runnable(&service_handler) && !self.is_shutting_down {
-            vec![Event::Run(service_handler.name().clone())]
-        } else {
-            match service_handler.status {
-                ServiceStatus::Initial if self.is_shutting_down => {
-                    vev_status(ServiceStatus::Finished)
-                }
-                ServiceStatus::Success => vec![handle_restart_strategy(service_handler, false)],
-                ServiceStatus::Failed => {
-                    let attempts_are_over = service_handler.restart_attempts
-                        > service_handler.service().restart.attempts;
-
-                    let mut failure_evs = handle_failure_strategy(
-                        self.repo.get_dependents(service_handler.name().into()),
-                        service_handler,
-                    );
-                    let other_services_termination = self
-                        .repo
-                        .get_die_if_failed(service_handler.name())
-                        .into_iter()
-                        .map(|sh_name| {
-                            vec![
-                                ev_status(ServiceStatus::InKilling),
-                                Event::Kill(sh_name.clone()),
-                            ]
-                        })
-                        .flatten();
-
-                    let service_ev = if !attempts_are_over {
-                        ev_status(ServiceStatus::FinishedFailed)
-                    } else {
-                        handle_restart_strategy(service_handler, true)
-                    };
-
-                    failure_evs.push(service_ev);
-                    failure_evs.extend(other_services_termination);
-                    failure_evs
-                }
-                ServiceStatus::InKilling if should_force_kill(service_handler) => {
-                    vec![Event::new_force_kill(service_handler.name())]
-                }
-
-                ServiceStatus::Initial | ServiceStatus::Running | ServiceStatus::Started
-                    if self.is_shutting_down =>
-                {
-                    vec![Event::Kill(service_handler.name().clone())]
-                }
-                _ => vec![],
+            return vec![Event::Run(service_handler.name().clone())];
+        }
+        match service_handler.status {
+            ServiceStatus::Initial if self.is_shutting_down => vev_status(ServiceStatus::Finished),
+            ServiceStatus::Success => {
+                vec![handle_restart_strategy(service_handler.service(), false)]
             }
+            ServiceStatus::Failed => {
+                let attempts_are_over =
+                    service_handler.restart_attempts > service_handler.service().restart.attempts;
+
+                let mut failure_evs = handle_failure_strategy(
+                    self.repo.get_dependents(service_handler.name().into()),
+                    service_handler.service(),
+                );
+                let other_services_termination = self
+                    .repo
+                    .get_die_if_failed(service_handler.name())
+                    .into_iter()
+                    .map(|sh_name| {
+                        vec![
+                            ev_status(ServiceStatus::InKilling),
+                            Event::Kill(sh_name.clone()),
+                        ]
+                    })
+                    .flatten();
+
+                let service_ev = if !attempts_are_over {
+                    ev_status(ServiceStatus::FinishedFailed)
+                } else {
+                    handle_restart_strategy(service_handler.service(), true)
+                };
+
+                failure_evs.push(service_ev);
+                failure_evs.extend(other_services_termination);
+                failure_evs
+            }
+            ServiceStatus::InKilling if should_force_kill(service_handler) => {
+                vec![Event::new_force_kill(service_handler.name())]
+            }
+
+            ServiceStatus::Initial | ServiceStatus::Running | ServiceStatus::Started
+                if self.is_shutting_down =>
+            {
+                vec![Event::Kill(service_handler.name().clone())]
+            }
+            _ => vec![],
         }
     }
 
@@ -231,22 +230,6 @@ impl Runtime {
         }
         self.repo.send_ev(Event::new_exit_success("Runtime"));
         return res;
-    }
-}
-
-fn should_force_kill(service_handler: &ServiceHandler) -> bool {
-    if let Some(shutting_down_elapsed_secs) = service_handler.shutting_down_start.clone() {
-        let shutting_down_elapsed_secs = shutting_down_elapsed_secs.elapsed().as_secs();
-        debug!(
-            "{}, should not force kill. Elapsed: {}, termination wait: {}",
-            service_handler.name(),
-            shutting_down_elapsed_secs,
-            service_handler.service().termination.wait.clone().as_secs()
-        );
-        shutting_down_elapsed_secs > service_handler.service().termination.wait.clone().as_secs()
-    } else {
-        error!("There is no shutting down elapsed secs!!");
-        false
     }
 }
 
@@ -299,9 +282,10 @@ fn handle_status_changed_event(
     }
 }
 
-fn handle_restart_strategy(service_handler: &ServiceHandler, is_failed: bool) -> Event {
-    let new_status = |status| Event::new_status_changed(service_handler.name(), status);
-    let ev = match service_handler.service().restart.strategy {
+/// Produce events based on the Restart Strategy of the service.
+fn handle_restart_strategy(service: &Service, is_failed: bool) -> Event {
+    let new_status = |status| Event::new_status_changed(&service.name, status);
+    let ev = match service.restart.strategy {
         RestartStrategy::Never => {
             if is_failed {
                 new_status(ServiceStatus::FinishedFailed)
@@ -323,8 +307,8 @@ fn handle_restart_strategy(service_handler: &ServiceHandler, is_failed: bool) ->
 }
 
 /// This is applied to both failed and FinishedFailed services.
-fn handle_failure_strategy(deps: Vec<ServiceName>, failed_sh: &ServiceHandler) -> Vec<Event> {
-    match failed_sh.service().failure.strategy {
+fn handle_failure_strategy(deps: Vec<ServiceName>, failed_sh: &Service) -> Vec<Event> {
+    match failed_sh.failure.strategy {
         FailureStrategy::Shutdown => vec![Event::ShuttingDownInitiated],
         FailureStrategy::KillDependents => {
             debug!("Failed service has kill-dependents strategy, going to mark them all..");
@@ -339,6 +323,23 @@ fn handle_failure_strategy(deps: Vec<ServiceName>, failed_sh: &ServiceHandler) -
                 .collect()
         }
         FailureStrategy::Ignore => vec![],
+    }
+}
+
+/// Check if we've waitied enough for the service to finish.
+fn should_force_kill(service_handler: &ServiceHandler) -> bool {
+    if let Some(shutting_down_elapsed_secs) = service_handler.shutting_down_start.clone() {
+        let shutting_down_elapsed_secs = shutting_down_elapsed_secs.elapsed().as_secs();
+        debug!(
+            "{}, should not force kill. Elapsed: {}, termination wait: {}",
+            service_handler.name(),
+            shutting_down_elapsed_secs,
+            service_handler.service().termination.wait.clone().as_secs()
+        );
+        shutting_down_elapsed_secs > service_handler.service().termination.wait.clone().as_secs()
+    } else {
+        error!("There is no shutting down elapsed secs.");
+        false
     }
 }
 
@@ -392,11 +393,11 @@ wait = "10s"
     #[test]
     fn test_handle_failed_service() {
         let mut service = Service::from_name("b");
-        let evs = handle_failure_strategy(vec!["a".into()], &service.clone().into());
+        let evs = handle_failure_strategy(vec!["a".into()], &service.clone());
         assert!(evs.is_empty());
 
         service.failure.strategy = FailureStrategy::KillDependents;
-        let evs = handle_failure_strategy(vec!["a".into()], &service.clone().into());
+        let evs = handle_failure_strategy(vec!["a".into()], &service.clone());
         let exp = vec![
             Event::new_status_changed(&"a".to_string(), ServiceStatus::InKilling),
             Event::Kill("a".into()),

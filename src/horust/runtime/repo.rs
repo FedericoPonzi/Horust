@@ -15,7 +15,7 @@ impl Repo {
         Self { bus, services }
     }
 
-    // Non blocking
+    /// Non blocking
     pub(crate) fn get_events(&mut self) -> Vec<Event> {
         self.bus.try_get_events()
     }

@@ -254,7 +254,6 @@ impl Default for User {
     }
 }
 impl User {
-    // TODO: use result and remove unwraps
     pub(crate) fn get_uid(&self) -> crate::horust::error::Result<unistd::Uid> {
         match &self {
             User::Name(name) => unistd::User::from_name(name)

@@ -58,7 +58,6 @@ impl Horust {
         let mut dispatcher = Bus::new();
         debug!("Services: {:?}", self.services);
         // Spawn helper threads:
-        debug!("Spawning threads:, going to start running services now!");
         reaper::spawn(dispatcher.join_bus());
         healthcheck::spawn(dispatcher.join_bus(), self.services.clone());
         let handle = runtime::spawn(dispatcher.join_bus(), self.services.clone());
