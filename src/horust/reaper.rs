@@ -31,11 +31,18 @@ impl Repo {
         }
     }
 
+    /// Non blocking
+    fn ingest(&mut self) {
+        let events: Vec<Event> = self.bus.try_get_events();
+        debug!("Ingesting events: {:?}", events);
+        events.into_iter().for_each(|ev| self.apply(ev));
+    }
+
     fn send_ev(&mut self, ev: Event) {
         self.bus.send_event(ev)
     }
 
-    fn consume(&mut self, ev: Event) {
+    fn apply(&mut self, ev: Event) {
         match ev {
             Event::ShuttingDownInitiated => {
                 self.is_shutting_down = true;
@@ -46,29 +53,24 @@ impl Repo {
             Event::StatusChanged(service_name, status) => {
                 if vec![ServiceStatus::Starting, ServiceStatus::Initial].contains(&status) {
                     self.possibly_running.insert(service_name);
+                } else if vec![ServiceStatus::FinishedFailed, ServiceStatus::Finished]
+                    .contains(&status)
+                {
+                    self.possibly_running.remove(&service_name);
+                    // kill -9 won't trigger SIGCHILD.
+                    self.pids_map.retain(|_pid, sname| &service_name != sname);
                 } else {
                     self.possibly_running.remove(&service_name);
                 }
             }
-            Event::ForceKill(service_name) => {
-                self.possibly_running.remove(&service_name);
-                // kill -9 won't trigger SIGCHILD.
-                self.pids_map.retain(|_pid, sname| &service_name != sname);
-            }
             _ => (),
         }
     }
-    fn send_pid_exited(&mut self, pid: Pid, exit_code: i32) {
+    fn send_service_exited(&mut self, pid: Pid, exit_code: i32) {
         let service_name = self.pids_map.remove(&pid).unwrap();
         debug!("Sending Service exited event: {}", service_name);
         self.bus
             .send_event(Event::new_service_exited(service_name, exit_code));
-    }
-
-    fn ingest(&mut self) {
-        let events: Vec<Event> = self.bus.try_get_events();
-        debug!("Ingesting events: {:?}", events);
-        events.into_iter().for_each(|ev| self.consume(ev));
     }
 }
 
@@ -96,7 +98,7 @@ pub(crate) fn supervisor_thread(bus: BusConnector<Event>) {
         // and exited. Thus we're trying to reaping it, but there is still no map Pid -> Service.
         reapable.retain(|pid, exit_code| {
             if repo.pids_map.contains_key(pid) {
-                repo.send_pid_exited(*pid, *exit_code);
+                repo.send_service_exited(*pid, *exit_code);
                 false
             } else {
                 debug!("Pid exited was not in the map.");

@@ -15,6 +15,27 @@ pub(crate) struct Repo {
 }
 
 impl Repo {
+    pub(crate) fn new(bus: BusConnector<Event>, services: Vec<Service>) -> Self {
+        Self {
+            bus,
+            services: services
+                .into_iter()
+                .map(|service| (service.name.clone(), service))
+                .collect(),
+            started: Default::default(),
+            running: Default::default(),
+            is_shutting_down: false,
+        }
+    }
+
+    pub(crate) fn ingest(&mut self) {
+        self.bus
+            .try_get_events()
+            .into_iter()
+            .for_each(|ev| self.apply(ev))
+    }
+
+    /// This is merely updating the local view of the system. No business logic applied.
     fn apply(&mut self, ev: Event) {
         debug!("received ev: {:?}", ev);
         match ev {
@@ -46,25 +67,6 @@ impl Repo {
                 self.running.remove(&service_name);
             }
             _ => (),
-        }
-    }
-
-    pub(crate) fn ingest(&mut self) {
-        self.bus
-            .try_get_events()
-            .into_iter()
-            .for_each(|ev| self.apply(ev))
-    }
-    pub(crate) fn new(bus: BusConnector<Event>, services: Vec<Service>) -> Self {
-        Self {
-            bus,
-            services: services
-                .into_iter()
-                .map(|service| (service.name.clone(), service))
-                .collect(),
-            started: Default::default(),
-            running: Default::default(),
-            is_shutting_down: false,
         }
     }
 

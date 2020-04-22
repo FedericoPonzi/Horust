@@ -1,3 +1,4 @@
+* Healthchecks status events (Healthy / unhealthy)
 * Parameter for redirecting stdout / stderr to files
 
 ## Long todo:

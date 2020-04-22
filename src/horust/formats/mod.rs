@@ -1,10 +1,8 @@
 mod horust_config;
 mod service;
-mod service_handler;
 pub use horust_config::HorustConfig;
 use nix::unistd::Pid;
 pub use service::*;
-pub use service_handler::ServiceHandler;
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum ExitStatus {

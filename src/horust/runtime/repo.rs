@@ -1,17 +1,22 @@
 use crate::horust::bus::BusConnector;
-use crate::horust::formats::{ServiceHandler, ServiceName};
+use crate::horust::formats::{Service, ServiceName};
+use crate::horust::runtime::service_handler::ServiceHandler;
 use crate::horust::Event;
+use std::collections::HashMap;
 
 #[derive(Debug, Clone)]
 pub(crate) struct Repo {
     // TODO: make it a map ServiceName: ServiceHandler
-    pub services: Vec<ServiceHandler>,
+    pub services: HashMap<ServiceName, ServiceHandler>,
     pub(crate) bus: BusConnector<Event>,
 }
 
 impl Repo {
-    pub(crate) fn new<T: Into<ServiceHandler>>(bus: BusConnector<Event>, services: Vec<T>) -> Self {
-        let services = services.into_iter().map(Into::into).collect();
+    pub(crate) fn new(bus: BusConnector<Event>, services: Vec<Service>) -> Self {
+        let services = services
+            .into_iter()
+            .map(|service| (service.name.clone(), service.into()))
+            .collect();
         Self { bus, services }
     }
 
@@ -25,39 +30,43 @@ impl Repo {
         self.bus.get_n_events_blocking(quantity)
     }
 
-    pub fn all_finished(&self) -> bool {
+    pub fn all_have_finished(&self) -> bool {
         self.services
             .iter()
-            .all(|sh| sh.is_finished() || sh.is_finished_failed())
+            .all(|(_s_name, sh)| sh.is_finished() || sh.is_finished_failed())
     }
 
-    pub fn get_mut_service(&mut self, service_name: &ServiceName) -> &mut ServiceHandler {
-        self.services
-            .iter_mut()
-            .filter(|sh| sh.name() == service_name)
-            .last()
-            .unwrap()
+    /// Get a mutable reference to the Service Handler
+    pub fn get_mut_sh(&mut self, service_name: &ServiceName) -> &mut ServiceHandler {
+        self.services.get_mut(service_name).unwrap()
     }
+
+    /// Get an immutable reference to the Service Handler
+    pub fn get_sh(&mut self, service_name: &ServiceName) -> &ServiceHandler {
+        self.services.get(service_name).unwrap()
+    }
+
     /// Get all the services that have specifed "start-after = [`service_name`]" in their config
     pub(crate) fn get_dependents(&self, service_name: &ServiceName) -> Vec<ServiceName> {
         self.services
             .iter()
-            .filter(|sh| sh.service().start_after.contains(service_name))
-            .map(|sh| sh.name())
+            .filter(|(_s_name, sh)| sh.service().start_after.contains(service_name))
+            .map(|(s_name, _sh)| s_name)
             .cloned()
             .collect()
     }
 
+    /// Get all the services that have specified "die-if-failed = [`service_name`]" in their config
     pub(crate) fn get_die_if_failed(&self, service_name: &ServiceName) -> Vec<&ServiceName> {
         self.services
             .iter()
-            .filter(|sh| {
+            .filter(|(_s_name, sh)| {
                 sh.service()
                     .termination
                     .die_if_failed
                     .contains(service_name)
             })
-            .map(|sh| sh.name())
+            .map(|(s_name, _sh)| s_name)
             .collect()
     }
 
@@ -65,15 +74,22 @@ impl Repo {
         self.bus.send_event(ev)
     }
 
+    /// Checks if the service is runnable. So the current status is Initial, and
+    /// all the start-after have started or finished.
     pub(crate) fn is_service_runnable(&self, sh: &ServiceHandler) -> bool {
         if !sh.is_initial() {
             return false;
         }
         let is_started = |service_name: &ServiceName| {
-            self.services.iter().any(|service| {
-                service.name() == service_name && (service.is_running() || service.is_finished())
-            })
+            let sh = self.services.get(service_name).unwrap();
+            sh.is_running() || sh.is_finished()
         };
         sh.start_after().iter().all(is_started)
+    }
+
+    pub(crate) fn any_finished_failed(&self) -> bool {
+        self.services
+            .iter()
+            .any(|(_s_name, sh)| sh.is_finished_failed())
     }
 }

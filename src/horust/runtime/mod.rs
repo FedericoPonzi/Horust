@@ -1,7 +1,6 @@
 use crate::horust::bus::BusConnector;
 use crate::horust::formats::{
-    Event, ExitStatus, FailureStrategy, RestartStrategy, Service, ServiceHandler, ServiceName,
-    ServiceStatus,
+    Event, ExitStatus, FailureStrategy, RestartStrategy, Service, ServiceName, ServiceStatus,
 };
 use crate::horust::{healthcheck, signal_handling};
 use nix::sys::signal::{self, Signal};
@@ -11,6 +10,8 @@ use std::thread;
 use std::time::{Duration, Instant};
 
 mod process_spawner;
+mod service_handler;
+use service_handler::ServiceHandler;
 mod repo;
 use repo::Repo;
 
@@ -41,11 +42,11 @@ impl Runtime {
     fn apply_event(&mut self, ev: Event) {
         match ev {
             Event::StatusChanged(service_name, new_status) => {
-                let mut service_handler = self.repo.get_mut_service(&service_name);
+                let mut service_handler = self.repo.get_mut_sh(&service_name);
                 handle_status_changed_event(service_name, new_status, &mut service_handler);
             }
             Event::ServiceExited(service_name, exit_code) => {
-                let service_handler = self.repo.get_mut_service(&service_name);
+                let service_handler = self.repo.get_mut_sh(&service_name);
                 service_handler.shutting_down_start = None;
                 service_handler.pid = None;
 
@@ -86,8 +87,8 @@ impl Runtime {
                 }
                 debug!("New state for exited service: {:?}", service_handler.status);
             }
-            Event::Run(service_name) if self.repo.get_mut_service(&service_name).is_initial() => {
-                let service_handler = self.repo.get_mut_service(&service_name);
+            Event::Run(service_name) if self.repo.get_sh(&service_name).is_initial() => {
+                let service_handler = self.repo.get_mut_sh(&service_name);
                 service_handler.status = ServiceStatus::Starting;
                 healthcheck::prepare_service(&service_handler.service().healthiness).unwrap();
                 let backoff = service_handler
@@ -102,26 +103,29 @@ impl Runtime {
                 );
             }
             Event::Kill(service_name) => {
-                let service_handler = self.repo.get_mut_service(&service_name);
-                if service_handler.status == ServiceStatus::Initial {
+                let service_handler = self.repo.get_mut_sh(&service_name);
+                if service_handler.is_initial() {
                     service_handler.status = ServiceStatus::Finished;
-                } else {
-                    service_handler.status = ServiceStatus::InKilling;
-                    service_handler.shutting_down_start = Some(Instant::now());
-                    kill(
-                        service_handler,
-                        service_handler.service().termination.signal.clone().into(),
-                    );
+                } else if service_handler.is_running()
+                    || service_handler.is_started()
+                    || service_handler.is_starting()
+                {
+                    service_handler.shutting_down_started();
+                    kill(service_handler, None);
                 }
             }
-            Event::ForceKill(service_name) => {
-                let service_handler = self.repo.get_mut_service(&service_name);
-                kill(&service_handler, Signal::SIGKILL);
-                service_handler.status = ServiceStatus::FinishedFailed;
+            Event::ForceKill(service_name) if self.repo.get_sh(&service_name).is_in_killing() => {
+                let service_handler = self.repo.get_mut_sh(&service_name);
+                kill(&service_handler, Some(Signal::SIGKILL));
             }
             Event::PidChanged(service_name, pid) => {
-                let service_handler = self.repo.get_mut_service(&service_name);
+                let service_handler = self.repo.get_mut_sh(&service_name);
                 service_handler.pid = Some(pid);
+                if service_handler.is_in_killing() {
+                    // Ah! Gotcha!
+                    service_handler.shutting_down_start = Some(Instant::now());
+                    kill(service_handler, None)
+                }
             }
             Event::ShuttingDownInitiated => self.is_shutting_down = true,
             ev => {
@@ -131,7 +135,7 @@ impl Runtime {
     }
 
     /// Compute next state for each sh
-    pub fn next(&self, service_handler: &ServiceHandler) -> Vec<Event> {
+    fn next(&self, service_handler: &ServiceHandler) -> Vec<Event> {
         let ev_status =
             |status: ServiceStatus| Event::new_status_changed(service_handler.name(), status);
         let vev_status = |status: ServiceStatus| vec![ev_status(status)];
@@ -173,9 +177,10 @@ impl Runtime {
                 failure_evs.extend(other_services_termination);
                 failure_evs
             }
-            ServiceStatus::InKilling if should_force_kill(service_handler) => {
-                vec![Event::new_force_kill(service_handler.name())]
-            }
+            ServiceStatus::InKilling if should_force_kill(service_handler) => vec![
+                Event::new_force_kill(service_handler.name()),
+                Event::new_status_changed(service_handler.name(), ServiceStatus::FinishedFailed),
+            ],
 
             ServiceStatus::Initial | ServiceStatus::Running | ServiceStatus::Started
                 if self.is_shutting_down =>
@@ -187,9 +192,9 @@ impl Runtime {
     }
 
     /// Blocking call. Tries to move state machines forward
-    pub fn run(mut self) -> ExitStatus {
+    fn run(mut self) -> ExitStatus {
         let mut has_emit_ev = 0;
-        while !self.repo.all_finished() {
+        while !self.repo.all_have_finished() {
             // Ingest updates
             let events = if has_emit_ev > 0 {
                 self.repo.get_n_events_blocking(has_emit_ev)
@@ -208,7 +213,7 @@ impl Runtime {
                 .repo
                 .services
                 .iter()
-                .map(|sh| self.next(sh))
+                .map(|(_s_name, sh)| self.next(sh))
                 .flatten()
                 .collect();
             debug!("Going to emit events: {:?}", events);
@@ -219,7 +224,7 @@ impl Runtime {
 
         debug!("All services have finished, exiting...");
 
-        let res = if self.repo.services.iter().any(|sh| sh.is_finished_failed()) {
+        let res = if self.repo.any_finished_failed() {
             ExitStatus::SomeServiceFailed
         } else {
             ExitStatus::Successful
@@ -245,8 +250,7 @@ fn handle_status_changed_event(
         ServiceStatus::Initial        => vec![ServiceStatus::Success, ServiceStatus::Failed],
         ServiceStatus::Started        => vec![ServiceStatus::Starting],
         ServiceStatus::InKilling      => vec![ServiceStatus::Running,
-                                              ServiceStatus::Starting,
-                                              ServiceStatus::Initial],
+                                              ServiceStatus::Started],
         ServiceStatus::Running        => vec![ServiceStatus::Started],
         ServiceStatus::FinishedFailed => vec![ServiceStatus::Failed, ServiceStatus::InKilling],
         ServiceStatus::Success        => vec![ServiceStatus::Starting, ServiceStatus::Running],
@@ -262,13 +266,6 @@ fn handle_status_changed_event(
             ServiceStatus::Started if allowed.contains(&service_handler.status) => {
                 service_handler.status = ServiceStatus::Started;
                 service_handler.restart_attempts = 0;
-            }
-            ServiceStatus::InKilling if allowed.contains(&service_handler.status) => {
-                service_handler.status = if service_handler.status == ServiceStatus::Initial {
-                    ServiceStatus::Finished
-                } else {
-                    ServiceStatus::InKilling
-                };
             }
             new_status => {
                 service_handler.status = new_status;
@@ -326,8 +323,13 @@ fn handle_failure_strategy(deps: Vec<ServiceName>, failed_sh: &Service) -> Vec<E
     }
 }
 
-/// Check if we've waitied enough for the service to finish.
+/// Check if we've waitied enough for the service to exit
 fn should_force_kill(service_handler: &ServiceHandler) -> bool {
+    if service_handler.pid.is_none() {
+        // Since it was in the started state, it doesn't have a pid yet.
+        // Let's give it the time to start and exit.
+        return false;
+    }
     if let Some(shutting_down_elapsed_secs) = service_handler.shutting_down_start.clone() {
         let shutting_down_elapsed_secs = shutting_down_elapsed_secs.elapsed().as_secs();
         debug!(
@@ -344,7 +346,9 @@ fn should_force_kill(service_handler: &ServiceHandler) -> bool {
 }
 
 /// Kill wrapper, will send signal to sh and handles the result.
-fn kill(sh: &ServiceHandler, signal: Signal) {
+/// By default it will send the signal defined in the termination section of the service.
+fn kill(sh: &ServiceHandler, signal: Option<Signal>) {
+    let signal = signal.unwrap_or_else(|| sh.service().termination.signal.clone().into());
     debug!("Going to send {} signal to pid {:?}", signal, sh.pid());
     if let Some(pid) = sh.pid() {
         if let Err(error) = signal::kill(pid, signal) {
@@ -369,9 +373,11 @@ fn kill(sh: &ServiceHandler, signal: Signal) {
 
 #[cfg(test)]
 mod test {
-    use crate::horust::formats::{FailureStrategy, Service, ServiceHandler, ServiceStatus};
+    use crate::horust::formats::{FailureStrategy, Service, ServiceStatus};
+    use crate::horust::runtime::service_handler::ServiceHandler;
     use crate::horust::runtime::{handle_failure_strategy, should_force_kill};
     use crate::horust::Event;
+    use nix::unistd::Pid;
     use std::ops::Sub;
     use std::time::Duration;
 
@@ -386,8 +392,15 @@ wait = "10s"
         assert!(!should_force_kill(&sh));
         sh.shutting_down_started();
         assert!(!should_force_kill(&sh));
-        sh.shutting_down_start = Some(sh.shutting_down_start.unwrap().sub(Duration::from_secs(20)));
-        assert!(should_force_kill(&sh))
+        let old_start = sh.shutting_down_start;
+        let past_wait = Some(sh.shutting_down_start.unwrap().sub(Duration::from_secs(20)));
+        sh.shutting_down_start = past_wait;
+        assert!(!should_force_kill(&sh));
+        sh.pid = Some(Pid::this());
+        sh.shutting_down_start = old_start;
+        assert!(!should_force_kill(&sh));
+        sh.shutting_down_start = past_wait;
+        assert!(should_force_kill(&sh));
     }
 
     #[test]
