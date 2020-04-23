@@ -53,6 +53,10 @@ impl Runtime {
                 handle_status_changed_event(service_name, new_status, &mut service_handler);
             }
             Event::ServiceExited(service_name, exit_code) => {
+                // TODO: this handler is not super nice because the states
+                // Success / Failed are set here, thus not available on the outside.
+                // I'm not sure if this is a problem, because one could handle this event,
+                // But still it's not super nice. Needs some more thinking.
                 let service_handler = self.repo.get_mut_sh(&service_name);
                 service_handler.shutting_down_start = None;
                 service_handler.pid = None;
@@ -406,7 +410,10 @@ fn should_force_kill(service_handler: &ServiceHandler) -> bool {
         );
         shutting_down_elapsed_secs > service_handler.service().termination.wait.clone().as_secs()
     } else {
-        error!("There is no shutting down elapsed secs.");
+        // this might happen, because InKilling state is emitted before the Kill event.
+        // So maybe the runtime has received only the InKilling state change, but hasn't sent the
+        // signal yet. So it should be fine.
+        debug!("There is no shutting down elapsed secs.");
         false
     }
 }

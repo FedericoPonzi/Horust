@@ -88,15 +88,12 @@ fn run(bus: BusConnector<Event>, services: Vec<Service>) {
                         let handle = w.spawn_thread();
                         workers.insert(s_name, (worker_notifier, handle));
                     }
-                    ServiceStatus::InKilling
-                    | ServiceStatus::Finished
-                    | ServiceStatus::FinishedFailed => {
-                        if let Some((sender, handler)) = workers.remove(&s_name) {
-                            sender.send(()).unwrap();
-                            handler.join().unwrap();
-                        }
-                    }
                     _ => (),
+                }
+            } else if let Event::ServiceExited(s_name, _exit_code) = ev {
+                if let Some((sender, handler)) = workers.remove(&s_name) {
+                    sender.send(()).unwrap();
+                    handler.join().unwrap();
                 }
             } else if ev == Event::ShuttingDownInitiated {
                 // Stop all the workers:
