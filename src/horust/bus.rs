@@ -64,7 +64,9 @@ impl<T> BusConnector<T> {
     pub fn get_n_events_blocking(&self, quantity: usize) -> Vec<T> {
         self.receiver.iter().take(quantity).collect()
     }
-
+    pub fn iter(&self) -> crossbeam::Iter<T> {
+        self.receiver.iter()
+    }
     /// Non blocking
     pub fn try_get_events(&self) -> Vec<T> {
         self.receiver.try_iter().collect()

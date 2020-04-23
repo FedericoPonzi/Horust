@@ -2,7 +2,7 @@ use crate::horust::bus::BusConnector;
 use crate::horust::formats::{
     Event, Healthiness, HealthinessStatus, Service, ServiceName, ServiceStatus,
 };
-use crossbeam::channel::{unbounded, Receiver, Sender};
+use crossbeam::channel::{unbounded, Receiver};
 use std::time::Duration;
 
 mod checks;
@@ -12,14 +12,14 @@ use std::thread::JoinHandle;
 
 struct Worker {
     service: Service,
-    sender_res: Sender<Event>,
+    bus: BusConnector<Event>,
     work_done_notifier: Receiver<()>,
 }
 impl Worker {
-    fn new(service: Service, sender_res: Sender<Event>, work_done_notifier: Receiver<()>) -> Self {
+    fn new(service: Service, bus: BusConnector<Event>, work_done_notifier: Receiver<()>) -> Self {
         Worker {
             service,
-            sender_res,
+            bus,
             work_done_notifier,
         }
     }
@@ -29,12 +29,10 @@ impl Worker {
     fn run(self) {
         loop {
             let status = check_health(&self.service.healthiness);
-            self.sender_res
-                .send(Event::HealthCheck(
-                    self.service.name.clone(),
-                    status.clone(),
-                ))
-                .unwrap();
+            self.bus.send_event(Event::HealthCheck(
+                self.service.name.clone(),
+                status.clone(),
+            ));
             let work_done = self
                 .work_done_notifier
                 .recv_timeout(Duration::from_millis(1000));
@@ -66,7 +64,6 @@ fn check_health(healthiness: &Healthiness) -> HealthinessStatus {
 }
 
 fn run(bus: BusConnector<Event>, services: Vec<Service>) {
-    let (health_snd, health_rcv) = unbounded();
     let mut workers = hashmap! {};
     let get_service = |s_name: &ServiceName| {
         services
@@ -77,41 +74,34 @@ fn run(bus: BusConnector<Event>, services: Vec<Service>) {
             .collect::<Vec<Service>>()
             .remove(0)
     };
-    'main: loop {
-        for ev in bus.try_get_events() {
-            if let Event::StatusChanged(s_name, status) = ev {
-                match status {
-                    ServiceStatus::Started => {
-                        let (worker_notifier, work_done_rcv) = unbounded();
-                        let service = get_service(&s_name);
-                        let w = Worker::new(service, health_snd.clone(), work_done_rcv);
-                        let handle = w.spawn_thread();
-                        workers.insert(s_name, (worker_notifier, handle));
-                    }
-                    _ => (),
+    for ev in bus.iter() {
+        if let Event::StatusChanged(s_name, status) = ev {
+            match status {
+                ServiceStatus::Started => {
+                    let (worker_notifier, work_done_rcv) = unbounded();
+                    let service = get_service(&s_name);
+                    let w = Worker::new(service, bus.clone(), work_done_rcv);
+                    let handle = w.spawn_thread();
+                    workers.insert(s_name, (worker_notifier, handle));
                 }
-            } else if let Event::ServiceExited(s_name, _exit_code) = ev {
-                if let Some((sender, handler)) = workers.remove(&s_name) {
-                    sender.send(()).unwrap();
-                    handler.join().unwrap();
-                }
-            } else if ev == Event::ShuttingDownInitiated {
-                // Stop all the workers:
-                for (ws, _wh) in workers.values() {
-                    ws.send(()).unwrap();
-                }
-                // Actually wait for them
-                for (_s_name, (_ws, wh)) in workers {
-                    wh.join().unwrap();
-                }
-                break 'main;
+                _ => (),
             }
+        } else if let Event::ServiceExited(s_name, _exit_code) = ev {
+            if let Some((sender, handler)) = workers.remove(&s_name) {
+                sender.send(()).unwrap();
+                handler.join().unwrap();
+            }
+        } else if ev == Event::ShuttingDownInitiated {
+            // Stop all the workers:
+            for (ws, _wh) in workers.values() {
+                ws.send(()).unwrap();
+            }
+            // Actually wait for them
+            for (_s_name, (_ws, wh)) in workers {
+                wh.join().unwrap();
+            }
+            break;
         }
-        let events: Vec<Event> = health_rcv.try_iter().collect();
-        for ev in events {
-            bus.send_event(ev);
-        }
-        std::thread::sleep(Duration::from_millis(250));
     }
     bus.send_event(Event::new_exit_success("Healthchecker"));
 }
