@@ -1,6 +1,7 @@
 use crate::horust::bus::BusConnector;
 use crate::horust::formats::{
-    Event, ExitStatus, FailureStrategy, RestartStrategy, Service, ServiceName, ServiceStatus,
+    Event, ExitStatus, FailureStrategy, HealthinessStatus, RestartStrategy, Service, ServiceName,
+    ServiceStatus,
 };
 use crate::horust::{healthcheck, signal_handling};
 use nix::sys::signal::{self, Signal};
@@ -55,11 +56,13 @@ impl Runtime {
                     .failure
                     .successful_exit_code
                     .contains(&exit_code);
+                let healthcheck_failed = service_handler.healthiness_checks_failed == 0;
                 if has_failed {
                     warn!(
-                        "Service: {} has failed, exit code: {}",
+                        "Service: {} has failed, exit code: {}, healthchecks: {}",
                         service_handler.name(),
-                        exit_code
+                        exit_code,
+                        healthcheck_failed
                     );
 
                     // If it has failed too quickly, increase service_handler's restart attempts
@@ -104,9 +107,7 @@ impl Runtime {
             }
             Event::Kill(service_name) => {
                 let service_handler = self.repo.get_mut_sh(&service_name);
-                if service_handler.is_initial() {
-                    service_handler.status = ServiceStatus::Finished;
-                } else if service_handler.is_running()
+                if service_handler.is_running()
                     || service_handler.is_started()
                     || service_handler.is_starting()
                 {
@@ -127,6 +128,18 @@ impl Runtime {
                     kill(service_handler, None)
                 }
             }
+            Event::HealthCheck(s_name, health) => {
+                let sh = self.repo.get_mut_sh(&s_name);
+                // Count the failed healthiness checks. The state change producer wll handle states
+                // changes (if they're needed)
+                if vec![ServiceStatus::Running, ServiceStatus::Starting].contains(&sh.status) {
+                    if let HealthinessStatus::Healthy = health {
+                        sh.healthiness_checks_failed = 0;
+                    } else {
+                        sh.healthiness_checks_failed += 1;
+                    }
+                }
+            }
             Event::ShuttingDownInitiated => self.is_shutting_down = true,
             ev => {
                 trace!("ignoring: {:?}", ev);
@@ -139,11 +152,36 @@ impl Runtime {
         let ev_status =
             |status: ServiceStatus| Event::new_status_changed(service_handler.name(), status);
         let vev_status = |status: ServiceStatus| vec![ev_status(status)];
-        if self.repo.is_service_runnable(&service_handler) && !self.is_shutting_down {
+
+        if self.is_shutting_down {
+            // Handle the new state separately if we're shutting down.
+            return match service_handler.status {
+                ServiceStatus::Running | ServiceStatus::Started => {
+                    vec![Event::Kill(service_handler.name().clone())]
+                }
+                ServiceStatus::Success | ServiceStatus::Initial => {
+                    vev_status(ServiceStatus::Finished)
+                }
+                ServiceStatus::Failed => vev_status(ServiceStatus::FinishedFailed),
+                ServiceStatus::InKilling if should_force_kill(service_handler) => vec![
+                    Event::new_force_kill(service_handler.name()),
+                    Event::new_status_changed(service_handler.name(), ServiceStatus::Failed),
+                ],
+                _ => vec![],
+            };
+        }
+        if self.repo.is_service_runnable(&service_handler) {
             return vec![Event::Run(service_handler.name().clone())];
         }
+
         match service_handler.status {
-            ServiceStatus::Initial if self.is_shutting_down => vev_status(ServiceStatus::Finished),
+            ServiceStatus::Started if service_handler.healthiness_checks_failed == 0 => {
+                vev_status(ServiceStatus::Running)
+            }
+            ServiceStatus::Running if service_handler.healthiness_checks_failed > 2 => vec![
+                ev_status(ServiceStatus::InKilling),
+                Event::Kill(service_handler.name().clone()),
+            ],
             ServiceStatus::Success => {
                 vec![handle_restart_strategy(service_handler.service(), false)]
             }
@@ -179,14 +217,9 @@ impl Runtime {
             }
             ServiceStatus::InKilling if should_force_kill(service_handler) => vec![
                 Event::new_force_kill(service_handler.name()),
-                Event::new_status_changed(service_handler.name(), ServiceStatus::FinishedFailed),
+                Event::new_status_changed(service_handler.name(), ServiceStatus::Failed),
             ],
 
-            ServiceStatus::Initial | ServiceStatus::Running | ServiceStatus::Started
-                if self.is_shutting_down =>
-            {
-                vec![Event::Kill(service_handler.name().clone())]
-            }
             _ => vec![],
         }
     }
@@ -249,14 +282,18 @@ fn handle_status_changed_event(
     let allowed_transitions = hashmap! {
         ServiceStatus::Initial        => vec![ServiceStatus::Success, ServiceStatus::Failed],
         ServiceStatus::Started        => vec![ServiceStatus::Starting],
-        ServiceStatus::InKilling      => vec![ServiceStatus::Running,
+        ServiceStatus::InKilling      => vec![ServiceStatus::Initial,
+                                              ServiceStatus::Running,
                                               ServiceStatus::Started],
         ServiceStatus::Running        => vec![ServiceStatus::Started],
         ServiceStatus::FinishedFailed => vec![ServiceStatus::Failed, ServiceStatus::InKilling],
-        ServiceStatus::Success        => vec![ServiceStatus::Starting, ServiceStatus::Running],
-        ServiceStatus::Failed         => vec![ServiceStatus::Starting, ServiceStatus::Running],
+        ServiceStatus::Success        => vec![ServiceStatus::Starting,
+                                              ServiceStatus::Running,
+                                              ServiceStatus::InKilling],
+        ServiceStatus::Failed         => vec![ServiceStatus::Starting,
+                                              ServiceStatus::Running,
+                                              ServiceStatus::InKilling],
         ServiceStatus::Finished       => vec![ServiceStatus::Success,
-                                             ServiceStatus::InKilling,
                                              ServiceStatus::Initial],
     };
     let allowed = allowed_transitions.get(&new_status).unwrap();
@@ -266,6 +303,17 @@ fn handle_status_changed_event(
             ServiceStatus::Started if allowed.contains(&service_handler.status) => {
                 service_handler.status = ServiceStatus::Started;
                 service_handler.restart_attempts = 0;
+            }
+            ServiceStatus::Running if allowed.contains(&service_handler.status) => {
+                service_handler.status = ServiceStatus::Running;
+                service_handler.healthiness_checks_failed = 0;
+            }
+            ServiceStatus::InKilling if allowed.contains(&service_handler.status) => {
+                if service_handler.status == ServiceStatus::Initial {
+                    service_handler.status = ServiceStatus::Finished;
+                } else {
+                    service_handler.status = ServiceStatus::InKilling;
+                }
             }
             new_status => {
                 service_handler.status = new_status;

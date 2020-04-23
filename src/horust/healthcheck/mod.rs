@@ -1,14 +1,65 @@
 use crate::horust::bus::BusConnector;
-use crate::horust::formats::{Event, Healthiness, Service, ServiceName, ServiceStatus};
-use std::collections::{HashMap, HashSet};
+use crate::horust::formats::{
+    Event, Healthiness, HealthinessStatus, Service, ServiceName, ServiceStatus,
+};
+use crossbeam::channel::{unbounded, Receiver, Sender};
 use std::time::Duration;
 
 mod checks;
-mod repo;
 use checks::*;
-use repo::Repo;
 use std::thread;
 use std::thread::JoinHandle;
+
+impl From<bool> for HealthinessStatus {
+    fn from(check: bool) -> Self {
+        if check {
+            HealthinessStatus::Healthy
+        } else {
+            HealthinessStatus::Unhealthy
+        }
+    }
+}
+
+struct Worker {
+    service: Service,
+    sender_res: Sender<Event>,
+    work_done_notifier: Receiver<()>,
+}
+impl Worker {
+    fn new(service: Service, sender_res: Sender<Event>, work_done_notifier: Receiver<()>) -> Self {
+        Worker {
+            service,
+            sender_res,
+            work_done_notifier,
+        }
+    }
+    pub fn spawn_thread(self) -> JoinHandle<()> {
+        thread::spawn(move || self.run())
+    }
+    fn run(self) {
+        let mut last = HealthinessStatus::Unhealthy;
+        loop {
+            let status = check_health(&self.service.healthiness);
+            if status != last {
+                // TODO: healthy / unhealthy
+                self.sender_res
+                    .send(Event::HealthCheck(
+                        self.service.name.clone(),
+                        status.clone(),
+                    ))
+                    .unwrap();
+                last = status;
+            }
+            let work_done = self
+                .work_done_notifier
+                .recv_timeout(Duration::from_millis(300));
+
+            if work_done.is_ok() {
+                break;
+            }
+        }
+    }
+}
 
 // TODO:
 // * Tunable healthchecks timing in horust's config
@@ -20,79 +71,74 @@ pub fn spawn(bus: BusConnector<Event>, services: Vec<Service>) {
 }
 
 /// Returns true if the service is healthy and all checks are passed.
-fn check_health(healthiness: &Healthiness) -> bool {
+fn check_health(healthiness: &Healthiness) -> HealthinessStatus {
     let file = FilePathCheck {};
     let http = HttpCheck {};
     let checks: Vec<&dyn Check> = vec![&file, &http];
-    checks
+    let res = checks
         .into_iter()
         .filter(|check| !check.run(healthiness))
         .count()
-        == 0
-}
-
-// TODO: emit HEALTHY / UNHEALTHY and let runtime decide the new state change.
-fn run_check(s_name: ServiceName, service: Service, status: ServiceStatus) -> Option<Event> {
-    let has_passed_checks = check_health(&service.healthiness);
-    if has_passed_checks && ServiceStatus::Started == status {
-        Some(Event::new_status_changed(&s_name, ServiceStatus::Running))
-    } else if !has_passed_checks && ServiceStatus::Started == status {
-        // TODO: change to ToBeKilled. If the healthcheck fails, maybe it's a transient failure and process might be still running.
-        Some(Event::Kill(s_name.into()))
-    } else {
-        // Starting services don't go in failure state if they don't pass the healthcheck
-        None
-    }
-}
-
-/// Run the healthchecks, produce the event changes
-fn next(
-    services: &HashMap<ServiceName, Service>,
-    running: &HashSet<ServiceName>,
-    started: &HashSet<ServiceName>,
-) -> Vec<Event> {
-    debug!("next");
-    let running_sh = running
-        .iter()
-        .map(|s_name| (s_name, ServiceStatus::Running));
-    let started_sh = started
-        .iter()
-        .map(|s_name| (s_name, ServiceStatus::Started));
-
-    let handles: Vec<JoinHandle<Option<Event>>> = started_sh
-        .chain(running_sh)
-        .map(|(s_name, service_status)| {
-            let s_name = s_name.clone();
-            let sh = services.get(&s_name).unwrap().clone();
-            thread::spawn(move || run_check(s_name, sh, service_status))
-        })
-        .collect();
-
-    handles
-        .into_iter()
-        .filter_map(|handle| handle.join().unwrap_or(None))
-        .collect()
+        == 0;
+    res.into()
 }
 
 fn run(bus: BusConnector<Event>, services: Vec<Service>) {
-    let mut repo = Repo::new(bus, services);
-    loop {
-        repo.ingest();
-        let events = next(&repo.services, &repo.started, &repo.running);
+    //let mut repo = Repo::new(bus, services);
+    let (health_snd, health_rcv) = unbounded();
+    let mut workers = hashmap! {};
+    let get_service = |s_name: &ServiceName| {
+        services
+            .iter()
+            .filter(|sh| sh.name == *s_name)
+            .take(1)
+            .cloned()
+            .collect::<Vec<Service>>()
+            .remove(0)
+    };
+    'main: loop {
+        for ev in bus.try_get_events() {
+            if let Event::StatusChanged(s_name, status) = ev {
+                match status {
+                    ServiceStatus::Started => {
+                        let (worker_notifier, work_done_rcv) = unbounded();
+                        let service = get_service(&s_name);
+                        let w = Worker::new(service, health_snd.clone(), work_done_rcv);
+                        let handle = w.spawn_thread();
+                        workers.insert(s_name, (worker_notifier, handle));
+                    }
+                    ServiceStatus::InKilling
+                    | ServiceStatus::Finished
+                    | ServiceStatus::FinishedFailed => {
+                        if let Some((sender, handler)) = workers.remove(&s_name) {
+                            sender.send(()).unwrap();
+                            handler.join().unwrap();
+                        }
+                    }
+                    _ => (),
+                }
+            } else if ev == Event::ShuttingDownInitiated {
+                // Stop all the workers:
+                for (ws, _wh) in workers.values() {
+                    ws.send(()).unwrap();
+                }
+                // Actually wait for them
+                for (_s_name, (_ws, wh)) in workers {
+                    wh.join().unwrap();
+                }
+                break 'main;
+            }
+        }
+        let events: Vec<Event> = health_rcv.try_iter().collect();
         for ev in events {
-            repo.send_ev(ev);
+            bus.send_event(ev);
         }
-        if repo.is_shutting_down {
-            debug!("Breaking the loop..");
-            break;
-        }
-        std::thread::sleep(Duration::from_millis(1000));
+        std::thread::sleep(Duration::from_millis(250));
     }
-
-    repo.send_ev(Event::new_exit_success("Healthcheck"));
+    bus.send_event(Event::new_exit_success("Healthchecker"));
 }
 
-/// Setup require for the service, before running the healthchecks and starting the service.
+/// Setup require for the service, before running the healthchecks and starting the service
 pub fn prepare_service(healthiness: &Healthiness) -> Result<(), std::io::Error> {
     if let Some(file_path) = healthiness.file_path.as_ref() {
         //TODO: check if user has permissions to remove this file.
@@ -104,10 +150,8 @@ pub fn prepare_service(healthiness: &Healthiness) -> Result<(), std::io::Error> 
 #[cfg(test)]
 mod test {
     use crate::horust::error::Result;
-    use crate::horust::formats::{Event, Healthiness, Service, ServiceStatus};
-    use crate::horust::healthcheck;
+    use crate::horust::formats::{Healthiness, HealthinessStatus};
     use crate::horust::healthcheck::check_health;
-    use std::collections::HashSet;
     use std::io::{Read, Write};
     use std::net::{Ipv4Addr, SocketAddrV4, TcpListener};
     use std::sync::mpsc;
@@ -115,29 +159,31 @@ mod test {
     use std::time::Duration;
     use tempdir::TempDir;
 
-    #[test]
-    fn test_next() -> Result<()> {
-        let tempdir = TempDir::new("health")?;
-        let file_path = tempdir.path().join("file.txt");
-        let service = format!(
-            r#"command = "not relevant"
-[healthiness]
-file-path = "{}""#,
-            file_path.display()
-        );
-        let service: Service = toml::from_str(service.as_str())?;
-        let services = hashmap! {service.name.clone() => service.clone()};
-        std::fs::write(file_path, "Hello world!")?;
-        let starting = hashset! {service.name.clone()};
-        let events: Vec<Event> = healthcheck::next(&services, &HashSet::new(), &starting);
-        debug!("{:?}", events);
-        assert!(events.contains(&Event::StatusChanged(
-            service.name.clone(),
-            ServiceStatus::Running
-        )));
-        Ok(())
+    /*#[test]
+        fn test_next() -> Result<()> {
+            let tempdir = TempDir::new("health")?;
+            let file_path = tempdir.path().join("file.txt");
+            let service = format!(
+                r#"command = "not relevant"
+    [healthiness]
+    file-path = "{}""#,
+                file_path.display()
+            );
+            let service: Service = toml::from_str(service.as_str())?;
+            let services = hashmap! {service.name.clone() => service.clone()};
+            std::fs::write(file_path, "Hello world!")?;
+            let starting = hashset! {service.name.clone()};
+            let events: Vec<Event> = healthcheck::next(&services, &HashSet::new(), &starting);
+            debug!("{:?}", events);
+            assert!(events.contains(&Event::StatusChanged(
+                service.name.clone(),
+                ServiceStatus::Running
+            )));
+            Ok(())
+        }*/
+    fn check_health_w(healthiness: &Healthiness) -> bool {
+        check_health(healthiness) == HealthinessStatus::Healthy
     }
-
     #[test]
     fn test_healthiness_check_file() -> Result<()> {
         let tempdir = TempDir::new("health")?;
@@ -146,11 +192,11 @@ file-path = "{}""#,
             file_path: Some(file_path.clone()),
             http_endpoint: None,
         };
-        assert!(!check_health(&healthiness));
+        assert!(!check_health_w(&healthiness));
         std::fs::write(file_path, "Hello world!")?;
-        assert!(check_health(&healthiness));
+        assert!(check_health_w(&healthiness));
         let healthiness: Healthiness = Default::default();
-        assert!(check_health(&healthiness));
+        assert!(check_health_w(&healthiness));
         Ok(())
     }
     fn handle_request(listener: TcpListener) -> std::io::Result<()> {
@@ -172,7 +218,7 @@ file-path = "{}""#,
             file_path: None,
             http_endpoint: Some("http://localhost:123/".into()),
         };
-        assert!(!check_health(&healthiness));
+        assert!(!check_health_w(&healthiness));
         let loopback = Ipv4Addr::new(127, 0, 0, 1);
         let socket = SocketAddrV4::new(loopback, 0);
         let listener = TcpListener::bind(socket)?;
@@ -187,11 +233,11 @@ file-path = "{}""#,
             handle_request(listener).unwrap();
             sender.send(()).expect("Chan closed");
         });
-        assert!(check_health(&healthiness));
+        assert!(check_health_w(&healthiness));
         receiver
             .recv_timeout(Duration::from_millis(2000))
             .expect("Failed to received response from handle_request");
-        assert!(!check_health(&healthiness));
+        assert!(!check_health_w(&healthiness));
         Ok(())
     }
 }

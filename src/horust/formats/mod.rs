@@ -10,6 +10,12 @@ pub enum ExitStatus {
     SomeServiceFailed,
 }
 
+#[derive(PartialEq, Clone, Debug)]
+pub enum HealthinessStatus {
+    Healthy,
+    Unhealthy,
+}
+
 pub type ComponentName = String;
 
 #[derive(Debug, Clone, PartialEq)]
@@ -22,8 +28,9 @@ pub enum Event {
     Run(ServiceName),
     Exiting(ComponentName, ExitStatus),
     ShuttingDownInitiated,
+    HealthCheck(ServiceName, HealthinessStatus),
     // TODO: to allow changes of service at runtime:
-    //ServiceCreated(ServiceHandler),
+    //ServiceCreated(ServiceHandler)
 }
 
 impl Event {
