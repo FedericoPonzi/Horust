@@ -4,18 +4,6 @@ pub use horust_config::HorustConfig;
 use nix::unistd::Pid;
 pub use service::*;
 
-#[derive(Debug, Clone, PartialEq)]
-pub enum ExitStatus {
-    Successful,
-    SomeServiceFailed,
-}
-
-#[derive(PartialEq, Clone, Debug)]
-pub enum HealthinessStatus {
-    Healthy,
-    Unhealthy,
-}
-
 pub type ComponentName = String;
 
 #[derive(Debug, Clone, PartialEq)]
@@ -48,5 +36,27 @@ impl Event {
     }
     pub(crate) fn new_exit_success(comp_name: &str) -> Self {
         Event::Exiting(comp_name.into(), ExitStatus::Successful)
+    }
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum ExitStatus {
+    Successful,
+    SomeServiceFailed,
+}
+
+#[derive(PartialEq, Clone, Debug)]
+pub enum HealthinessStatus {
+    Healthy,
+    Unhealthy,
+}
+
+impl From<bool> for HealthinessStatus {
+    fn from(check: bool) -> Self {
+        if check {
+            HealthinessStatus::Healthy
+        } else {
+            HealthinessStatus::Unhealthy
+        }
     }
 }

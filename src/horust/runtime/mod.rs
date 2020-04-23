@@ -93,16 +93,17 @@ impl Runtime {
             Event::Run(service_name) if self.repo.get_sh(&service_name).is_initial() => {
                 let service_handler = self.repo.get_mut_sh(&service_name);
                 service_handler.status = ServiceStatus::Starting;
-                healthcheck::prepare_service(&service_handler.service().healthiness).unwrap();
+                healthcheck::prepare_service(&service_handler.service().healthiness)
+                    .expect("Prepare healthcheck failed");
                 let backoff = service_handler
                     .service()
                     .restart
                     .backoff
-                    .mul(service_handler.restart_attempts.clone());
+                    .mul(service_handler.restart_attempts);
                 process_spawner::spawn_fork_exec_handler(
                     service_handler.service().clone(),
                     backoff,
-                    self.repo.clone(),
+                    self.repo.bus.clone(),
                 );
             }
             Event::Kill(service_name) => {

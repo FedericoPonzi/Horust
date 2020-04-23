@@ -10,16 +10,6 @@ use checks::*;
 use std::thread;
 use std::thread::JoinHandle;
 
-impl From<bool> for HealthinessStatus {
-    fn from(check: bool) -> Self {
-        if check {
-            HealthinessStatus::Healthy
-        } else {
-            HealthinessStatus::Unhealthy
-        }
-    }
-}
-
 struct Worker {
     service: Service,
     sender_res: Sender<Event>,
@@ -41,7 +31,6 @@ impl Worker {
         loop {
             let status = check_health(&self.service.healthiness);
             if status != last {
-                // TODO: healthy / unhealthy
                 self.sender_res
                     .send(Event::HealthCheck(
                         self.service.name.clone(),
@@ -72,10 +61,7 @@ pub fn spawn(bus: BusConnector<Event>, services: Vec<Service>) {
 
 /// Returns true if the service is healthy and all checks are passed.
 fn check_health(healthiness: &Healthiness) -> HealthinessStatus {
-    let file = FilePathCheck {};
-    let http = HttpCheck {};
-    let checks: Vec<&dyn Check> = vec![&file, &http];
-    let res = checks
+    let res = get_checks()
         .into_iter()
         .filter(|check| !check.run(healthiness))
         .count()
@@ -84,7 +70,6 @@ fn check_health(healthiness: &Healthiness) -> HealthinessStatus {
 }
 
 fn run(bus: BusConnector<Event>, services: Vec<Service>) {
-    //let mut repo = Repo::new(bus, services);
     let (health_snd, health_rcv) = unbounded();
     let mut workers = hashmap! {};
     let get_service = |s_name: &ServiceName| {
@@ -139,12 +124,11 @@ fn run(bus: BusConnector<Event>, services: Vec<Service>) {
 }
 
 /// Setup require for the service, before running the healthchecks and starting the service
-pub fn prepare_service(healthiness: &Healthiness) -> Result<(), std::io::Error> {
-    if let Some(file_path) = healthiness.file_path.as_ref() {
-        //TODO: check if user has permissions to remove this file.
-        std::fs::remove_file(file_path)?;
-    }
-    Ok(())
+pub fn prepare_service(healthiness: &Healthiness) -> Result<Vec<()>, std::io::Error> {
+    get_checks()
+        .into_iter()
+        .map(|check| check.prepare(healthiness))
+        .collect()
 }
 
 #[cfg(test)]
@@ -159,28 +143,6 @@ mod test {
     use std::time::Duration;
     use tempdir::TempDir;
 
-    /*#[test]
-        fn test_next() -> Result<()> {
-            let tempdir = TempDir::new("health")?;
-            let file_path = tempdir.path().join("file.txt");
-            let service = format!(
-                r#"command = "not relevant"
-    [healthiness]
-    file-path = "{}""#,
-                file_path.display()
-            );
-            let service: Service = toml::from_str(service.as_str())?;
-            let services = hashmap! {service.name.clone() => service.clone()};
-            std::fs::write(file_path, "Hello world!")?;
-            let starting = hashset! {service.name.clone()};
-            let events: Vec<Event> = healthcheck::next(&services, &HashSet::new(), &starting);
-            debug!("{:?}", events);
-            assert!(events.contains(&Event::StatusChanged(
-                service.name.clone(),
-                ServiceStatus::Running
-            )));
-            Ok(())
-        }*/
     fn check_health_w(healthiness: &Healthiness) -> bool {
         check_health(healthiness) == HealthinessStatus::Healthy
     }
