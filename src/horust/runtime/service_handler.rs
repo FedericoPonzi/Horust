@@ -61,10 +61,6 @@ impl ServiceHandler {
         ServiceStatus::InKilling == self.status
     }
 
-    pub fn is_starting(&self) -> bool {
-        ServiceStatus::Started == self.status
-    }
-
     pub fn is_initial(&self) -> bool {
         ServiceStatus::Initial == self.status
     }
@@ -78,9 +74,5 @@ impl ServiceHandler {
     }
     pub fn shutting_down_started(&mut self) {
         self.shutting_down_start = Some(Instant::now());
-        self.status = ServiceStatus::InKilling;
-    }
-    pub fn is_started(&self) -> bool {
-        ServiceStatus::Started == self.status
     }
 }

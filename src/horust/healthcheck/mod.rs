@@ -27,21 +27,17 @@ impl Worker {
         thread::spawn(move || self.run())
     }
     fn run(self) {
-        let mut last = HealthinessStatus::Unhealthy;
         loop {
             let status = check_health(&self.service.healthiness);
-            if status != last {
-                self.sender_res
-                    .send(Event::HealthCheck(
-                        self.service.name.clone(),
-                        status.clone(),
-                    ))
-                    .unwrap();
-                last = status;
-            }
+            self.sender_res
+                .send(Event::HealthCheck(
+                    self.service.name.clone(),
+                    status.clone(),
+                ))
+                .unwrap();
             let work_done = self
                 .work_done_notifier
-                .recv_timeout(Duration::from_millis(300));
+                .recv_timeout(Duration::from_millis(1000));
 
             if work_done.is_ok() {
                 break;

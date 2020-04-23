@@ -1,4 +1,6 @@
-* Healthchecks status events (Healthy / unhealthy)
+* Count all time the unhealthy events, if threshold is passed and 
+    service is in started then stop it.
+* Termination / signal = kill is not working (might need to be removed).
 * Parameter for redirecting stdout / stderr to files
 
 ## Long todo:

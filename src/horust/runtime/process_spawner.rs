@@ -1,7 +1,6 @@
 use crate::horust::bus::BusConnector;
 use crate::horust::error::Result;
 use crate::horust::formats::{Event, Service, ServiceStatus};
-use crate::horust::runtime::repo::Repo;
 use nix::unistd;
 use nix::unistd::{fork, ForkResult, Pid};
 use shlex;
@@ -14,7 +13,7 @@ use std::time::Duration;
 pub(crate) fn spawn_fork_exec_handler(
     service: Service,
     backoff: Duration,
-    mut bus: BusConnector<Event>,
+    bus: BusConnector<Event>,
 ) {
     std::thread::spawn(move || {
         // todo: we should wake up every second, in case someone wants to kill this process.
