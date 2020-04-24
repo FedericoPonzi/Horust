@@ -55,12 +55,12 @@ pub fn spawn(bus: BusConnector<Event>, services: Vec<Service>) {
 
 /// Returns true if the service is healthy and all checks are passed.
 fn check_health(healthiness: &Healthiness) -> HealthinessStatus {
-    let res = get_checks()
+    let failed_checks = get_checks()
         .into_iter()
         .filter(|check| !check.run(healthiness))
-        .count()
-        == 0;
-    res.into()
+        .count();
+    let is_healthy = failed_checks == 0;
+    is_healthy.into()
 }
 
 fn run(bus: BusConnector<Event>, services: Vec<Service>) {
@@ -88,12 +88,14 @@ fn run(bus: BusConnector<Event>, services: Vec<Service>) {
             }
         } else if let Event::ServiceExited(s_name, _exit_code) = ev {
             if let Some((sender, handler)) = workers.remove(&s_name) {
+                //TODO: handle these
                 sender.send(()).unwrap();
                 handler.join().unwrap();
             }
         } else if ev == Event::ShuttingDownInitiated {
             // Stop all the workers:
             for (ws, _wh) in workers.values() {
+                // TODO: handle these
                 ws.send(()).unwrap();
             }
             // Actually wait for them
