@@ -2,7 +2,7 @@ use crate::horust::bus::BusConnector;
 use crate::horust::formats::{
     Event, Healthiness, HealthinessStatus, Service, ServiceName, ServiceStatus,
 };
-use crossbeam::channel::{unbounded, Receiver};
+use crossbeam::channel::{unbounded, Receiver, RecvTimeoutError};
 use std::time::Duration;
 
 mod checks;
@@ -33,13 +33,13 @@ impl Worker {
                 self.service.name.clone(),
                 status.clone(),
             ));
-            let work_done = self
+            match self
                 .work_done_notifier
-                .recv_timeout(Duration::from_millis(1000));
-
-            if work_done.is_ok() {
-                break;
-            }
+                .recv_timeout(Duration::from_millis(1000))
+            {
+                Ok(()) | Err(RecvTimeoutError::Disconnected) => break,
+                _ => (),
+            };
         }
     }
 }

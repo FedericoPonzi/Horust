@@ -4,6 +4,7 @@
 * Parameter for redirecting stdout / stderr to files
 
 ## Long todo:
+* Parameter "start-if-failed"
 * Create another binary for getting the status of the services.
     * Store timestamp when starting a new process (for knowing uptime)
 * Create another binary for validating the config file.
