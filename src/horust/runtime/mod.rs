@@ -147,7 +147,13 @@ impl Runtime {
                 let sh = self.repo.get_mut_sh(&s_name);
                 // Count the failed healthiness checks. The state change producer wll handle states
                 // changes (if they're needed)
-                if vec![ServiceStatus::Running, ServiceStatus::Started].contains(&sh.status) {
+                if vec![
+                    ServiceStatus::Running,
+                    ServiceStatus::Started,
+                    ServiceStatus::Starting,
+                ]
+                .contains(&sh.status)
+                {
                     if let HealthinessStatus::Healthy = health {
                         sh.healthiness_checks_failed = 0;
                     } else {
@@ -247,7 +253,10 @@ impl Runtime {
         while !self.repo.all_have_finished() {
             // Ingest updates
             let events = if has_emit_ev > 0 {
-                self.repo.get_n_events_blocking(has_emit_ev)
+                let mut at_least_n = self.repo.get_n_events_blocking(has_emit_ev);
+                let remaining_events = self.repo.get_events();
+                at_least_n.extend(remaining_events);
+                at_least_n
             } else {
                 self.repo.get_events()
             };
