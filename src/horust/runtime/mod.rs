@@ -1,6 +1,7 @@
 use crate::horust::bus::BusConnector;
 use crate::horust::formats::{
-    Event, ExitStatus, FailureStrategy, RestartStrategy, Service, ServiceName, ServiceStatus,
+    Event, ExitStatus, FailureStrategy, HealthinessStatus, RestartStrategy, Service, ServiceName,
+    ServiceStatus,
 };
 use crate::horust::{healthcheck, signal_handling};
 use nix::sys::signal::{self, Signal};
@@ -43,9 +44,19 @@ impl Runtime {
         match ev {
             Event::StatusChanged(service_name, new_status) => {
                 let mut service_handler = self.repo.get_mut_sh(&service_name);
+                debug!(
+                    " service: {},  status: {}, new status: {}",
+                    service_handler.name(),
+                    service_handler.status,
+                    new_status
+                );
                 handle_status_changed_event(service_name, new_status, &mut service_handler);
             }
             Event::ServiceExited(service_name, exit_code) => {
+                // TODO: this handler is not super nice because the states
+                // Success / Failed are set here, thus not available on the outside.
+                // I'm not sure if this is a problem, because one could handle this event,
+                // But still it's not super nice. Needs some more thinking.
                 let service_handler = self.repo.get_mut_sh(&service_name);
                 service_handler.shutting_down_start = None;
                 service_handler.pid = None;
@@ -55,11 +66,14 @@ impl Runtime {
                     .failure
                     .successful_exit_code
                     .contains(&exit_code);
-                if has_failed {
+                let healthcheck_failed = service_handler.healthiness_checks_failed > 0
+                    && service_handler.status == ServiceStatus::Running;
+                if has_failed || healthcheck_failed {
                     warn!(
-                        "Service: {} has failed, exit code: {}",
+                        "Service: {} has failed, exit code: {}, healthchecks: {}",
                         service_handler.name(),
-                        exit_code
+                        exit_code,
+                        healthcheck_failed
                     );
 
                     // If it has failed too quickly, increase service_handler's restart attempts
@@ -90,28 +104,30 @@ impl Runtime {
             Event::Run(service_name) if self.repo.get_sh(&service_name).is_initial() => {
                 let service_handler = self.repo.get_mut_sh(&service_name);
                 service_handler.status = ServiceStatus::Starting;
-                healthcheck::prepare_service(&service_handler.service().healthiness).unwrap();
+                healthcheck::prepare_service(&service_handler.service().healthiness)
+                    .expect("Prepare healthcheck failed");
                 let backoff = service_handler
                     .service()
                     .restart
                     .backoff
-                    .mul(service_handler.restart_attempts.clone());
+                    .mul(service_handler.restart_attempts);
                 process_spawner::spawn_fork_exec_handler(
                     service_handler.service().clone(),
                     backoff,
-                    self.repo.clone(),
+                    self.repo.bus.clone(),
                 );
             }
             Event::Kill(service_name) => {
+                debug!("Received kill request");
                 let service_handler = self.repo.get_mut_sh(&service_name);
-                if service_handler.is_initial() {
-                    service_handler.status = ServiceStatus::Finished;
-                } else if service_handler.is_running()
-                    || service_handler.is_started()
-                    || service_handler.is_starting()
-                {
+                if service_handler.is_in_killing() {
                     service_handler.shutting_down_started();
                     kill(service_handler, None);
+                } else {
+                    debug!(
+                        "Cannot send kill request, service was in: {}",
+                        service_handler.status
+                    );
                 }
             }
             Event::ForceKill(service_name) if self.repo.get_sh(&service_name).is_in_killing() => {
@@ -127,6 +143,18 @@ impl Runtime {
                     kill(service_handler, None)
                 }
             }
+            Event::HealthCheck(s_name, health) => {
+                let sh = self.repo.get_mut_sh(&s_name);
+                // Count the failed healthiness checks. The state change producer wll handle states
+                // changes (if they're needed)
+                if vec![ServiceStatus::Running, ServiceStatus::Started].contains(&sh.status) {
+                    if let HealthinessStatus::Healthy = health {
+                        sh.healthiness_checks_failed = 0;
+                    } else {
+                        sh.healthiness_checks_failed += 1;
+                    }
+                }
+            }
             Event::ShuttingDownInitiated => self.is_shutting_down = true,
             ev => {
                 trace!("ignoring: {:?}", ev);
@@ -139,11 +167,38 @@ impl Runtime {
         let ev_status =
             |status: ServiceStatus| Event::new_status_changed(service_handler.name(), status);
         let vev_status = |status: ServiceStatus| vec![ev_status(status)];
-        if self.repo.is_service_runnable(&service_handler) && !self.is_shutting_down {
+
+        if self.is_shutting_down {
+            // Handle the new state separately if we're shutting down.
+            return match service_handler.status {
+                ServiceStatus::Running | ServiceStatus::Started => vec![
+                    ev_status(ServiceStatus::InKilling),
+                    Event::Kill(service_handler.name().clone()),
+                ],
+                ServiceStatus::Success | ServiceStatus::Initial => {
+                    vev_status(ServiceStatus::Finished)
+                }
+                ServiceStatus::Failed => vev_status(ServiceStatus::FinishedFailed),
+                ServiceStatus::InKilling if should_force_kill(service_handler) => vec![
+                    Event::new_force_kill(service_handler.name()),
+                    Event::new_status_changed(service_handler.name(), ServiceStatus::Failed),
+                ],
+                _ => vec![],
+            };
+        }
+        if self.repo.is_service_runnable(&service_handler) {
             return vec![Event::Run(service_handler.name().clone())];
         }
+
         match service_handler.status {
-            ServiceStatus::Initial if self.is_shutting_down => vev_status(ServiceStatus::Finished),
+            ServiceStatus::Started if service_handler.healthiness_checks_failed == 0 => {
+                vev_status(ServiceStatus::Running)
+            }
+            // If 2 healthcheks are failed, then kill the service. Maybe this should be parametrized
+            ServiceStatus::Running if service_handler.healthiness_checks_failed > 2 => vec![
+                ev_status(ServiceStatus::InKilling),
+                Event::Kill(service_handler.name().clone()),
+            ],
             ServiceStatus::Success => {
                 vec![handle_restart_strategy(service_handler.service(), false)]
             }
@@ -161,7 +216,7 @@ impl Runtime {
                     .into_iter()
                     .map(|sh_name| {
                         vec![
-                            ev_status(ServiceStatus::InKilling),
+                            Event::new_status_changed(sh_name, ServiceStatus::InKilling),
                             Event::Kill(sh_name.clone()),
                         ]
                     })
@@ -179,14 +234,9 @@ impl Runtime {
             }
             ServiceStatus::InKilling if should_force_kill(service_handler) => vec![
                 Event::new_force_kill(service_handler.name()),
-                Event::new_status_changed(service_handler.name(), ServiceStatus::FinishedFailed),
+                Event::new_status_changed(service_handler.name(), ServiceStatus::Failed),
             ],
 
-            ServiceStatus::Initial | ServiceStatus::Running | ServiceStatus::Started
-                if self.is_shutting_down =>
-            {
-                vec![Event::Kill(service_handler.name().clone())]
-            }
             _ => vec![],
         }
     }
@@ -249,23 +299,44 @@ fn handle_status_changed_event(
     let allowed_transitions = hashmap! {
         ServiceStatus::Initial        => vec![ServiceStatus::Success, ServiceStatus::Failed],
         ServiceStatus::Started        => vec![ServiceStatus::Starting],
-        ServiceStatus::InKilling      => vec![ServiceStatus::Running,
+        ServiceStatus::InKilling      => vec![ServiceStatus::Initial,
+                                              ServiceStatus::Running,
                                               ServiceStatus::Started],
         ServiceStatus::Running        => vec![ServiceStatus::Started],
         ServiceStatus::FinishedFailed => vec![ServiceStatus::Failed, ServiceStatus::InKilling],
-        ServiceStatus::Success        => vec![ServiceStatus::Starting, ServiceStatus::Running],
-        ServiceStatus::Failed         => vec![ServiceStatus::Starting, ServiceStatus::Running],
+        ServiceStatus::Success        => vec![ServiceStatus::Starting,
+                                              ServiceStatus::Running,
+                                              ServiceStatus::InKilling],
+        ServiceStatus::Failed         => vec![ServiceStatus::Starting,
+                                              ServiceStatus::Running,
+                                              ServiceStatus::InKilling],
         ServiceStatus::Finished       => vec![ServiceStatus::Success,
-                                             ServiceStatus::InKilling,
                                              ServiceStatus::Initial],
     };
     let allowed = allowed_transitions.get(&new_status).unwrap();
     if allowed.contains(&service_handler.status) {
-        service_handler.status = ServiceStatus::Initial;
         match new_status {
             ServiceStatus::Started if allowed.contains(&service_handler.status) => {
                 service_handler.status = ServiceStatus::Started;
                 service_handler.restart_attempts = 0;
+            }
+            ServiceStatus::Running if allowed.contains(&service_handler.status) => {
+                service_handler.status = ServiceStatus::Running;
+                service_handler.healthiness_checks_failed = 0;
+            }
+            ServiceStatus::InKilling if allowed.contains(&service_handler.status) => {
+                debug!(
+                    " service: {},  status: {}, new status: {}",
+                    service_handler.name(),
+                    service_handler.status,
+                    new_status
+                );
+                if service_handler.status == ServiceStatus::Initial {
+                    debug!("Was in initial state, settign to finished");
+                    service_handler.status = ServiceStatus::Success;
+                } else {
+                    service_handler.status = ServiceStatus::InKilling;
+                }
             }
             new_status => {
                 service_handler.status = new_status;
@@ -340,7 +411,10 @@ fn should_force_kill(service_handler: &ServiceHandler) -> bool {
         );
         shutting_down_elapsed_secs > service_handler.service().termination.wait.clone().as_secs()
     } else {
-        error!("There is no shutting down elapsed secs.");
+        // this might happen, because InKilling state is emitted before the Kill event.
+        // So maybe the runtime has received only the InKilling state change, but hasn't sent the
+        // signal yet. So it should be fine.
+        debug!("There is no shutting down elapsed secs.");
         false
     }
 }
@@ -391,6 +465,7 @@ wait = "10s"
         let mut sh: ServiceHandler = service.into();
         assert!(!should_force_kill(&sh));
         sh.shutting_down_started();
+        sh.status = ServiceStatus::InKilling;
         assert!(!should_force_kill(&sh));
         let old_start = sh.shutting_down_start;
         let past_wait = Some(sh.shutting_down_start.unwrap().sub(Duration::from_secs(20)));

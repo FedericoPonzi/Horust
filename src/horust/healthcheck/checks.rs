@@ -3,8 +3,19 @@ use crate::horust::formats::Healthiness;
 use reqwest::blocking::Client;
 use std::time::Duration;
 
+static FILE_CHECK: FilePathCheck = FilePathCheck {};
+static HTTP_CHECK: HttpCheck = HttpCheck {};
+
+pub(crate) fn get_checks() -> Vec<&'static dyn Check> {
+    let checks: Vec<&dyn Check> = vec![&FILE_CHECK, &HTTP_CHECK];
+    checks
+}
+
 pub(crate) trait Check {
     fn run(&self, healthiness: &Healthiness) -> bool;
+    fn prepare(&self, _healtiness: &Healthiness) -> Result<(), std::io::Error> {
+        Ok(())
+    }
 }
 
 pub(crate) struct HttpCheck;
@@ -40,5 +51,13 @@ impl Check for FilePathCheck {
             .as_ref()
             .map(|file_path| file_path.exists())
             .unwrap_or(true)
+    }
+    fn prepare(&self, healthiness: &Healthiness) -> Result<(), std::io::Error> {
+        //TODO: check if user has permissions to remove this file.
+        if let Some(file_path) = healthiness.file_path.as_ref() {
+            std::fs::remove_file(file_path)
+        } else {
+            Ok(())
+        }
     }
 }

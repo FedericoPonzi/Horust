@@ -1,6 +1,6 @@
+use crate::horust::bus::BusConnector;
 use crate::horust::error::Result;
 use crate::horust::formats::{Event, Service, ServiceStatus};
-use crate::horust::runtime::repo::Repo;
 use nix::unistd;
 use nix::unistd::{fork, ForkResult, Pid};
 use shlex;
@@ -10,7 +10,11 @@ use std::path::PathBuf;
 use std::time::Duration;
 
 /// Run another thread that will wait for the start delay and handle the fork / exec
-pub(crate) fn spawn_fork_exec_handler(service: Service, backoff: Duration, mut repo: Repo) {
+pub(crate) fn spawn_fork_exec_handler(
+    service: Service,
+    backoff: Duration,
+    bus: BusConnector<Event>,
+) {
     std::thread::spawn(move || {
         // todo: we should wake up every second, in case someone wants to kill this process.
         debug!("going to sleep: {:?}", service.start_delay.add(backoff));
@@ -31,7 +35,7 @@ pub(crate) fn spawn_fork_exec_handler(service: Service, backoff: Duration, mut r
                 )]
             }
         };
-        evs.into_iter().for_each(|ev| repo.send_ev(ev));
+        evs.into_iter().for_each(|ev| bus.send_event(ev));
     });
 }
 

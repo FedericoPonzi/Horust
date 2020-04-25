@@ -47,12 +47,11 @@ trap_with_arg() {
     done
 }
 func_trap() {
-    echo "Received: $1"
-    if [ "$1" -e "HUP" ] ; do 
+    if [ "$1" == "HUP" ] ; then 
         exit 0
     fi
 }
-trap_with_arg func_trap INT TERM EXIT
+trap_with_arg func_trap INT TERM HUP
 while true ; do
     sleep 1 
 done

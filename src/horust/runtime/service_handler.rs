@@ -8,6 +8,7 @@ pub(crate) struct ServiceHandler {
     pub(crate) status: ServiceStatus,
     pub(crate) pid: Option<Pid>,
     pub(crate) restart_attempts: u32,
+    pub(crate) healthiness_checks_failed: u32,
     /// Instant representing at which time we received a shutdown request. Will be used for comparing Service.termination.wait
     pub(crate) shutting_down_start: Option<Instant>,
 }
@@ -20,6 +21,7 @@ impl From<Service> for ServiceHandler {
             pid: None,
             shutting_down_start: None,
             restart_attempts: 0,
+            healthiness_checks_failed: 1,
         }
     }
 }
@@ -59,10 +61,6 @@ impl ServiceHandler {
         ServiceStatus::InKilling == self.status
     }
 
-    pub fn is_starting(&self) -> bool {
-        ServiceStatus::Started == self.status
-    }
-
     pub fn is_initial(&self) -> bool {
         ServiceStatus::Initial == self.status
     }
@@ -76,9 +74,5 @@ impl ServiceHandler {
     }
     pub fn shutting_down_started(&mut self) {
         self.shutting_down_start = Some(Instant::now());
-        self.status = ServiceStatus::InKilling;
-    }
-    pub fn is_started(&self) -> bool {
-        ServiceStatus::Started == self.status
     }
 }

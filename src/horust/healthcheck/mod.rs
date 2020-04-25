@@ -1,12 +1,48 @@
 use crate::horust::bus::BusConnector;
-use crate::horust::formats::{Event, Healthiness, Service, ServiceName, ServiceStatus};
-use std::collections::{HashMap, HashSet};
+use crate::horust::formats::{
+    Event, Healthiness, HealthinessStatus, Service, ServiceName, ServiceStatus,
+};
+use crossbeam::channel::{unbounded, Receiver, RecvTimeoutError};
 use std::time::Duration;
 
 mod checks;
-mod repo;
 use checks::*;
-use repo::Repo;
+use std::thread;
+use std::thread::JoinHandle;
+
+struct Worker {
+    service: Service,
+    bus: BusConnector<Event>,
+    work_done_notifier: Receiver<()>,
+}
+impl Worker {
+    fn new(service: Service, bus: BusConnector<Event>, work_done_notifier: Receiver<()>) -> Self {
+        Worker {
+            service,
+            bus,
+            work_done_notifier,
+        }
+    }
+    pub fn spawn_thread(self) -> JoinHandle<()> {
+        thread::spawn(move || self.run())
+    }
+    fn run(self) {
+        loop {
+            let status = check_health(&self.service.healthiness);
+            self.bus.send_event(Event::HealthCheck(
+                self.service.name.clone(),
+                status.clone(),
+            ));
+            match self
+                .work_done_notifier
+                .recv_timeout(Duration::from_millis(1000))
+            {
+                Ok(()) | Err(RecvTimeoutError::Disconnected) => break,
+                _ => (),
+            };
+        }
+    }
+}
 
 // TODO:
 // * Tunable healthchecks timing in horust's config
@@ -18,77 +54,73 @@ pub fn spawn(bus: BusConnector<Event>, services: Vec<Service>) {
 }
 
 /// Returns true if the service is healthy and all checks are passed.
-fn check_health(healthiness: &Healthiness) -> bool {
-    let file = FilePathCheck {};
-    let http = HttpCheck {};
-    let checks: Vec<&dyn Check> = vec![&file, &http];
-    checks
+fn check_health(healthiness: &Healthiness) -> HealthinessStatus {
+    let failed_checks = get_checks()
         .into_iter()
         .filter(|check| !check.run(healthiness))
-        .count()
-        == 0
+        .count();
+    let is_healthy = failed_checks == 0;
+    is_healthy.into()
 }
 
-/// Run the healthchecks, produce the event changes
-fn next(
-    services: &HashMap<ServiceName, Service>,
-    running: &HashSet<ServiceName>,
-    starting: &HashSet<ServiceName>,
-) -> Vec<Event> {
-    debug!("next");
-    // TODO: probably add a timeout or trials.
-    starting
-        .iter()
-        .chain(running)
-        .map(|s_name| (s_name, services.get(s_name).unwrap()))
-        .filter_map(|(s_name, service)| {
-            let has_passed_checks = check_health(&service.healthiness);
-            if has_passed_checks && starting.contains(s_name) {
-                Some(Event::new_status_changed(s_name, ServiceStatus::Running))
-            } else if !has_passed_checks && running.contains(s_name) {
-                // TODO: change to ToBeKilled. If the healthcheck fails, maybe it's a transient failure and process might be still running.
-                Some(Event::Kill(s_name.into()))
-            } else {
-                // Starting services don't go in failure state if they don't pass the healthcheck
-                None
-            }
-        })
-        .collect()
-}
 fn run(bus: BusConnector<Event>, services: Vec<Service>) {
-    let mut repo = Repo::new(bus, services);
-    loop {
-        repo.ingest();
-        let events = next(&repo.services, &repo.started, &repo.running);
-        for ev in events {
-            repo.send_ev(ev);
-        }
-        if repo.is_shutting_down {
-            debug!("Breaking the loop..");
+    let mut workers = hashmap! {};
+    let get_service = |s_name: &ServiceName| {
+        services
+            .iter()
+            .filter(|sh| sh.name == *s_name)
+            .take(1)
+            .cloned()
+            .collect::<Vec<Service>>()
+            .remove(0)
+    };
+    for ev in bus.iter() {
+        if let Event::StatusChanged(s_name, status) = ev {
+            match status {
+                ServiceStatus::Started => {
+                    let (worker_notifier, work_done_rcv) = unbounded();
+                    let service = get_service(&s_name);
+                    let w = Worker::new(service, bus.clone(), work_done_rcv);
+                    let handle = w.spawn_thread();
+                    workers.insert(s_name, (worker_notifier, handle));
+                }
+                _ => (),
+            }
+        } else if let Event::ServiceExited(s_name, _exit_code) = ev {
+            if let Some((sender, handler)) = workers.remove(&s_name) {
+                //TODO: handle these
+                sender.send(()).unwrap();
+                handler.join().unwrap();
+            }
+        } else if ev == Event::ShuttingDownInitiated {
+            // Stop all the workers:
+            for (ws, _wh) in workers.values() {
+                // TODO: handle these
+                ws.send(()).unwrap();
+            }
+            // Actually wait for them
+            for (_s_name, (_ws, wh)) in workers {
+                wh.join().unwrap();
+            }
             break;
         }
-        std::thread::sleep(Duration::from_millis(1000));
     }
-
-    repo.send_ev(Event::new_exit_success("Healthcheck"));
+    bus.send_event(Event::new_exit_success("Healthchecker"));
 }
 
-/// Setup require for the service, before running the healthchecks and starting the service.
-pub fn prepare_service(healthiness: &Healthiness) -> Result<(), std::io::Error> {
-    if let Some(file_path) = healthiness.file_path.as_ref() {
-        //TODO: check if user has permissions to remove this file.
-        std::fs::remove_file(file_path)?;
-    }
-    Ok(())
+/// Setup require for the service, before running the healthchecks and starting the service
+pub fn prepare_service(healthiness: &Healthiness) -> Result<Vec<()>, std::io::Error> {
+    get_checks()
+        .into_iter()
+        .map(|check| check.prepare(healthiness))
+        .collect()
 }
 
 #[cfg(test)]
 mod test {
     use crate::horust::error::Result;
-    use crate::horust::formats::{Event, Healthiness, Service, ServiceStatus};
-    use crate::horust::healthcheck;
+    use crate::horust::formats::{Healthiness, HealthinessStatus};
     use crate::horust::healthcheck::check_health;
-    use std::collections::HashSet;
     use std::io::{Read, Write};
     use std::net::{Ipv4Addr, SocketAddrV4, TcpListener};
     use std::sync::mpsc;
@@ -96,29 +128,9 @@ mod test {
     use std::time::Duration;
     use tempdir::TempDir;
 
-    #[test]
-    fn test_next() -> Result<()> {
-        let tempdir = TempDir::new("health")?;
-        let file_path = tempdir.path().join("file.txt");
-        let service = format!(
-            r#"command = "not relevant"
-[healthiness]
-file-path = "{}""#,
-            file_path.display()
-        );
-        let service: Service = toml::from_str(service.as_str())?;
-        let services = hashmap! {service.name.clone() => service.clone()};
-        std::fs::write(file_path, "Hello world!")?;
-        let starting = hashset! {service.name.clone()};
-        let events: Vec<Event> = healthcheck::next(&services, &HashSet::new(), &starting);
-        debug!("{:?}", events);
-        assert!(events.contains(&Event::StatusChanged(
-            service.name.clone(),
-            ServiceStatus::Running
-        )));
-        Ok(())
+    fn check_health_w(healthiness: &Healthiness) -> bool {
+        check_health(healthiness) == HealthinessStatus::Healthy
     }
-
     #[test]
     fn test_healthiness_check_file() -> Result<()> {
         let tempdir = TempDir::new("health")?;
@@ -127,11 +139,11 @@ file-path = "{}""#,
             file_path: Some(file_path.clone()),
             http_endpoint: None,
         };
-        assert!(!check_health(&healthiness));
+        assert!(!check_health_w(&healthiness));
         std::fs::write(file_path, "Hello world!")?;
-        assert!(check_health(&healthiness));
+        assert!(check_health_w(&healthiness));
         let healthiness: Healthiness = Default::default();
-        assert!(check_health(&healthiness));
+        assert!(check_health_w(&healthiness));
         Ok(())
     }
     fn handle_request(listener: TcpListener) -> std::io::Result<()> {
@@ -153,7 +165,7 @@ file-path = "{}""#,
             file_path: None,
             http_endpoint: Some("http://localhost:123/".into()),
         };
-        assert!(!check_health(&healthiness));
+        assert!(!check_health_w(&healthiness));
         let loopback = Ipv4Addr::new(127, 0, 0, 1);
         let socket = SocketAddrV4::new(loopback, 0);
         let listener = TcpListener::bind(socket)?;
@@ -168,11 +180,11 @@ file-path = "{}""#,
             handle_request(listener).unwrap();
             sender.send(()).expect("Chan closed");
         });
-        assert!(check_health(&healthiness));
+        assert!(check_health_w(&healthiness));
         receiver
             .recv_timeout(Duration::from_millis(2000))
             .expect("Failed to received response from handle_request");
-        assert!(!check_health(&healthiness));
+        assert!(!check_health_w(&healthiness));
         Ok(())
     }
 }

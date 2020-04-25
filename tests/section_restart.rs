@@ -7,17 +7,16 @@ mod utils;
 use std::time::Duration;
 use utils::*;
 
+//TODO: remove stdout check, and use unsuccessful_exit_finished_failed instead
+// with assert.success() and assert.failure()
 fn restart_attempts(should_contain: bool, attempts: u32) {
     let (mut cmd, temp_dir) = get_cli();
     let failing_once_script = format!(
         r#"#!/usr/bin/env bash
-        echo starting
 if [ ! -f {0} ]; then
-    echo "I'm in!"
     touch {0} && exit 1
-    echo "Done O.o"
 fi
-echo "File is there!:D"
+echo "File is there"
 "#,
         temp_dir.path().join("file.temp").display()
     );
@@ -35,9 +34,9 @@ attempts = {}
         None,
     );
     if should_contain {
-        cmd.assert().stdout(contains("File is there!"));
+        cmd.assert().stdout(contains("File is there"));
     } else {
-        cmd.assert().stdout(contains("File is there!").not());
+        cmd.assert().stdout(contains("File is there").not());
     }
 }
 
@@ -53,13 +52,9 @@ fn test_restart_strategy_on_failure() {
 
     let failing_once_script = format!(
         r#"#!/usr/bin/env bash
-        echo starting
 if [ ! -f {0} ]; then
-    echo "I'm in!"
     touch {0} && exit 1
-    echo "Done O.o"
 fi
-echo "File is there!:D"
 "#,
         temp_dir.path().join("file.temp").display()
     );
