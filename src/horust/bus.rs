@@ -61,6 +61,7 @@ impl<T> BusConnector<T> {
     }
 
     /// Blocking
+    #[cfg(test)]
     pub fn get_n_events_blocking(&self, quantity: usize) -> Vec<T> {
         self.receiver.iter().take(quantity).collect()
     }

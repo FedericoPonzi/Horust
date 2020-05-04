@@ -55,7 +55,12 @@ impl Check for FilePathCheck {
     fn prepare(&self, healthiness: &Healthiness) -> Result<(), std::io::Error> {
         //TODO: check if user has permissions to remove this file.
         if let Some(file_path) = healthiness.file_path.as_ref() {
-            std::fs::remove_file(file_path)
+            // If it's a dir, remove_file will fail.
+            if file_path.exists() {
+                std::fs::remove_file(file_path)
+            } else {
+                Ok(())
+            }
         } else {
             Ok(())
         }

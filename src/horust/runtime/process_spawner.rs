@@ -1,6 +1,6 @@
 use crate::horust::bus::BusConnector;
 use crate::horust::error::Result;
-use crate::horust::formats::{Event, Service, ServiceStatus};
+use crate::horust::formats::{Event, Service};
 use nix::unistd;
 use nix::unistd::{fork, ForkResult, Pid};
 use shlex;
@@ -22,17 +22,11 @@ pub(crate) fn spawn_fork_exec_handler(
         let evs = match spawn_process(&service) {
             Ok(pid) => {
                 debug!("Setting pid:{} for service: {}", pid, service.name);
-                vec![
-                    Event::new_pid_changed(service.name.clone(), pid),
-                    Event::new_status_changed(&service.name, ServiceStatus::Started),
-                ]
+                vec![Event::new_pid_changed(service.name.clone(), pid)]
             }
             Err(error) => {
                 error!("Failed spawning the process: {}", error);
-                vec![Event::new_status_changed(
-                    &service.name,
-                    ServiceStatus::Failed,
-                )]
+                vec![Event::SpawnFailed(service.name)]
             }
         };
         evs.into_iter().for_each(|ev| bus.send_event(ev));

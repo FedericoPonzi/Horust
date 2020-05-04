@@ -11,6 +11,7 @@ use utils::*;
 // with assert.success() and assert.failure()
 fn restart_attempts(should_contain: bool, attempts: u32) {
     let (mut cmd, temp_dir) = get_cli();
+
     let failing_once_script = format!(
         r#"#!/usr/bin/env bash
 if [ ! -f {0} ]; then
@@ -22,9 +23,15 @@ echo "File is there"
     );
     let service = format!(
         r#"
+[healthiness]
+file-path = "{}"
 [restart]
 attempts = {}
 "#,
+        temp_dir
+            .path()
+            .join("valid-path-but-shouldnt-exists.temp")
+            .display(),
         attempts
     );
     store_service(
@@ -42,7 +49,9 @@ attempts = {}
 
 #[test]
 fn test_restart_attempts() {
+    // Should try to check for the presence of a file, since it's not there it will fail.
     restart_attempts(false, 0);
+    // Now we have a second shot, since the file was created the first time this will succeed.
     restart_attempts(true, 1);
 }
 

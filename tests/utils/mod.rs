@@ -42,12 +42,15 @@ pub fn store_service(
 pub fn get_cli() -> (Command, TempDir) {
     let temp_dir = TempDir::new("horust").unwrap();
     let mut cmd = Command::cargo_bin("horust").unwrap();
-    cmd.current_dir(&temp_dir).args(vec![
-        "--services-path",
-        temp_dir.path().display().to_string().as_str(),
-    ]);
-    //.stdout(Stdio::from(std::fs::File::create("/tmp/stdout").unwrap()))
-    //.stderr(std::process::Stdio::from(std::fs::File::create("/tmp/stderr").unwrap(),));
+    cmd.current_dir(&temp_dir)
+        .args(vec![
+            "--services-path",
+            temp_dir.path().display().to_string().as_str(),
+        ])
+        //.stdout(Stdio::from(std::fs::File::create("/tmp/stdout").unwrap()))
+        .stderr(std::process::Stdio::from(
+            std::fs::File::create("/tmp/stderr").unwrap(),
+        ));
     (cmd, temp_dir)
 }
 
