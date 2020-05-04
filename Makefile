@@ -1,9 +1,11 @@
 NAME = "horust"
 VERSION = "v0.1.0"
-DOCKER_REPO = "horust"
+DOCKER_REPO = "federicoponzi"
 REPO_HOME := $(shell git rev-parse --show-toplevel)
 GIT_COMMIT := $(shell git rev-parse HEAD)
 GIT_BRANCH := $(shell git rev-parse --abbrev-ref HEAD)
+APP_NAME := "horust"
+
 COMMON_DOCKER_PARAMS := --build-arg GIT_COMMIT="$(GIT_COMMIT)" --build-arg GIT_BRANCH="$(GIT_BRANCH)"
 .PHONY: help
 
@@ -15,31 +17,34 @@ help: ## This help.
 # DOCKER TASKS
 # Build the container
 build: ## Build the container
-	docker build -t $(NAME):$(VERSION) $(COMMON_DOCKER_PARAMS) .
+	docker build -t $(DOCKER_REPO)/$(APP_NAME):$(VERSION) $(COMMON_DOCKER_PARAMS) .
 
 build-nofeatures: ## Build the container without http requests.
-	docker build -t $(NAME):$(VERSION) $(COMMON_DOCKER_PARAMS) --build-arg CARGO_PARAMS="--no-default-features" .
+	docker build -t $(DOCKER_REPO)/$(APP_NAME)_nofeatures:$(VERSION) $(COMMON_DOCKER_PARAMS) --build-arg CARGO_PARAMS="--no-default-features" .
 
 run: ## Run container on port configured in `config.env`
 	docker run -it --rm --env HORUST_LOG=debug -v $(REPO_HOME)/examples/services/longrunning/:/etc/horust/services/ --name="$(NAME)" $(NAME):$(VERSION)
 
 run-bash: ## Run bash with horust
-	docker run -it --rm --env HORUST_LOG=debug --name="$(NAME)" $(NAME):$(VERSION) -- /bin/bash
-
+	docker run -it --rm --env HORUST_LOG=debug --name="$(NAME)" $(DOCKER_REPO)/$(APP_NAME):$(VERSION) -- /bin/bash
 
 stop: ## Stop and remove a running container
 	docker stop $(NAME)
 
 # Docker publish
-publish: repo-login publish-latest publish-version ## publish the `{version}` ans `latest` tagged containers to ECR
+publish: build publish-latest publish-version ## publish the `{version}` ans `latest` tagged containers to ECR
 
-publish-latest: tag-latest ## publish the `latest` tagged container to ECR
+publish-latest: tag-latest ## publish the `latest` tagged container
 	@echo 'publish latest to $(DOCKER_REPO)'
 	docker push $(DOCKER_REPO)/$(APP_NAME):latest
 
-publish-version: tag-version ## publish the `{version}` tagged container to ECR
+publish-version: ## publish the `{version}` tagged container to ECR
 	@echo 'publish $(VERSION) to $(DOCKER_REPO)'
 	docker push $(DOCKER_REPO)/$(APP_NAME):$(VERSION)
+
+tag-latest:
+	@echo 'create tag latest'
+	docker tag $(DOCKER_REPO)/$(APP_NAME):$(VERSION) $(DOCKER_REPO)/$(APP_NAME):latest
 
 version: ## output to version
 	@echo $(VERSION)
