@@ -42,8 +42,6 @@ jobs:
             rust: beta
           - build: nightly
             rust: nightly
-            benches: true
-
     steps:
       - name: Checkout
         uses: actions/checkout@v1

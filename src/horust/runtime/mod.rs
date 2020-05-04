@@ -52,10 +52,9 @@ impl Runtime {
             ],
             ServiceStatus::Success | ServiceStatus::Initial => vev_status(ServiceStatus::Finished),
             ServiceStatus::Failed => vev_status(ServiceStatus::FinishedFailed),
-            ServiceStatus::InKilling if should_force_kill(service_handler) => vec![
-                Event::new_force_kill(service_handler.name()),
-                Event::new_status_changed(service_handler.name(), ServiceStatus::Failed),
-            ],
+            ServiceStatus::InKilling if should_force_kill(service_handler) => {
+                vec![Event::new_force_kill(service_handler.name())]
+            }
             _ => vec![],
         }
     }
@@ -225,9 +224,14 @@ impl Runtime {
                 vec![]
             }
             Event::ForceKill(service_name) if self.repo.get_sh(&service_name).is_in_killing() => {
+                debug!("Going to forcekill {}", service_name);
                 let service_handler = self.repo.get_mut_sh(&service_name);
                 kill(&service_handler, Some(Signal::SIGKILL));
-                vec![]
+                service_handler.status = ServiceStatus::Failed;
+                vec![Event::new_status_changed(
+                    service_handler.name(),
+                    ServiceStatus::Failed,
+                )]
             }
             Event::PidChanged(service_name, pid) => {
                 let service_handler = self.repo.get_mut_sh(&service_name);
