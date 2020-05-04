@@ -9,10 +9,12 @@ pub type ComponentName = String;
 #[derive(Debug, Clone, PartialEq)]
 pub enum Event {
     PidChanged(ServiceName, Pid),
+    ServiceStarted(ServiceName),
     StatusChanged(ServiceName, ServiceStatus),
     ServiceExited(ServiceName, i32),
     ForceKill(ServiceName),
     Kill(ServiceName),
+    SpawnFailed(ServiceName),
     Run(ServiceName),
     Exiting(ComponentName, ExitStatus),
     ShuttingDownInitiated,

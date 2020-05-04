@@ -46,9 +46,9 @@ attempts = 0
     * `never`: It won't be restarted, no matter what's the exit status. Please check the attempts parameter below.
 
 * **`backoff` = `string`**: Use this time before retrying restarting the service. 
-* **`attempts` = `number`**: How many attempts before considering the service as FinishedFailed. Default is 10.
+* **`attempts` = `number`**: How many attempts to start the service before considering it as FinishedFailed. Default is 10.
 Attempts are useful if your service is failing too quickly. If you're in a start-stop loop, this will put and end to it.
-If a service has failed too quickly, it will be restarted even if the policy is `never`. 
+If a service has failed too quickly and attempts > 0, it will be restarted even if the strategy is `never`. 
 And if the attempts are over, it won't never be restarted even if the restart policy is: On-Failure/ Always.
 
 The delay between attempts is calculated as: `backoff * attempts_made + start-delay`. For instance, using:

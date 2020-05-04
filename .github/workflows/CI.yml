@@ -42,8 +42,6 @@ jobs:
             rust: beta
           - build: nightly
             rust: nightly
-            benches: true
-
     steps:
       - name: Checkout
         uses: actions/checkout@v1
@@ -59,17 +57,8 @@ jobs:
         uses: actions-rs/cargo@v1
         with:
           command: build
-          args: ${{ matrix.features }}
 
       - name: Test
         uses: actions-rs/cargo@v1
         with:
           command: test
-          args: ${{ matrix.features }}
-
-      - name: Test all benches
-        if: matrix.benches
-        uses: actions-rs/cargo@v1
-        with:
-          command: test
-          args: --benches ${{ matrix.features }}

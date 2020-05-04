@@ -25,11 +25,6 @@ impl Repo {
         self.bus.try_get_events()
     }
 
-    /// Blocking
-    pub(crate) fn get_n_events_blocking(&mut self, quantity: usize) -> Vec<Event> {
-        self.bus.get_n_events_blocking(quantity)
-    }
-
     pub fn all_have_finished(&self) -> bool {
         self.services
             .iter()
