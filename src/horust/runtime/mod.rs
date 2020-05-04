@@ -39,82 +39,79 @@ impl Runtime {
         }
     }
 
+    fn next_shutting_down(&self, service_handler: &ServiceHandler) -> Vec<Event> {
+        let ev_status =
+            |status: ServiceStatus| Event::new_status_changed(service_handler.name(), status);
+        let vev_status = |status: ServiceStatus| vec![ev_status(status)];
+
+        // Handle the new state separately if we're shutting down.
+        match service_handler.status {
+            ServiceStatus::Running | ServiceStatus::Started => vec![
+                ev_status(ServiceStatus::InKilling),
+                Event::Kill(service_handler.name().clone()),
+            ],
+            ServiceStatus::Success | ServiceStatus::Initial => vev_status(ServiceStatus::Finished),
+            ServiceStatus::Failed => vev_status(ServiceStatus::FinishedFailed),
+            ServiceStatus::InKilling if should_force_kill(service_handler) => vec![
+                Event::new_force_kill(service_handler.name()),
+                Event::new_status_changed(service_handler.name(), ServiceStatus::Failed),
+            ],
+            _ => vec![],
+        }
+    }
+
     /// Compute next state for each sh
     fn next(&self, service_handler: &ServiceHandler) -> Vec<Event> {
         let ev_status =
             |status: ServiceStatus| Event::new_status_changed(service_handler.name(), status);
         let vev_status = |status: ServiceStatus| vec![ev_status(status)];
-
         if self.is_shutting_down {
-            // Handle the new state separately if we're shutting down.
-            return match service_handler.status {
-                ServiceStatus::Running | ServiceStatus::Started => vec![
+            self.next_shutting_down(service_handler)
+        } else if self.repo.is_service_runnable(&service_handler) {
+            vec![Event::Run(service_handler.name().clone())]
+        } else {
+            match service_handler.status {
+                ServiceStatus::Started if service_handler.healthiness_checks_failed == 0 => {
+                    vev_status(ServiceStatus::Running)
+                }
+                // If 2 healthcheks are failed, then kill the service. Maybe this should be parametrized
+                ServiceStatus::Running if service_handler.healthiness_checks_failed > 2 => vec![
                     ev_status(ServiceStatus::InKilling),
                     Event::Kill(service_handler.name().clone()),
                 ],
-                ServiceStatus::Success | ServiceStatus::Initial => {
-                    vev_status(ServiceStatus::Finished)
+                ServiceStatus::Success => {
+                    vec![handle_restart_strategy(service_handler.service(), false)]
                 }
-                ServiceStatus::Failed => vev_status(ServiceStatus::FinishedFailed),
+                ServiceStatus::Failed => {
+                    let mut failure_evs = handle_failure_strategy(
+                        self.repo.get_dependents(service_handler.name().into()),
+                        service_handler.service(),
+                    );
+                    let other_services_termination = self
+                        .repo
+                        .get_die_if_failed(service_handler.name())
+                        .into_iter()
+                        .map(|sh_name| {
+                            vec![
+                                Event::new_status_changed(sh_name, ServiceStatus::InKilling),
+                                Event::Kill(sh_name.clone()),
+                            ]
+                        })
+                        .flatten();
+
+                    let service_ev = handle_restart_strategy(service_handler.service(), true);
+
+                    failure_evs.push(service_ev);
+                    failure_evs.extend(other_services_termination);
+                    failure_evs
+                }
                 ServiceStatus::InKilling if should_force_kill(service_handler) => vec![
                     Event::new_force_kill(service_handler.name()),
                     Event::new_status_changed(service_handler.name(), ServiceStatus::Failed),
                 ],
+
                 _ => vec![],
-            };
-        }
-        if self.repo.is_service_runnable(&service_handler) {
-            return vec![Event::Run(service_handler.name().clone())];
-        }
-
-        match service_handler.status {
-            ServiceStatus::Started if service_handler.healthiness_checks_failed == 0 => {
-                vev_status(ServiceStatus::Running)
             }
-            // If 2 healthcheks are failed, then kill the service. Maybe this should be parametrized
-            ServiceStatus::Running if service_handler.healthiness_checks_failed > 2 => vec![
-                ev_status(ServiceStatus::InKilling),
-                Event::Kill(service_handler.name().clone()),
-            ],
-            ServiceStatus::Success => {
-                vec![handle_restart_strategy(service_handler.service(), false)]
-            }
-            ServiceStatus::Failed => {
-                let attempts_are_over =
-                    service_handler.restart_attempts > service_handler.service().restart.attempts;
-
-                let mut failure_evs = handle_failure_strategy(
-                    self.repo.get_dependents(service_handler.name().into()),
-                    service_handler.service(),
-                );
-                let other_services_termination = self
-                    .repo
-                    .get_die_if_failed(service_handler.name())
-                    .into_iter()
-                    .map(|sh_name| {
-                        vec![
-                            Event::new_status_changed(sh_name, ServiceStatus::InKilling),
-                            Event::Kill(sh_name.clone()),
-                        ]
-                    })
-                    .flatten();
-
-                let service_ev = if !attempts_are_over {
-                    ev_status(ServiceStatus::FinishedFailed)
-                } else {
-                    handle_restart_strategy(service_handler.service(), true)
-                };
-
-                failure_evs.push(service_ev);
-                failure_evs.extend(other_services_termination);
-                failure_evs
-            }
-            ServiceStatus::InKilling if should_force_kill(service_handler) => vec![
-                Event::new_force_kill(service_handler.name()),
-                Event::new_status_changed(service_handler.name(), ServiceStatus::Failed),
-            ],
-
-            _ => vec![],
         }
     }
 
@@ -152,7 +149,7 @@ impl Runtime {
                         service_handler.restart_attempts += 1;
                         if service_handler.restart_attempts_are_over() {
                             //Game over!
-                            ServiceStatus::Failed
+                            ServiceStatus::FinishedFailed
                         } else {
                             ServiceStatus::Initial
                         }

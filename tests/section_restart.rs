@@ -62,7 +62,7 @@ fn test_restart_strategy_on_failure() {
     let failing_once_script = format!(
         r#"#!/usr/bin/env bash
 if [ ! -f {0} ]; then
-    touch {0} && exit 1
+    touch {0} && sleep 1 && exit 1
 fi
 "#,
         temp_dir.path().join("file.temp").display()
