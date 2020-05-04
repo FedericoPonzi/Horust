@@ -122,7 +122,6 @@ impl Runtime {
     fn handle_event(&mut self, ev: Event) -> Vec<Event> {
         match ev {
             Event::ServiceExited(service_name, exit_code) => {
-                let mut evs = vec![];
                 let service_handler = self.repo.get_mut_sh(&service_name);
                 service_handler.shutting_down_start = None;
                 service_handler.pid = None;
@@ -134,7 +133,7 @@ impl Runtime {
                     .contains(&exit_code);
                 let healthcheck_failed = service_handler.healthiness_checks_failed > 0
                     && service_handler.status == ServiceStatus::Running;
-                if has_failed || healthcheck_failed {
+                service_handler.status = if has_failed || healthcheck_failed {
                     warn!(
                         "Service: {} has failed, exit code: {}, healthchecks: {}",
                         service_handler.name(),
@@ -144,30 +143,22 @@ impl Runtime {
 
                     // If it has failed too quickly, increase service_handler's restart attempts
                     // and check if it has more attempts left.
-                    if vec![
+                    let early_states = vec![
                         ServiceStatus::Initial,
                         ServiceStatus::Starting,
                         ServiceStatus::Started,
-                    ]
-                    .contains(&service_handler.status)
-                    {
-                        debug!(
-                            "Wow, that was fast dude, restart attempts: {}",
-                            service_handler.restart_attempts
-                        );
+                    ];
+                    if early_states.contains(&service_handler.status) {
                         service_handler.restart_attempts += 1;
                         if service_handler.restart_attempts_are_over() {
-                            evs.push(Event::StatusChanged(service_name, ServiceStatus::Failed));
-                            service_handler.status = ServiceStatus::Failed;
+                            //Game over!
+                            ServiceStatus::Failed
                         } else {
-                            evs.push(Event::StatusChanged(service_name, ServiceStatus::Initial));
-                            service_handler.status = ServiceStatus::Initial;
+                            ServiceStatus::Initial
                         }
                     } else {
-                        debug!("Naa, it's fine!, was in : {}", service_handler.status);
                         // If wasn't starting, then it's just failed in a usual way:
-                        service_handler.status = ServiceStatus::Failed;
-                        evs.push(Event::StatusChanged(service_name, ServiceStatus::Failed));
+                        ServiceStatus::Failed
                     }
                 } else {
                     info!(
@@ -175,11 +166,13 @@ impl Runtime {
                         service_handler.name(),
                         exit_code
                     );
-                    service_handler.status = ServiceStatus::Success;
-                    evs.push(Event::StatusChanged(service_name, ServiceStatus::Success));
-                }
+                    ServiceStatus::Success
+                };
                 debug!("New state for exited service: {:?}", service_handler.status);
-                evs
+                vec![Event::StatusChanged(
+                    service_name.clone(),
+                    service_handler.status.clone(),
+                )]
             }
             Event::Run(service_name) if self.repo.get_sh(&service_name).is_initial() => {
                 let mut evs = vec![];
