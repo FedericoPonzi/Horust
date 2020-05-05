@@ -19,36 +19,32 @@ pub(crate) fn spawn_fork_exec_handler(
     std::thread::spawn(move || {
         let total_sleep = service.start_delay.clone().add(backoff);
         let timeout = after(total_sleep);
-
         debug!("going to sleep: {:?}", total_sleep);
         // If start-delay is very high, this might interfere with the shutdown of the system.
         // the thread will listen for shutdown events from the bus, and will early exit if there is
         // a shuttingdowninitiated event
         let is_shutting_down_ev = |ev: Event| Event::ShuttingDownInitiated == ev;
-        loop {
+        let ev = loop {
             select! {
-                recv(bus.receiver()) -> ev => {
-                    let ev = ev.unwrap_or(Event::ShuttingDownInitiated);
-                    if is_shutting_down_ev(ev){
-                        bus.send_event(Event::SpawnFailed(service.name.clone()));
-                        return;
-                    }
-                },
-                recv(timeout) -> _ => break,
-            }
-        }
-
-        let evs = match spawn_process(&service) {
-            Ok(pid) => {
-                debug!("Setting pid:{} for service: {}", pid, service.name);
-                vec![Event::new_pid_changed(service.name.clone(), pid)]
-            }
-            Err(error) => {
-                error!("Failed spawning the process: {}", error);
-                vec![Event::SpawnFailed(service.name)]
+                    recv(bus.receiver()) -> ev => {
+                        let ev = ev.unwrap_or(Event::ShuttingDownInitiated);
+                        if is_shutting_down_ev(ev){
+                            break Event::SpawnFailed(service.name.clone());
+                        }
+                    },
+                    recv(timeout) -> _ => break match spawn_process(&service) {
+                            Ok(pid) => {
+                                debug!("Setting pid:{} for service: {}", pid, service.name);
+                                Event::new_pid_changed(service.name.clone(), pid)
+                            }
+                            Err(error) => {
+                                error!("Failed spawning the process: {}", error);
+                                Event::SpawnFailed(service.name)
+                            }
+                    },
             }
         };
-        evs.into_iter().for_each(|ev| bus.send_event(ev));
+        bus.send_event(ev);
     });
 }
 
