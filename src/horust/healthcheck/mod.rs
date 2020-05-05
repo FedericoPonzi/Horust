@@ -75,34 +75,39 @@ fn run(bus: BusConnector<Event>, services: Vec<Service>) {
             .remove(0)
     };
     for ev in bus.iter() {
-        if let Event::StatusChanged(s_name, status) = ev {
-            match status {
-                ServiceStatus::Started => {
-                    let (worker_notifier, work_done_rcv) = unbounded();
-                    let service = get_service(&s_name);
-                    let w = Worker::new(service, bus.clone(), work_done_rcv);
-                    let handle = w.spawn_thread();
-                    workers.insert(s_name, (worker_notifier, handle));
+        match ev {
+            Event::StatusChanged(s_name, ServiceStatus::Started) => {
+                let (worker_notifier, work_done_rcv) = unbounded();
+                let service = get_service(&s_name);
+                let w = Worker::new(service, bus.clone(), work_done_rcv);
+                let handle = w.spawn_thread();
+                workers.insert(s_name, (worker_notifier, handle));
+            }
+            Event::ServiceExited(s_name, _exit_code) => {
+                if let Some((sender, handler)) = workers.remove(&s_name) {
+                    if sender.send(()).is_err() {
+                        error!("Cannot send msg to sender - channel closed.");
+                    }
+                    if let Err(error) = handler.join() {
+                        error!("Error joining thread: {:?}", error);
+                    }
+                } else {
+                    warn!("Worker thread for {} not found.", s_name);
                 }
-                _ => (),
             }
-        } else if let Event::ServiceExited(s_name, _exit_code) = ev {
-            if let Some((sender, handler)) = workers.remove(&s_name) {
-                //TODO: handle these
-                sender.send(()).unwrap();
-                handler.join().unwrap();
+            Event::ShuttingDownInitiated => {
+                // Stop all the workers:
+                for (ws, _wh) in workers.values() {
+                    // TODO: handle these
+                    ws.send(()).unwrap();
+                }
+                // Actually wait for them
+                for (_s_name, (_ws, wh)) in workers {
+                    wh.join().unwrap();
+                }
+                break;
             }
-        } else if ev == Event::ShuttingDownInitiated {
-            // Stop all the workers:
-            for (ws, _wh) in workers.values() {
-                // TODO: handle these
-                ws.send(()).unwrap();
-            }
-            // Actually wait for them
-            for (_s_name, (_ws, wh)) in workers {
-                wh.join().unwrap();
-            }
-            break;
+            _ => {}
         }
     }
     bus.send_event(Event::new_exit_success("Healthchecker"));

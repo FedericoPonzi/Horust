@@ -376,7 +376,6 @@ fn handle_status_changed_event(
                     new_status
                 );
                 if service_handler.status == ServiceStatus::Initial {
-                    debug!("Was in initial state, setting it to finished");
                     new_sh.status = ServiceStatus::Success;
                 } else {
                     new_sh.status = ServiceStatus::InKilling;

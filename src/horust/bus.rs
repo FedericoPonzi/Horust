@@ -76,6 +76,9 @@ impl<T> BusConnector<T> {
     pub(crate) fn send_event(&self, ev: T) {
         self.sender.send(ev).expect("Failed sending update event!");
     }
+    pub fn receiver(&self) -> &Receiver<T> {
+        &self.receiver
+    }
 }
 
 #[cfg(test)]

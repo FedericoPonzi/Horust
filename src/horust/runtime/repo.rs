@@ -6,7 +6,6 @@ use std::collections::HashMap;
 
 #[derive(Debug, Clone)]
 pub(crate) struct Repo {
-    // TODO: make it a map ServiceName: ServiceHandler
     pub services: HashMap<ServiceName, ServiceHandler>,
     pub(crate) bus: BusConnector<Event>,
 }

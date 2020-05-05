@@ -4,6 +4,9 @@ use tempdir::TempDir;
 
 #[allow(dead_code)]
 mod utils;
+use nix::sys::signal::{kill, Signal};
+use std::thread::sleep;
+use std::time::Duration;
 use utils::*;
 
 #[test]
@@ -58,4 +61,23 @@ whoami"#;
     store_service(temp_dir.path(), script, Some(service), None);
     store_service(temp_dir.path(), script, None, None);
     cmd.assert().success().stdout(contains("games"));
+}
+
+#[test]
+fn test_termination_with_pending_thread() {
+    // start-delay should not interfere with the shutting down.
+    let (mut cmd, temp_dir) = get_cli();
+    let script = r#"#!/usr/bin/env bash
+while true ; do
+    sleep 1
+done
+"#;
+    let service = r#"
+start-delay = "10s"
+"#;
+    store_service(temp_dir.path(), script, Some(service), None);
+    let recv = run_async(&mut cmd, true);
+    sleep(Duration::from_secs(1));
+    kill(recv.pid, Signal::SIGINT).expect("kill");
+    recv.recv_or_kill(Duration::from_secs(5));
 }

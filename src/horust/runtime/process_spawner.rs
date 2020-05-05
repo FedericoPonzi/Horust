@@ -1,6 +1,7 @@
 use crate::horust::bus::BusConnector;
 use crate::horust::error::Result;
 use crate::horust::formats::{Event, Service};
+use crossbeam::after;
 use nix::unistd;
 use nix::unistd::{fork, ForkResult, Pid};
 use shlex;
@@ -16,9 +17,27 @@ pub(crate) fn spawn_fork_exec_handler(
     bus: BusConnector<Event>,
 ) {
     std::thread::spawn(move || {
-        // todo: we should wake up every second, in case someone wants to kill this process.
-        debug!("going to sleep: {:?}", service.start_delay.add(backoff));
-        std::thread::sleep(service.start_delay.add(backoff));
+        let total_sleep = service.start_delay.clone().add(backoff);
+        let timeout = after(total_sleep);
+
+        debug!("going to sleep: {:?}", total_sleep);
+        // If start-delay is very high, this might interfere with the shutdown of the system.
+        // the thread will listen for shutdown events from the bus, and will early exit if there is
+        // a shuttingdowninitiated event
+        let is_shutting_down_ev = |ev: Event| Event::ShuttingDownInitiated == ev;
+        loop {
+            select! {
+                recv(bus.receiver()) -> ev => {
+                    let ev = ev.unwrap_or(Event::ShuttingDownInitiated);
+                    if is_shutting_down_ev(ev){
+                        bus.send_event(Event::SpawnFailed(service.name.clone()));
+                        return;
+                    }
+                },
+                recv(timeout) -> _ => break,
+            }
+        }
+
         let evs = match spawn_process(&service) {
             Ok(pid) => {
                 debug!("Setting pid:{} for service: {}", pid, service.name);
