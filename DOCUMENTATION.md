@@ -119,7 +119,7 @@ signal = "TERM"
 wait = "10s"
 die-if-failed = ["db.toml"]
 ```
-* **`signal` = `"TERM|HUP|INT|QUIT|KILL|USR1|USR2"`**: The _friendly_ signal used for shutting down the process.
+* **`signal` = `"TERM|HUP|INT|QUIT|USR1|USR2"`**: The _friendly_ signal used for shutting down the process.
 * **`wait` = `"time"`**: How much time to wait before sending a SIGKILL after `signal` has been sent.
 * **`die-if-failed` = `["<service-name>"]`**: As soon as any of the services defined in this the array fails, this service will be terminated as well.
 

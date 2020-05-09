@@ -469,10 +469,10 @@ pub enum TerminationSignal {
     HUP,
     INT,
     QUIT,
-    KILL,
     USR1,
     USR2,
 }
+
 impl Into<Signal> for TerminationSignal {
     fn into(self) -> Signal {
         match self {
@@ -480,7 +480,6 @@ impl Into<Signal> for TerminationSignal {
             TerminationSignal::HUP => SIGHUP,
             TerminationSignal::INT => SIGINT,
             TerminationSignal::QUIT => SIGQUIT,
-            TerminationSignal::KILL => SIGKILL,
             TerminationSignal::USR1 => SIGUSR1,
             TerminationSignal::USR2 => SIGUSR2,
         }

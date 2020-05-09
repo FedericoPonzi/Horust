@@ -1,6 +1,5 @@
 use nix::sys::signal::{kill, Signal};
 use std::time::Duration;
-
 pub mod utils;
 use utils::*;
 
@@ -35,35 +34,55 @@ wait = "1s""#;
     recv.recv_or_kill(Duration::from_secs(5));
 }
 
-#[test]
-fn test_termination_custom_signal() {
+fn test_termination_custom_signal(friendly_name: &str) {
     let (mut cmd, temp_dir) = get_cli();
     // this script captures traps SIGINT / SIGTERM / SIGEXIT
-    let script = r#"#!/usr/bin/env bash
-trap_with_arg() {
+    let script = format!(
+        r#"#!/usr/bin/env bash
+trap_with_arg() {{
     func="$1" ; shift
     for sig ; do
         trap "$func $sig" "$sig"
     done
-}
-func_trap() {
-    if [ "$1" == "HUP" ] ; then 
+}}
+func_trap() {{
+    if [ "$1" == "{0}" ] ; then 
         exit 0
     fi
-}
-trap_with_arg func_trap INT TERM HUP
+}}
+trap_with_arg func_trap {0}
 while true ; do
     sleep 1 
 done
-"#;
-    let service = r#"[termination]
-signal = "HUP"
-wait = "10s""#; // wait is higher than the test duration.
-    store_service(temp_dir.path(), script, Some(service), None);
+"#,
+        friendly_name
+    );
+    let service = format!(
+        r#"[termination]
+signal = "{}"
+wait = "10s""#,
+        friendly_name
+    ); // wait is higher than the test duration.
 
+    store_service(
+        temp_dir.path(),
+        script.as_str(),
+        Some(service.as_str()),
+        None,
+    );
     let recv = run_async(&mut cmd, true);
-    kill(recv.pid, Signal::SIGINT).expect("kill");
+    kill(recv.pid, Signal::SIGTERM).expect("kill");
     recv.recv_or_kill(Duration::from_secs(5));
+}
+
+#[test]
+fn test_termination_all_custom_signals() {
+    vec!["TERM", "HUP", "INT", "QUIT", "USR1", "USR2"]
+        .into_iter()
+        .for_each(|friendly_name| {
+            test_termination_custom_signal(friendly_name);
+            println!("Test done: {}", friendly_name);
+        })
 }
 
 #[test]
