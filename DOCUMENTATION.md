@@ -18,19 +18,23 @@ A part from the `user` parameter, everything should work even with an unprivileg
 ```toml
 # name = "myname"
 command = "/bin/bash -c 'echo hello world'"
-working-directory = "/tmp/"
 start-delay = "2s"
 start-after = ["another.toml", "second.toml"]
+stdout = "STDOUT"
+stderr = "/var/logs/hello_world_svc/stderr.log"
 user = "root"
+working-directory = "/tmp/"
 ```
 * **`name` = `string`**: Name of the service. Optional, uses the filename by default.
 * **`command` = `string`**: Specify a command to run, or a full path. You can also add arguments. If a full path is not provided, the binary will be searched using the $PATH env variable.
-* **`working-directory` = `string`**: Will run this command in this directory.
 * **`start-after` = `[list<ServiceName>`**: Start after these other services. User their filename (e.g. `first.toml`).
 If service `a` should start after service `b`, then `a` will be started as soon as `b` is considered Running or Finished. 
 If `b` enters in a FinishedFailed state (finished in an unsuccessful manner), `a` might not start at all. 
 * **`start-delay` = `time`**: Start this service with the specified delay. Check how to specify times [here](https://github.com/tailhook/humantime/blob/49f11fdc2a59746085d2457cb46bce204dec746a/src/duration.rs#L338) 
+* **`stdout` = `STDOUT|STDERR|file-path`**: Redirect stdout of this service. STDOUT and STDERR are special strings, pointing to stdout and stderr respectively. Otherwise, a file path is a assumed.
+* **`stderr` = `STDOUT|STDERR|file-path`**: Redirect stderr of this service. Read `stdout` above for a complete reference.
 * **`user` = `uid|username`**: Will run this service as this user. Either an uid or a username (check it in /etc/passwd)
+* **`working-directory` = `string`**: Will run this command in this directory.
 
 #### Restart section
 ```toml

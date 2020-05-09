@@ -13,12 +13,12 @@ use std::time::Duration;
 pub fn get_sample_service() -> String {
     r#"
 command = "/bin/bash -c 'echo hello world'"
-working-directory = "/tmp/"
 start-delay = "2s"
 start-after = ["another.toml", "second.toml"]
-user = "root"
 stdout = "STDOUT"
 stderr = "/var/logs/hello_world_svc/stderr.log"
+user = "root"
+working-directory = "/tmp/"
 
 [restart]
 strategy = "never"
