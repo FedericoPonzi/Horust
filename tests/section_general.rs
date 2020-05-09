@@ -1,5 +1,5 @@
 use assert_cmd::prelude::*;
-use predicates::str::contains;
+use predicates::str::{contains, is_empty};
 use tempdir::TempDir;
 
 #[allow(dead_code)]
@@ -8,6 +8,59 @@ use nix::sys::signal::{kill, Signal};
 use std::thread::sleep;
 use std::time::Duration;
 use utils::*;
+
+fn test_single_output_redirection(stream: &str, to: &str) {
+    let (mut cmd, temp_dir) = get_cli();
+    let pattern = "Hello".to_string();
+    let to = if to == "FILE" {
+        let name = format!("{}.log", stream);
+        let path = temp_dir.path().join(name);
+        path.display().to_string()
+    } else {
+        to.into()
+    };
+    let redir = if stream == "stderr" { "1>&2" } else { "" };
+    let script = format!(
+        r#"#!/usr/bin/env bash
+printf "{}" {}"#,
+        pattern, redir
+    );
+    let service = format!(r#"{}="{}""#, stream, to);
+    store_service(
+        temp_dir.path(),
+        script.as_str(),
+        Some(service.as_str()),
+        None,
+    );
+    if to == "STDOUT" {
+        cmd.assert()
+            .success()
+            .stdout(contains("Hello"))
+            .stderr(is_empty());
+    } else if to == "STDERR" {
+        cmd.assert()
+            .success()
+            .stdout(is_empty())
+            .stderr(contains("Hello"));
+    } else {
+        cmd.assert().success().stdout(is_empty()).stdout(is_empty());
+        let content = std::fs::read_to_string(&to).unwrap();
+        assert_eq!(content, pattern);
+    }
+}
+#[test]
+fn test_output_redirection() {
+    let from = vec!["stdout", "stderr"];
+    let to = vec!["STDOUT", "STDERR", "FILE"];
+    let test_matrix: Vec<(&str, &str)> = from
+        .into_iter()
+        .map(|fr| to.clone().into_iter().map(move |t| (fr, t)))
+        .flatten()
+        .collect();
+    test_matrix
+        .into_iter()
+        .for_each(|(stream, to)| test_single_output_redirection(stream, to))
+}
 
 #[test]
 fn test_cwd() {

@@ -212,7 +212,6 @@ impl Into<String> for LogOutput {
 
 impl From<&str> for LogOutput {
     fn from(strategy: &str) -> Self {
-        println!("Request strategy: {}", strategy);
         match strategy {
             "STDOUT" => LogOutput::Stdout,
             "STDERR" => LogOutput::Stderr,
@@ -596,6 +595,7 @@ impl Default for TerminationSignal {
 }
 
 /// Runs some validation checks on the services.
+/// TODO: if redirect output is file, check it exists and permissions.
 pub fn validate(services: Vec<Service>) -> Result<Vec<Service>, Vec<ValidationError>> {
     let mut errors = vec![];
     services.iter().for_each(|service| {
