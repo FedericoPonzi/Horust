@@ -1,9 +1,10 @@
 use crate::horust::error::{HorustError, ValidationError, ValidationErrorKind};
-use nix::sys::signal::{Signal, SIGHUP, SIGINT, SIGKILL, SIGQUIT, SIGTERM, SIGUSR1, SIGUSR2};
+use nix::sys::signal::{Signal, SIGHUP, SIGINT, SIGQUIT, SIGTERM, SIGUSR1, SIGUSR2};
 use nix::unistd;
+use serde::de::{self, Visitor};
 use serde::export::fmt::Error;
 use serde::export::Formatter;
-use serde::{Deserialize, Serialize};
+use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use std::collections::HashMap;
 use std::path::PathBuf;
 use std::str::FromStr;
@@ -12,10 +13,12 @@ use std::time::Duration;
 pub fn get_sample_service() -> String {
     r#"
 command = "/bin/bash -c 'echo hello world'"
-working-directory = "/tmp/"
 start-delay = "2s"
 start-after = ["another.toml", "second.toml"]
+stdout = "STDOUT"
+stderr = "/var/logs/hello_world_svc/stderr.log"
 user = "root"
+working-directory = "/tmp/"
 
 [restart]
 strategy = "never"
@@ -56,6 +59,10 @@ pub struct Service {
     pub user: User,
     #[serde(default = "Service::default_working_directory")]
     pub working_directory: PathBuf,
+    #[serde(default = "Service::default_stdout_log")]
+    pub stdout: LogOutput,
+    #[serde(default = "Service::default_stderr_log")]
+    pub stderr: LogOutput,
     #[serde(default, with = "humantime_serde")]
     pub start_delay: Duration,
     #[serde(default = "Vec::new")]
@@ -77,6 +84,15 @@ impl Service {
     fn default_working_directory() -> PathBuf {
         PathBuf::from("/")
     }
+
+    fn default_stdout_log() -> LogOutput {
+        LogOutput::Stdout
+    }
+
+    fn default_stderr_log() -> LogOutput {
+        LogOutput::Stderr
+    }
+
     pub fn from_file(path: &PathBuf) -> crate::horust::error::Result<Self> {
         let content = std::fs::read_to_string(path)?;
         toml::from_str::<Service>(content.as_str()).map_err(HorustError::from)
@@ -95,15 +111,26 @@ impl Service {
     pub fn from_command(command: String) -> Self {
         Service {
             name: command.clone(),
+            command,
+            ..Default::default()
+        }
+    }
+}
+impl Default for Service {
+    fn default() -> Self {
+        Self {
+            name: "".to_owned(),
             start_after: Default::default(),
-            user: Default::default(),
-            environment: Default::default(),
             working_directory: "/".into(),
+            stdout: Default::default(),
+            stderr: Default::default(),
+            user: Default::default(),
             restart: Default::default(),
             start_delay: Duration::from_secs(0),
-            command,
+            command: "command".to_string(),
             healthiness: Default::default(),
             signal_rewrite: None,
+            environment: Default::default(),
             failure: Default::default(),
             termination: Default::default(),
         }
@@ -115,6 +142,81 @@ impl FromStr for Service {
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         toml::from_str::<Service>(s).map_err(HorustError::from)
+    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub enum LogOutput {
+    Stderr,
+    Stdout,
+    Path(PathBuf),
+}
+
+impl Serialize for LogOutput {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        let as_string: String = self.clone().into();
+        serializer.serialize_str(as_string.as_str())
+    }
+}
+
+impl<'de> Deserialize<'de> for LogOutput {
+    fn deserialize<D>(deserializer: D) -> Result<LogOutput, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        deserializer.deserialize_str(LogOutputVisitor)
+    }
+}
+
+struct LogOutputVisitor;
+impl<'de> Visitor<'de> for LogOutputVisitor {
+    type Value = LogOutput;
+
+    fn expecting(&self, formatter: &mut std::fmt::Formatter) -> std::fmt::Result {
+        formatter.write_str("a string with 'STDOUT', 'STDERR', or a full path. All as `String`s ")
+    }
+    fn visit_str<E>(self, value: &str) -> Result<Self::Value, E>
+    where
+        E: de::Error,
+    {
+        Ok(LogOutput::from(value))
+    }
+}
+
+impl Default for LogOutput {
+    fn default() -> Self {
+        Self::Stdout
+    }
+}
+
+impl From<String> for LogOutput {
+    fn from(strategy: String) -> Self {
+        strategy.as_str().into()
+    }
+}
+impl Into<String> for LogOutput {
+    fn into(self) -> String {
+        match self {
+            Self::Stdout => "STDOUT".to_string(),
+            Self::Stderr => "STDERR".to_string(),
+            Self::Path(path) => {
+                let path = path.display();
+                path.to_string()
+            }
+        }
+    }
+}
+
+impl From<&str> for LogOutput {
+    fn from(strategy: &str) -> Self {
+        match strategy {
+            "STDOUT" => LogOutput::Stdout,
+            "STDERR" => LogOutput::Stderr,
+            path => LogOutput::Path(PathBuf::from(path)),
+        }
     }
 }
 
@@ -493,6 +595,7 @@ impl Default for TerminationSignal {
 }
 
 /// Runs some validation checks on the services.
+/// TODO: if redirect output is file, check it exists and permissions.
 pub fn validate(services: Vec<Service>) -> Result<Vec<Service>, Vec<ValidationError>> {
     let mut errors = vec![];
     services.iter().for_each(|service| {
@@ -538,19 +641,10 @@ mod test {
 
     impl Service {
         pub fn start_after(name: &str, start_after: Vec<&str>) -> Self {
-            Service {
+            Self {
                 name: name.to_owned(),
                 start_after: start_after.into_iter().map(|v| v.into()).collect(),
-                working_directory: "".into(),
-                user: Default::default(),
-                restart: Default::default(),
-                start_delay: Duration::from_secs(0),
-                command: "something".to_string(),
-                healthiness: Default::default(),
-                signal_rewrite: None,
-                environment: Default::default(),
-                failure: Default::default(),
-                termination: Default::default(),
+                ..Default::default()
             }
         }
 
@@ -573,6 +667,8 @@ mod test {
                     .collect(),
             },
             working_directory: "/tmp/".into(),
+            stdout: "STDOUT".into(),
+            stderr: "/var/logs/hello_world_svc/stderr.log".into(),
             start_delay: Duration::from_secs(2),
             start_after: vec!["another.toml".into(), "second.toml".into()],
             restart: Restart {

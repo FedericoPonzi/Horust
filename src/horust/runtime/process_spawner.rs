@@ -1,12 +1,15 @@
 use crate::horust::bus::BusConnector;
 use crate::horust::error::Result;
-use crate::horust::formats::{Event, Service};
+use crate::horust::formats::{Event, LogOutput, Service};
 use crossbeam::after;
+use nix::fcntl;
 use nix::unistd;
 use nix::unistd::{fork, ForkResult, Pid};
 use shlex;
 use std::ffi::{CStr, CString};
+use std::io;
 use std::ops::Add;
+use std::os::unix::io::AsRawFd;
 use std::path::PathBuf;
 use std::time::Duration;
 
@@ -76,7 +79,10 @@ fn spawn_process(service: &Service) -> Result<Pid> {
     let cwd = service.working_directory.clone();
     match fork() {
         Ok(ForkResult::Child) => {
-            if let Err(error) = exec(program_name, arg_cstrings, env_cstrings, uid, cwd) {
+            let res = redirect_output(&service.stdout, LogOutput::Stdout)
+                .and_then(|_| redirect_output(&service.stderr, LogOutput::Stderr))
+                .and_then(|_| exec(program_name, arg_cstrings, env_cstrings, uid, cwd));
+            if let Err(error) = res {
                 let error = format!("Error spawning process: {}", error);
                 eprint_safe(error.as_str());
                 exit_safe(102);
@@ -89,6 +95,36 @@ fn spawn_process(service: &Service) -> Result<Pid> {
         }
         Err(err) => Err(Into::into(err)),
     }
+}
+
+fn redirect_output(val: &LogOutput, output: LogOutput) -> Result<()> {
+    let stdout = io::stdout().as_raw_fd();
+    let stderr = io::stderr().as_raw_fd();
+    match val {
+        // stderr = "STDOUT"
+        LogOutput::Stdout if output == LogOutput::Stderr => {
+            unistd::dup2(stdout, stderr)?;
+        }
+        // stdout = "STDERR"
+        LogOutput::Stderr if output == LogOutput::Stdout => {
+            // Redirect stdout to stderr
+            unistd::dup2(stderr, stdout)?;
+        }
+        LogOutput::Path(path) => {
+            let raw_fd = fcntl::open(
+                path,
+                fcntl::OFlag::O_CREAT | fcntl::OFlag::O_WRONLY | fcntl::OFlag::O_APPEND,
+                nix::sys::stat::Mode::S_IRWXU,
+            )?;
+            if output == LogOutput::Stdout {
+                unistd::dup2(raw_fd, stdout)?;
+            } else {
+                unistd::dup2(raw_fd, stderr)?;
+            }
+        }
+        _ => (),
+    };
+    Ok(())
 }
 
 /// Exec wrapper.
