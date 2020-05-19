@@ -1,7 +1,5 @@
 use crate::horust::bus::BusConnector;
-use crate::horust::formats::{
-    Event, Healthiness, HealthinessStatus, Service, ServiceName, ServiceStatus,
-};
+use crate::horust::formats::{Event, Healthiness, HealthinessStatus, Service, ServiceName, ServiceStatus, Component};
 use crossbeam::channel::{unbounded, Receiver, RecvTimeoutError};
 use std::time::Duration;
 
@@ -110,7 +108,7 @@ fn run(bus: BusConnector<Event>, services: Vec<Service>) {
             _ => {}
         }
     }
-    bus.send_event(Event::new_exit_success("Healthchecker"));
+    bus.send_event(Event::new_exit_success(Component::Healthchecker));
 }
 
 /// Setup require for the service, before running the healthchecks and starting the service

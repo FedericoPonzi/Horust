@@ -1,10 +1,8 @@
 use crate::horust::bus::BusConnector;
-use crate::horust::formats::{
-    Event, ExitStatus, FailureStrategy, HealthinessStatus, RestartStrategy, Service, ServiceName,
-    ServiceStatus,
-};
+use crate::horust::formats::{Event, ExitStatus, FailureStrategy, HealthinessStatus,
+                             RestartStrategy, Service, ServiceName, ServiceStatus, Component};
 use crate::horust::{healthcheck, signal_handling};
-use nix::sys::signal::{self, Signal};
+use nix::sys::signal;
 use std::fmt::Debug;
 use std::ops::Mul;
 use std::thread;
@@ -15,6 +13,7 @@ mod service_handler;
 use service_handler::ServiceHandler;
 mod repo;
 use repo::Repo;
+use nix::unistd;
 
 #[derive(Debug)]
 pub struct Runtime {
@@ -226,7 +225,7 @@ impl Runtime {
             Event::ForceKill(service_name) if self.repo.get_sh(&service_name).is_in_killing() => {
                 debug!("Going to forcekill {}", service_name);
                 let service_handler = self.repo.get_mut_sh(&service_name);
-                kill(&service_handler, Some(Signal::SIGKILL));
+                kill(&service_handler, Some(signal::SIGKILL));
                 service_handler.status = ServiceStatus::Failed;
                 vec![Event::new_status_changed(
                     service_handler.name(),
@@ -313,7 +312,16 @@ impl Runtime {
             std::thread::sleep(Duration::from_millis(300));
         }
 
-        debug!("All services have finished, exiting...");
+        debug!("All services have finished");
+        // If we're the init system, let's be sure that everything stops before exiting.
+        let init_pid = unistd::Pid::from_raw(1.into());
+        // TODO: Test (probably via docker).
+        if unistd::getpid() == init_pid {
+            let all_processes = unistd::Pid::from_raw((-1).into());
+            let _res = signal::kill(all_processes, signal::SIGTERM);
+            thread::sleep(Duration::from_secs(3));
+            let _res = signal::kill(all_processes, signal::SIGKILL);
+        }
 
         let res = if self.repo.any_finished_failed() {
             ExitStatus::SomeServiceFailed
@@ -324,7 +332,7 @@ impl Runtime {
         if !self.is_shutting_down {
             self.repo.send_ev(Event::ShuttingDownInitiated);
         }
-        self.repo.send_ev(Event::new_exit_success("Runtime"));
+        self.repo.send_ev(Event::new_exit_success(Component::Runtime));
         return res;
     }
 }
@@ -467,12 +475,14 @@ fn should_force_kill(service_handler: &ServiceHandler) -> bool {
 
 /// Kill wrapper, will send signal to sh and handles the result.
 /// By default it will send the signal defined in the termination section of the service.
-fn kill(sh: &ServiceHandler, signal: Option<Signal>) {
+fn kill(sh: &ServiceHandler, signal: Option<signal::Signal>) {
     let signal = signal.unwrap_or_else(|| sh.service().termination.signal.clone().into());
     debug!("Going to send {} signal to pid {:?}", signal, sh.pid());
     if let Some(pid) = sh.pid() {
         if let Err(error) = signal::kill(pid, signal) {
             match error.as_errno().expect("errno empty!") {
+                // No process or process group can be found corresponding to that specified by pid
+                // It has exited already, so it's fine.
                 nix::errno::Errno::ESRCH => (),
                 _ => error!(
                     "Error killing the process: {}, service: {}, pid: {:?}",

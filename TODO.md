@@ -1,5 +1,3 @@
-* Only if horust's pid is 1: after everything service has exited, run kill(-1, SIGTERM), then sleep(1), and then kill(-1, SIGKILL) 
-  In order to correctly handle double forking and forks in general. 
 * Add another state "InitialRestart", after initial, for restarting processes. So from SUCCESS / FAILED if the process is set to be restart,
   it will transition back to InitialRestart.
 * Count all time the unhealthy events, if threshold is passed and 

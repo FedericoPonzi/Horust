@@ -46,12 +46,12 @@ pub fn get_cli() -> (Command, TempDir) {
         "--services-path",
         temp_dir.path().display().to_string().as_str(),
     ]);
-    //.stdout(Stdio::from(std::fs::File::create("/tmp/stdout").unwrap()))
+    //.stdout(std::process::Stdio::from(std::fs::File::create("/tmp/stdout").unwrap()))
     //.stderr(std::process::Stdio::from(std::fs::File::create("/tmp/stderr").unwrap(),));
     (cmd, temp_dir)
 }
 
-/// Run the cmd and send a message on receiver when it's done.
+/// Run the cmd in a new process and send a message on receiver when it's done.
 /// This allows for ensuring termination of a test.
 pub fn run_async(cmd: &mut Command, should_succeed: bool) -> RecvWrapper {
     println!("Cmd: {:?}", cmd);
