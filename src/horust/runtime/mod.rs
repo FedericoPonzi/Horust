@@ -83,7 +83,7 @@ impl Runtime {
                     vec![handle_restart_strategy(service_handler.service(), false)]
                 }
                 ServiceStatus::Failed => {
-                    let mut failure_evs = handle_failure_strategy(
+                    let mut failure_evs = handle_failed_service(
                         self.repo.get_dependents(service_handler.name().into()),
                         service_handler.service(),
                     );
@@ -411,20 +411,9 @@ fn handle_status_changed_event(
 fn handle_restart_strategy(service: &Service, is_failed: bool) -> Event {
     let new_status = |status| Event::new_status_changed(&service.name, status);
     let ev = match service.restart.strategy {
-        RestartStrategy::Never => {
-            if is_failed {
-                new_status(ServiceStatus::FinishedFailed)
-            } else {
-                new_status(ServiceStatus::Finished)
-            }
-        }
-        RestartStrategy::OnFailure => {
-            if is_failed {
-                new_status(ServiceStatus::Initial)
-            } else {
-                new_status(ServiceStatus::Finished)
-            }
-        }
+        RestartStrategy::Never if is_failed => new_status(ServiceStatus::FinishedFailed),
+        RestartStrategy::OnFailure if is_failed => new_status(ServiceStatus::Initial),
+        RestartStrategy::Never | RestartStrategy::OnFailure => new_status(ServiceStatus::Finished),
         RestartStrategy::Always => new_status(ServiceStatus::Initial),
     };
     debug!("Restart strategy applied, ev: {:?}", ev);
@@ -432,7 +421,7 @@ fn handle_restart_strategy(service: &Service, is_failed: bool) -> Event {
 }
 
 /// This is applied to both failed and FinishedFailed services.
-fn handle_failure_strategy(deps: Vec<ServiceName>, failed_sh: &Service) -> Vec<Event> {
+fn handle_failed_service(deps: Vec<ServiceName>, failed_sh: &Service) -> Vec<Event> {
     match failed_sh.failure.strategy {
         FailureStrategy::Shutdown => vec![Event::ShuttingDownInitiated],
         FailureStrategy::KillDependents => {
@@ -508,11 +497,40 @@ fn kill(sh: &ServiceHandler, signal: Option<signal::Signal>) {
 mod test {
     use crate::horust::formats::{FailureStrategy, Service, ServiceStatus};
     use crate::horust::runtime::service_handler::ServiceHandler;
-    use crate::horust::runtime::{handle_failure_strategy, should_force_kill};
+    use crate::horust::runtime::{
+        handle_failed_service, handle_restart_strategy, should_force_kill,
+    };
     use crate::horust::Event;
     use nix::unistd::Pid;
     use std::ops::Sub;
     use std::time::Duration;
+    #[test]
+    fn test_handle_restart_strategy() {
+        let new_status = |status| Event::new_status_changed(&"servicename".to_string(), status);
+        let matrix = vec![
+            (false, "always", new_status(ServiceStatus::Initial)),
+            (true, "always", new_status(ServiceStatus::Initial)),
+            (true, "on-failure", new_status(ServiceStatus::Initial)),
+            (false, "on-failure", new_status(ServiceStatus::Finished)),
+            (true, "never", new_status(ServiceStatus::FinishedFailed)),
+            (false, "never", new_status(ServiceStatus::Finished)),
+        ];
+        matrix
+            .into_iter()
+            .for_each(|(has_failed, strategy, expected)| {
+                let service = format!(
+                    r#"name="servicename"
+command = "Not relevant"
+[restart]
+strategy = "{}"
+"#,
+                    strategy
+                );
+                let service: Service = toml::from_str(service.as_str()).unwrap();
+                let received = handle_restart_strategy(&service, has_failed);
+                assert_eq!(received, expected);
+            });
+    }
 
     #[test]
     fn test_should_force_kill() {
@@ -540,11 +558,11 @@ wait = "10s"
     #[test]
     fn test_handle_failed_service() {
         let mut service = Service::from_name("b");
-        let evs = handle_failure_strategy(vec!["a".into()], &service.clone());
+        let evs = handle_failed_service(vec!["a".into()], &service.clone());
         assert!(evs.is_empty());
 
         service.failure.strategy = FailureStrategy::KillDependents;
-        let evs = handle_failure_strategy(vec!["a".into()], &service.clone());
+        let evs = handle_failed_service(vec!["a".into()], &service.clone());
         let exp = vec![
             Event::new_status_changed(&"a".to_string(), ServiceStatus::InKilling),
             Event::Kill("a".into()),
@@ -552,7 +570,7 @@ wait = "10s"
         assert_eq!(evs, exp);
 
         service.failure.strategy = FailureStrategy::Shutdown;
-        let evs = handle_failure_strategy(vec!["a".into()], &service.into());
+        let evs = handle_failed_service(vec!["a".into()], &service.into());
         let exp = vec![Event::ShuttingDownInitiated];
         assert_eq!(evs, exp);
     }
