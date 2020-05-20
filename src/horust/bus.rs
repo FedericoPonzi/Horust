@@ -84,7 +84,7 @@ impl<T> BusConnector<T> {
 #[cfg(test)]
 mod test {
     use crate::horust::bus::{Bus, BusConnector};
-    use crate::horust::formats::{Event, ServiceStatus, Component};
+    use crate::horust::formats::{Component, Event, ServiceStatus};
     use crossbeam::channel;
     use std::thread;
     use std::time::Duration;

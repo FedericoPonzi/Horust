@@ -8,7 +8,7 @@ pub use service::*;
 pub enum Component {
     Reaper,
     Runtime,
-    Healthchecker
+    Healthchecker,
 }
 
 #[derive(Debug, Clone, PartialEq)]

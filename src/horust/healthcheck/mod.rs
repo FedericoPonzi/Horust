@@ -1,5 +1,7 @@
 use crate::horust::bus::BusConnector;
-use crate::horust::formats::{Event, Healthiness, HealthinessStatus, Service, ServiceName, ServiceStatus, Component};
+use crate::horust::formats::{
+    Component, Event, Healthiness, HealthinessStatus, Service, ServiceName, ServiceStatus,
+};
 use crossbeam::channel::{unbounded, Receiver, RecvTimeoutError};
 use std::time::Duration;
 

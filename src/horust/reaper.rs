@@ -1,10 +1,10 @@
 use crate::horust::bus::BusConnector;
-use crate::horust::formats::{Event, ServiceName, ServiceStatus, Component};
+use crate::horust::formats::{Component, Event, ServiceName, ServiceStatus};
 use nix::sys::wait::{waitpid, WaitPidFlag, WaitStatus};
+use nix::unistd;
 use nix::unistd::Pid;
 use std::collections::{HashMap, HashSet};
 use std::time::Duration;
-use nix::unistd;
 
 pub(crate) fn spawn(bus: BusConnector<Event>) {
     std::thread::spawn(move || {
@@ -118,11 +118,14 @@ pub(crate) fn supervisor_thread(bus: BusConnector<Event>) {
         if is_init && repo.runtime_exited {
             break;
         }
-        if !is_init && repo.is_shutting_down && repo.possibly_running.is_empty() && repo.pids_map.is_empty() {
+        if !is_init
+            && repo.is_shutting_down
+            && repo.possibly_running.is_empty()
+            && repo.pids_map.is_empty()
+        {
             debug!("Breaking the loop..");
             break;
         }
-
 
         std::thread::sleep(Duration::from_millis(300))
     }

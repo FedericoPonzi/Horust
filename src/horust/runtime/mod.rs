@@ -1,6 +1,8 @@
 use crate::horust::bus::BusConnector;
-use crate::horust::formats::{Event, ExitStatus, FailureStrategy, HealthinessStatus,
-                             RestartStrategy, Service, ServiceName, ServiceStatus, Component};
+use crate::horust::formats::{
+    Component, Event, ExitStatus, FailureStrategy, HealthinessStatus, RestartStrategy, Service,
+    ServiceName, ServiceStatus,
+};
 use crate::horust::{healthcheck, signal_handling};
 use nix::sys::signal;
 use std::fmt::Debug;
@@ -12,8 +14,8 @@ mod process_spawner;
 mod service_handler;
 use service_handler::ServiceHandler;
 mod repo;
-use repo::Repo;
 use nix::unistd;
+use repo::Repo;
 
 #[derive(Debug)]
 pub struct Runtime {
@@ -332,7 +334,8 @@ impl Runtime {
         if !self.is_shutting_down {
             self.repo.send_ev(Event::ShuttingDownInitiated);
         }
-        self.repo.send_ev(Event::new_exit_success(Component::Runtime));
+        self.repo
+            .send_ev(Event::new_exit_success(Component::Runtime));
         return res;
     }
 }
