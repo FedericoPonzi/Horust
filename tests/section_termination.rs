@@ -1,6 +1,8 @@
 use nix::sys::signal::{kill, Signal};
 use std::time::Duration;
+
 pub mod utils;
+
 use utils::*;
 
 // Test termination section
@@ -36,7 +38,7 @@ wait = "1s""#;
 
 fn test_termination_custom_signal(friendly_name: &str) {
     let (mut cmd, temp_dir) = get_cli();
-    // this script captures traps SIGINT / SIGTERM / SIGEXIT
+    // this script captures traps signals
     let script = format!(
         r#"#!/usr/bin/env bash
 trap_with_arg() {{
@@ -46,13 +48,13 @@ trap_with_arg() {{
     done
 }}
 func_trap() {{
-    if [ "$1" == "{0}" ] ; then 
+    if [ "$1" == "{0}" ] ; then
         exit 0
     fi
 }}
 trap_with_arg func_trap {0}
 while true ; do
-    sleep 1 
+    sleep 0.3
 done
 "#,
         friendly_name
@@ -72,7 +74,7 @@ wait = "10s""#,
     );
     let recv = run_async(&mut cmd, true);
     kill(recv.pid, Signal::SIGTERM).expect("kill");
-    recv.recv_or_kill(Duration::from_secs(5));
+    recv.recv_or_kill(Duration::from_secs(20));
 }
 
 #[test]
@@ -80,6 +82,7 @@ fn test_termination_all_custom_signals() {
     vec!["TERM", "HUP", "INT", "QUIT", "USR1", "USR2"]
         .into_iter()
         .for_each(|friendly_name| {
+            println!("Testing: {}", friendly_name);
             test_termination_custom_signal(friendly_name);
             println!("Test done: {}", friendly_name);
         })

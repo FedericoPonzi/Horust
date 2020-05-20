@@ -1,6 +1,7 @@
 use crate::horust::bus::BusConnector;
-use crate::horust::formats::{Event, ServiceName, ServiceStatus};
+use crate::horust::formats::{Component, Event, ServiceName, ServiceStatus};
 use nix::sys::wait::{waitpid, WaitPidFlag, WaitStatus};
+use nix::unistd;
 use nix::unistd::Pid;
 use std::collections::{HashMap, HashSet};
 use std::time::Duration;
@@ -19,6 +20,7 @@ struct Repo {
     pids_map: HashMap<Pid, ServiceName>,
     bus: BusConnector<Event>,
     is_shutting_down: bool,
+    runtime_exited: bool,
 }
 
 impl Repo {
@@ -28,6 +30,7 @@ impl Repo {
             pids_map: HashMap::new(),
             bus,
             is_shutting_down: false,
+            runtime_exited: false,
         }
     }
 
@@ -49,6 +52,9 @@ impl Repo {
             }
             Event::PidChanged(service_name, pid) => {
                 self.pids_map.insert(pid, service_name);
+            }
+            Event::Exiting(component, _status) if component == Component::Runtime => {
+                self.runtime_exited = true;
             }
             Event::StatusChanged(service_name, status) => {
                 if vec![ServiceStatus::Starting, ServiceStatus::Initial].contains(&status) {
@@ -107,12 +113,21 @@ pub(crate) fn supervisor_thread(bus: BusConnector<Event>) {
                 !repo.possibly_running.is_empty()
             }
         });
-
-        if repo.is_shutting_down && repo.possibly_running.is_empty() && repo.pids_map.is_empty() {
+        let init_pid = unistd::Pid::from_raw(1.into());
+        let is_init = init_pid == unistd::getpid();
+        if is_init && repo.runtime_exited {
+            break;
+        }
+        if !is_init
+            && repo.is_shutting_down
+            && repo.possibly_running.is_empty()
+            && repo.pids_map.is_empty()
+        {
             debug!("Breaking the loop..");
             break;
         }
+
         std::thread::sleep(Duration::from_millis(300))
     }
-    repo.send_ev(Event::new_exit_success("Reaper"));
+    repo.send_ev(Event::new_exit_success(Component::Reaper));
 }

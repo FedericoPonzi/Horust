@@ -84,7 +84,7 @@ impl<T> BusConnector<T> {
 #[cfg(test)]
 mod test {
     use crate::horust::bus::{Bus, BusConnector};
-    use crate::horust::formats::{Event, ServiceStatus};
+    use crate::horust::formats::{Component, Event, ServiceStatus};
     use crossbeam::channel;
     use std::thread;
     use std::time::Duration;
@@ -129,8 +129,8 @@ mod test {
             assert_eq!(a.try_get_events().len(), 1);
             assert_eq!(b.try_get_events().len(), 1);
 
-            a.send_event(Event::new_exit_success("serv"));
-            b.send_event(Event::new_exit_success("serv"));
+            a.send_event(Event::new_exit_success(Component::Runtime));
+            b.send_event(Event::new_exit_success(Component::Healthchecker));
             sender.send(()).unwrap();
         });
 
@@ -150,8 +150,8 @@ mod test {
         a.send_event(ev.clone());
         assert_eq!(a.receiver.recv().unwrap(), ev);
         assert_eq!(b.receiver.recv().unwrap(), ev);
-        a.send_event(Event::new_exit_success("serv"));
-        b.send_event(Event::new_exit_success("serv"));
+        a.send_event(Event::new_exit_success(Component::Runtime));
+        b.send_event(Event::new_exit_success(Component::Healthchecker));
         drop(a);
         drop(b);
         receiver
@@ -175,7 +175,7 @@ mod test {
                 .expect("test didn't terminate in time, so chan is closed!");
         });
         let ev = Event::new_status_changed(&"sample".to_string(), ServiceStatus::Initial);
-        let exit_ev = Event::new_exit_success("serv");
+        let exit_ev = Event::new_exit_success(Component::Runtime);
 
         for _i in 0..100 {
             last.send_event(ev.clone());
@@ -188,7 +188,7 @@ mod test {
                 assert_eq!(recv.receiver.recv().unwrap(), exit_ev);
             }
         }
-        last.send_event(Event::new_exit_success("serv"));
+        last.send_event(Event::new_exit_success(Component::Healthchecker));
         drop(connectors);
         drop(last);
         receiver
