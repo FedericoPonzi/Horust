@@ -361,10 +361,9 @@ impl User {
             User::Name(name) => unistd::User::from_name(name)
                 .map_err(HorustError::from)
                 .and_then(|opt| {
-                    opt.ok_or(std::io::Error::new(
-                        std::io::ErrorKind::NotFound,
-                        "User not found",
-                    ))
+                    opt.ok_or_else(|| {
+                        std::io::Error::new(std::io::ErrorKind::NotFound, "User not found")
+                    })
                     .map_err(HorustError::from)
                     .map(|user| user.uid)
                 }),
@@ -376,10 +375,9 @@ impl User {
         unistd::User::from_uid(self.get_uid()?)
             .map_err(HorustError::from)
             .and_then(|opt| {
-                opt.ok_or(std::io::Error::new(
-                    std::io::ErrorKind::NotFound,
-                    "User not found",
-                ))
+                opt.ok_or_else(|| {
+                    std::io::Error::new(std::io::ErrorKind::NotFound, "User not found")
+                })
                 .map_err(HorustError::from)
             })
     }

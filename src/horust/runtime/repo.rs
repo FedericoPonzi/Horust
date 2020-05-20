@@ -31,34 +31,34 @@ impl Repo {
     }
 
     /// Get a mutable reference to the Service Handler
-    pub fn get_mut_sh(&mut self, service_name: &ServiceName) -> &mut ServiceHandler {
+    pub fn get_mut_sh(&mut self, service_name: &str) -> &mut ServiceHandler {
         self.services.get_mut(service_name).unwrap()
     }
 
     /// Get an immutable reference to the Service Handler
-    pub fn get_sh(&mut self, service_name: &ServiceName) -> &ServiceHandler {
+    pub fn get_sh(&mut self, service_name: &str) -> &ServiceHandler {
         self.services.get(service_name).unwrap()
     }
 
     /// Get all the services that have specifed "start-after = [`service_name`]" in their config
-    pub(crate) fn get_dependents(&self, service_name: &ServiceName) -> Vec<ServiceName> {
+    pub(crate) fn get_dependents(&self, service_name: &str) -> Vec<ServiceName> {
         self.services
             .iter()
-            .filter(|(_s_name, sh)| sh.service().start_after.contains(service_name))
+            .filter(|(_s_name, sh)| sh.service().start_after.contains(&service_name.to_string()))
             .map(|(s_name, _sh)| s_name)
             .cloned()
             .collect()
     }
 
     /// Get all the services that have specified "die-if-failed = [`service_name`]" in their config
-    pub(crate) fn get_die_if_failed(&self, service_name: &ServiceName) -> Vec<&ServiceName> {
+    pub(crate) fn get_die_if_failed(&self, service_name: &str) -> Vec<&ServiceName> {
         self.services
             .iter()
             .filter(|(_s_name, sh)| {
                 sh.service()
                     .termination
                     .die_if_failed
-                    .contains(service_name)
+                    .contains(&service_name.to_string())
             })
             .map(|(s_name, _sh)| s_name)
             .collect()
