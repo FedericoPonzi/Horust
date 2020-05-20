@@ -32,14 +32,14 @@ impl Event {
     pub(crate) fn new_pid_changed(service_name: ServiceName, pid: Pid) -> Self {
         Self::PidChanged(service_name, pid)
     }
-    pub(crate) fn new_status_changed(service_name: &ServiceName, status: ServiceStatus) -> Self {
-        Self::StatusChanged(service_name.clone(), status)
+    pub(crate) fn new_status_changed(service_name: &str, status: ServiceStatus) -> Self {
+        Self::StatusChanged(service_name.to_string(), status)
     }
     pub(crate) fn new_service_exited(service_name: ServiceName, exit_status: i32) -> Self {
         Self::ServiceExited(service_name, exit_status)
     }
-    pub(crate) fn new_force_kill(service_name: &ServiceName) -> Self {
-        Self::ForceKill(service_name.clone())
+    pub(crate) fn new_force_kill(service_name: &str) -> Self {
+        Self::ForceKill(service_name.to_string())
     }
     pub(crate) fn new_exit_success(component: Component) -> Self {
         Event::Exiting(component, ExitStatus::Successful)

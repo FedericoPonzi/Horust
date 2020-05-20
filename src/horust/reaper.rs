@@ -113,7 +113,7 @@ pub(crate) fn supervisor_thread(bus: BusConnector<Event>) {
                 !repo.possibly_running.is_empty()
             }
         });
-        let init_pid = unistd::Pid::from_raw(1.into());
+        let init_pid = unistd::Pid::from_raw(1);
         let is_init = init_pid == unistd::getpid();
         if is_init && repo.runtime_exited {
             break;

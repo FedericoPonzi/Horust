@@ -5,7 +5,6 @@ use crossbeam::after;
 use nix::fcntl;
 use nix::unistd;
 use nix::unistd::{fork, ForkResult, Pid};
-use shlex;
 use std::ffi::{CStr, CString};
 use std::io;
 use std::ops::Add;

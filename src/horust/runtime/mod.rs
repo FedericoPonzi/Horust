@@ -84,7 +84,7 @@ impl Runtime {
                 }
                 ServiceStatus::Failed => {
                     let mut failure_evs = handle_failed_service(
-                        self.repo.get_dependents(service_handler.name().into()),
+                        self.repo.get_dependents(service_handler.name()),
                         service_handler.service(),
                     );
                     let other_services_termination = self
@@ -316,10 +316,10 @@ impl Runtime {
 
         debug!("All services have finished");
         // If we're the init system, let's be sure that everything stops before exiting.
-        let init_pid = unistd::Pid::from_raw(1.into());
+        let init_pid = unistd::Pid::from_raw(1);
         // TODO: Test (probably via docker).
         if unistd::getpid() == init_pid {
-            let all_processes = unistd::Pid::from_raw((-1).into());
+            let all_processes = unistd::Pid::from_raw(-1);
             let _res = signal::kill(all_processes, signal::SIGTERM);
             thread::sleep(Duration::from_secs(3));
             let _res = signal::kill(all_processes, signal::SIGKILL);
@@ -336,7 +336,7 @@ impl Runtime {
         }
         self.repo
             .send_ev(Event::new_exit_success(Component::Runtime));
-        return res;
+        res
     }
 }
 
@@ -447,7 +447,7 @@ fn should_force_kill(service_handler: &ServiceHandler) -> bool {
         // Let's give it the time to start and exit.
         return false;
     }
-    if let Some(shutting_down_elapsed_secs) = service_handler.shutting_down_start.clone() {
+    if let Some(shutting_down_elapsed_secs) = service_handler.shutting_down_start {
         let shutting_down_elapsed_secs = shutting_down_elapsed_secs.elapsed().as_secs();
         debug!(
             "{}, should not force kill. Elapsed: {}, termination wait: {}",
