@@ -1,8 +1,6 @@
-* Add another state "InitialRestart", after initial, for restarting processes. So from SUCCESS / FAILED if the process is set to be restart,
-  it will transition back to InitialRestart.
 * Count all time the unhealthy events, if threshold is passed and 
     service is in started then stop it.
-* Parameter for redirecting stdout / stderr to files
+* Better loggig facility. Using a file as stdio it's not the best.
 
 ## Long todo:
 * Parameter "start-if-failed"

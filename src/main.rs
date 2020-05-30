@@ -27,7 +27,7 @@ struct Opts {
     services_path: PathBuf,
 
     #[structopt(required = false, multiple = true, min_values = 0, last = true)]
-    /// Specify a command to run instead of load services path. Useful if you just want to use the reaping capability. Preceed it with --.
+    /// Specify a command to run instead of load services path. Useful if you just want to use the reaping capability. Prefix your command with --
     command: Vec<String>,
 }
 

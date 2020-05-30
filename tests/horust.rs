@@ -2,7 +2,6 @@ use assert_cmd::prelude::*;
 use predicates::str::contains;
 use rand::distributions::Alphanumeric;
 use rand::{thread_rng, Rng};
-use std;
 use std::time::Duration;
 
 pub mod utils;

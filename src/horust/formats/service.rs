@@ -563,7 +563,7 @@ impl Default for Termination {
     }
 }
 
-#[derive(Serialize, Clone, Deserialize, Debug, Eq, PartialEq)]
+#[derive(Serialize, Copy, Clone, Deserialize, Debug, Eq, PartialEq)]
 pub enum TerminationSignal {
     TERM,
     HUP,
