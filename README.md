@@ -32,6 +32,8 @@ mkdir -p /etc/horust/services`
 
 #### 2. Create your first Horust service:
 
+> **Pro Tip:** You can also bootstrap the creation of a new service, by using `horust --sample-service > new_service.toml`.
+
 Create a new configuration file for Horust under `/etc/horust/services/healthchecker.toml`:
 
 ```toml
@@ -101,10 +103,7 @@ Use <kbd>Ctrl</kbd>+<kbd>C</kbd> to stop Horust. Horust will send a `SIGTERM` si
 
 ---
 
-Check out the [documentation](https://github.com/FedericoPonzi/Horust/blob/master/DOCUMENTATION.md) for a complete reference of the options available on the service config file.
-
-
-> **Pro Tip:** You can also bootstrap the creation of a new service, by using `horust --sample-service > new_service.toml`.
+Check out the [documentation](https://github.com/FedericoPonzi/Horust/blob/master/DOCUMENTATION.md) for a complete reference of the options available on the service config file. A general overview is available below as well:
 
 ```toml
 command = "/bin/bash -c 'echo hello world'"
@@ -140,8 +139,7 @@ additional = { key = "value"}
 ```
 
 ## Contributing
-Thanks for considering contributing to horust! For getting started have a look on [CONTRIBUTING.md](https://github.com/FedericoPonzi/Horust/blob/master/CONTRIBUTING.md).
+Thanks for considering contributing to horust! To get started have a look on [CONTRIBUTING.md](https://github.com/FedericoPonzi/Horust/blob/master/CONTRIBUTING.md).
 
 ## License
 Horust is provided under the MIT license. Please read the attached [license](https://github.com/FedericoPonzi/horust/blob/master/LICENSE) file.
-
