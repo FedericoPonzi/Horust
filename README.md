@@ -21,8 +21,8 @@
 At this point, this should be considered Alpha software. As in, you can (and should) use it, but under your own discretion.
 
 ## Usage
-Assume you would like to create a website health monitoring system. YOu can make one using this library and a small python script.
-
+Assume you'd like to create a website health monitoring system. You can create one using Horust and a small python script.
+    
 #### 1. Create a new directory: 
 That will contain our services: 
 
