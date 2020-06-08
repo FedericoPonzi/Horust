@@ -2,9 +2,8 @@ mod bus;
 mod error;
 mod formats;
 mod healthcheck;
-mod reaper;
 mod runtime;
-mod signal_handling;
+mod signal_safe;
 
 pub use self::error::HorustError;
 pub use self::formats::{get_sample_service, ExitStatus, HorustConfig};
@@ -20,7 +19,7 @@ use std::path::{Path, PathBuf};
 
 #[derive(Debug)]
 pub struct Horust {
-    pub services: Vec<Service>,
+    services: Vec<Service>,
     services_dir: Option<PathBuf>,
 }
 
@@ -32,6 +31,9 @@ impl Horust {
         }
     }
 
+    pub fn get_services(&self) -> &Vec<Service> {
+        &self.services
+    }
     /// Creates a new Horust instance from a command.
     /// The command will be wrapped in a service and run with sane defaults
     pub fn from_command(command: String) -> Self {
@@ -49,16 +51,16 @@ impl Horust {
             .map(|services| Horust::new(services, Some(PathBuf::from(path))))
     }
 
+    /// Blocking call, will setup the event loop and the threads and run all the available services.
     pub fn run(&mut self) -> ExitStatus {
         unsafe {
             prctl(PR_SET_CHILD_SUBREAPER, 1, 0, 0, 0);
         }
-        signal_handling::init();
+        runtime::signal_handling::init();
 
         let mut dispatcher = Bus::new();
         debug!("Services: {:?}", self.services);
         // Spawn helper threads:
-        reaper::spawn(dispatcher.join_bus());
         healthcheck::spawn(dispatcher.join_bus(), self.services.clone());
         let handle = runtime::spawn(dispatcher.join_bus(), self.services.clone());
         dispatcher.run();
@@ -113,6 +115,7 @@ where
 mod test {
     use crate::horust::fetch_services;
     use crate::horust::formats::Service;
+    use crate::horust::Horust;
     use std::fs;
     use std::io;
     use std::path::{Path, PathBuf};

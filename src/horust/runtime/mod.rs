@@ -3,19 +3,20 @@ use crate::horust::formats::{
     Component, Event, ExitStatus, FailureStrategy, HealthinessStatus, RestartStrategy, Service,
     ServiceName, ServiceStatus,
 };
-use crate::horust::{healthcheck, signal_handling};
+use crate::horust::healthcheck;
 use nix::sys::signal;
+use nix::unistd;
+use repo::Repo;
+use service_handler::ServiceHandler;
 use std::fmt::Debug;
 use std::ops::Mul;
 use std::thread;
 use std::time::{Duration, Instant};
 
 mod process_spawner;
-mod service_handler;
-use service_handler::ServiceHandler;
 mod repo;
-use nix::unistd;
-use repo::Repo;
+mod service_handler;
+pub(crate) mod signal_handling;
 
 // Spawns and runs this component in a new thread.
 pub fn spawn(
@@ -47,6 +48,41 @@ impl Runtime {
         } else {
             self.next_events(service_handler)
         }
+    }
+
+    fn run_reaper(&self) -> Vec<Event> {
+        use nix::sys::wait::{waitpid, WaitPidFlag, WaitStatus};
+        use nix::unistd::Pid;
+
+        (0..20)
+            .filter_map(
+                |_| match waitpid(Pid::from_raw(-1), Some(WaitPidFlag::WNOHANG)) {
+                    Ok(wait_status) => {
+                        if let WaitStatus::Exited(pid, exit_code) = wait_status {
+                            debug!("Pid has exited: {} with exitcode: {}", pid, exit_code);
+                            debug!(
+                                "Service: {:?}",
+                                self.repo
+                                    .get_service_by_pid(pid)
+                                    .map(|s_name| (s_name, exit_code))
+                            );
+                            self.repo
+                                .get_service_by_pid(pid)
+                                .map(|s_name| (s_name, exit_code))
+                        } else {
+                            None
+                        }
+                    }
+                    Err(err) => {
+                        if !err.to_string().contains("ECHILD") {
+                            error!("Error waitpid(): {}", err);
+                        }
+                        None
+                    }
+                },
+            )
+            .map(|(sname, exit_code)| Event::new_service_exited(sname.into(), exit_code))
+            .collect()
     }
 
     /// This next function assumes that the system is shutting down.
@@ -128,6 +164,8 @@ impl Runtime {
     fn handle_event(&mut self, ev: Event) -> Vec<Event> {
         match ev {
             Event::ServiceExited(service_name, exit_code) => {
+                let pid = self.repo.get_sh(&service_name).pid.unwrap();
+                self.repo.remove_pid(pid);
                 let service_handler = self.repo.get_mut_sh(&service_name);
                 service_handler.shutting_down_start = None;
                 service_handler.pid = None;
@@ -244,6 +282,8 @@ impl Runtime {
                 )]
             }
             Event::PidChanged(service_name, pid) => {
+                self.repo.add_pid(pid, service_name.clone());
+
                 let service_handler = self.repo.get_mut_sh(&service_name);
                 service_handler.pid = Some(pid);
                 if service_handler.is_in_killing() {
@@ -254,6 +294,7 @@ impl Runtime {
                     service_handler.status = ServiceStatus::Started;
                     return vec![Event::StatusChanged(service_name, ServiceStatus::Started)];
                 }
+
                 vec![]
             }
             Event::HealthCheck(s_name, health) => {
@@ -286,7 +327,8 @@ impl Runtime {
         }
     }
 
-    /// Blocking call. Tries to move state machines forward
+    /// Blocking call.
+    /// This function will run the services and reap dead pids.
     fn run(mut self) -> ExitStatus {
         while !self.repo.all_have_finished() {
             // Ingest updates
@@ -306,6 +348,7 @@ impl Runtime {
                 .iter()
                 .map(|(_s_name, sh)| self.next(sh))
                 .flatten()
+                .chain(self.run_reaper())
                 .collect();
             next_evs.iter().for_each(|ev| {
                 if let Event::StatusChanged(s_name, new_status) = ev {

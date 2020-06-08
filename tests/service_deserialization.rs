@@ -14,9 +14,10 @@ pub fn list_files<P: AsRef<std::path::Path>>(path: P) -> std::io::Result<Vec<std
 
 #[test]
 fn should_deserialize() {
+    // TODO: this shouldn't be an integration test, but rather a unit test.
     let base = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let services_path = base.join("example_services");
     let services = list_files(&services_path).unwrap().len();
     let horust = Horust::from_services_dir(&services_path).unwrap();
-    assert_eq!(horust.services.len(), services);
+    assert_eq!(horust.get_services().len(), services);
 }

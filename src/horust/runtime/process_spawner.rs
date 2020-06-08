@@ -1,6 +1,7 @@
 use crate::horust::bus::BusConnector;
 use crate::horust::error::Result;
 use crate::horust::formats::{Event, LogOutput, Service};
+use crate::horust::signal_safe::ss_panic;
 use crossbeam::after;
 use nix::fcntl;
 use nix::unistd;
@@ -10,7 +11,23 @@ use std::io;
 use std::ops::Add;
 use std::os::unix::io::AsRawFd;
 use std::path::PathBuf;
-use std::time::Duration;
+use std::time::{Duration, Instant};
+
+#[derive(Debug)]
+enum Wrapper {
+    Event(Event),
+    Timeout(Instant),
+}
+impl From<Event> for Wrapper {
+    fn from(ev: Event) -> Self {
+        Self::Event(ev)
+    }
+}
+impl From<Instant> for Wrapper {
+    fn from(inst: Instant) -> Self {
+        Self::Timeout(inst)
+    }
+}
 
 /// Run another thread that will wait for the start delay and handle the fork / exec
 pub(crate) fn spawn_fork_exec_handler(
@@ -29,7 +46,7 @@ pub(crate) fn spawn_fork_exec_handler(
         let ev = loop {
             select! {
                     recv(bus.receiver()) -> ev => {
-                        let ev = ev.unwrap_or(Event::ShuttingDownInitiated);
+                        let ev = ev.map(|message| message.into_payload()).unwrap_or(Event::ShuttingDownInitiated);
                         if is_shutting_down_ev(ev){
                             break Event::SpawnFailed(service.name.clone());
                         }
@@ -73,6 +90,7 @@ fn exec_args(service: &Service) -> Result<(CString, Vec<CString>, Vec<CString>)>
 
 /// Fork the process
 fn spawn_process(service: &Service) -> Result<Pid> {
+    debug!("Spawning process for service: {}", service.name);
     let (program_name, arg_cstrings, env_cstrings) = exec_args(service)?;
     let uid = service.user.get_uid()?;
     let cwd = service.working_directory.clone();
@@ -83,8 +101,7 @@ fn spawn_process(service: &Service) -> Result<Pid> {
                 .and_then(|_| exec(program_name, arg_cstrings, env_cstrings, uid, cwd));
             if let Err(error) = res {
                 let error = format!("Error spawning process: {}", error);
-                eprint_safe(error.as_str());
-                exit_safe(102);
+                ss_panic(error.as_str(), 102);
             }
             unreachable!()
         }
@@ -145,23 +162,4 @@ fn exec(
     nix::unistd::setuid(uid)?;
     nix::unistd::execvpe(program_name.as_ref(), arg_cptr.as_ref(), env_cptr.as_ref())?;
     Ok(())
-}
-
-/// Async-signal-safe stderr print
-fn eprint_safe(s: &str) {
-    use libc::{write, STDERR_FILENO};
-    use std::ffi::c_void;
-    unsafe {
-        write(STDERR_FILENO, s.as_ptr() as *const c_void, s.len());
-        let s = "\n";
-        write(STDERR_FILENO, s.as_ptr() as *const c_void, s.len());
-    }
-}
-
-/// Async-signal-safe exit
-fn exit_safe(status: i32) {
-    use libc::_exit;
-    unsafe {
-        _exit(status);
-    }
 }

@@ -1,5 +1,6 @@
+use crate::horust::signal_safe::ss_panic;
 use nix::sys::signal::{sigaction, SaFlags, SigAction, SigHandler, SigSet, SIGINT, SIGTERM};
-use std::panic;
+
 static mut SIGTERM_RECEIVED: bool = false;
 
 pub(crate) fn is_sigterm_received() -> bool {
@@ -14,10 +15,13 @@ pub(crate) fn init() {
     let sig_action = SigAction::new(SigHandler::Handler(handle_sigterm), flags, SigSet::empty());
 
     if let Err(err) = unsafe { sigaction(SIGTERM, &sig_action) } {
-        panic!("sigaction() failed: {}", err);
+        let error = format!("sigaction() failed: {}", err);
+        ss_panic(error.as_str(), 103);
     };
+
     if let Err(err) = unsafe { sigaction(SIGINT, &sig_action) } {
-        panic!("sigaction() failed: {}", err);
+        let error = format!("sigaction() failed: {}", err);
+        ss_panic(error.as_str(), 104);
     };
 }
 
