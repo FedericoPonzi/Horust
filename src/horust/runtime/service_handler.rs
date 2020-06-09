@@ -72,6 +72,7 @@ impl ServiceHandler {
     pub fn is_finished(&self) -> bool {
         ServiceStatus::Finished == self.status
     }
+
     pub fn shutting_down_started(&mut self) {
         self.shutting_down_start = Some(Instant::now());
     }

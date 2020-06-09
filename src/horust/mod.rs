@@ -115,7 +115,6 @@ where
 mod test {
     use crate::horust::fetch_services;
     use crate::horust::formats::Service;
-    use crate::horust::Horust;
     use std::fs;
     use std::io;
     use std::path::{Path, PathBuf};

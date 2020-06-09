@@ -15,6 +15,8 @@ where
     receiver: Receiver<Message<T>>,
     /// Bus output - all the senders
     senders: Vec<(u64, Sender<Message<T>>)>,
+    /// Forward the message to the sender as well.
+    forward_to_sender: bool,
 }
 
 impl<T> Bus<T>
@@ -27,6 +29,7 @@ where
             shared_sender: public_sender,
             receiver,
             senders: Default::default(),
+            forward_to_sender: true,
         }
     }
 
@@ -50,8 +53,7 @@ where
     /// As soon as we don't have any senders it will exit
     fn dispatch(mut self) {
         drop(self.shared_sender);
-        let send_to_self = true;
-        if send_to_self {
+        if self.forward_to_sender {
             for ev in self.receiver {
                 self.senders
                     .retain(|(_idx, sender)| sender.send(ev.clone()).is_ok());
@@ -151,8 +153,10 @@ where
 
 #[cfg(test)]
 mod test {
+
     use crate::horust::bus::{Bus, BusConnector};
-    use crate::horust::formats::{Component, Event, ServiceStatus};
+    //TODO: remove this reference:
+    use crate::horust::formats::{Event, ServiceStatus};
     use crossbeam::channel;
     use std::thread;
     use std::time::Duration;
@@ -196,9 +200,6 @@ mod test {
             }
             assert_eq!(a.try_get_events().len(), 1);
             assert_eq!(b.try_get_events().len(), 1);
-
-            a.send_event(Event::new_exit_success(Component::Runtime));
-            b.send_event(Event::new_exit_success(Component::Healthchecker));
             sender.send(()).unwrap();
         });
 
@@ -218,8 +219,6 @@ mod test {
         a.send_event(ev.clone());
         assert_eq!(a.receiver.recv().unwrap().into_payload(), ev);
         assert_eq!(b.receiver.recv().unwrap().into_payload(), ev);
-        a.send_event(Event::new_exit_success(Component::Runtime));
-        b.send_event(Event::new_exit_success(Component::Healthchecker));
         drop(a);
         drop(b);
         receiver
@@ -243,7 +242,7 @@ mod test {
                 .expect("test didn't terminate in time, so chan is closed!");
         });
         let ev = Event::new_status_changed(&"sample".to_string(), ServiceStatus::Initial);
-        let exit_ev = Event::new_exit_success(Component::Runtime);
+        let exit_ev = Event::ShuttingDownInitiated;
 
         for _i in 0..100 {
             last.send_event(ev.clone());
@@ -256,7 +255,7 @@ mod test {
                 assert_eq!(recv.receiver.recv().unwrap().into_payload(), exit_ev);
             }
         }
-        last.send_event(Event::new_exit_success(Component::Healthchecker));
+        last.send_event(Event::ShuttingDownInitiated);
         drop(connectors);
         drop(last);
         receiver

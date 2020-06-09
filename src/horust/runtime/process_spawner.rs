@@ -13,22 +13,6 @@ use std::os::unix::io::AsRawFd;
 use std::path::PathBuf;
 use std::time::{Duration, Instant};
 
-#[derive(Debug)]
-enum Wrapper {
-    Event(Event),
-    Timeout(Instant),
-}
-impl From<Event> for Wrapper {
-    fn from(ev: Event) -> Self {
-        Self::Event(ev)
-    }
-}
-impl From<Instant> for Wrapper {
-    fn from(inst: Instant) -> Self {
-        Self::Timeout(inst)
-    }
-}
-
 /// Run another thread that will wait for the start delay and handle the fork / exec
 pub(crate) fn spawn_fork_exec_handler(
     service: Service,

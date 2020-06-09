@@ -24,20 +24,23 @@ impl Repo {
             pid_map: HashMap::new(),
         }
     }
+
     pub(crate) fn get_service_by_pid(&self, pid: Pid) -> Option<&ServiceName> {
         self.pid_map.get(&pid)
     }
 
-    /// Non blocking
-    pub(crate) fn get_events(&mut self) -> Vec<Event> {
-        self.bus.try_get_events()
-    }
     pub(crate) fn add_pid(&mut self, pid: Pid, service: ServiceName) {
         self.pid_map.insert(pid, service);
     }
     pub(crate) fn remove_pid(&mut self, pid: Pid) {
         self.pid_map.remove(&pid);
     }
+
+    /// Non blocking
+    pub(crate) fn get_events(&mut self) -> Vec<Event> {
+        self.bus.try_get_events()
+    }
+
     pub fn all_have_finished(&self) -> bool {
         self.services
             .iter()
