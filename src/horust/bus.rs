@@ -135,6 +135,7 @@ where
     }
 
     /// Non blocking
+    /// Todo: rename to be generic.
     pub fn try_get_events(&self) -> Vec<T> {
         self.receiver.try_iter().map(|m| m.into_payload()).collect()
     }
