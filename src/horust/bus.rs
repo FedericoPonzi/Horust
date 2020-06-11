@@ -72,10 +72,9 @@ where
     }
 }
 
-//TODO: remove pub.
 /// The payload with wrapped with some metadata
 #[derive(Clone, Debug)]
-pub struct Message<T>
+struct Message<T>
 where
     T: Clone + Debug,
 {
@@ -144,10 +143,6 @@ where
         self.sender
             .send(self.wrap(ev))
             .expect("Failed sending update event!");
-    }
-    //TODO: Get rid of this.
-    pub fn receiver(&self) -> &Receiver<Message<T>> {
-        &self.receiver
     }
 }
 

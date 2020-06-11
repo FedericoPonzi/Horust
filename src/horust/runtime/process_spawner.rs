@@ -2,7 +2,7 @@ use crate::horust::bus::BusConnector;
 use crate::horust::error::Result;
 use crate::horust::formats::{Event, LogOutput, Service};
 use crate::horust::signal_safe::ss_panic;
-use crossbeam::after;
+use crossbeam::{after, tick};
 use nix::fcntl;
 use nix::unistd;
 use nix::unistd::{fork, ForkResult, Pid};
@@ -11,7 +11,7 @@ use std::io;
 use std::ops::Add;
 use std::os::unix::io::AsRawFd;
 use std::path::PathBuf;
-use std::time::{Duration, Instant};
+use std::time::Duration;
 
 /// Run another thread that will wait for the start delay and handle the fork / exec
 pub(crate) fn spawn_fork_exec_handler(
@@ -22,16 +22,18 @@ pub(crate) fn spawn_fork_exec_handler(
     std::thread::spawn(move || {
         let total_sleep = service.start_delay.clone().add(backoff);
         let timeout = after(total_sleep);
+        let ticker = tick(Duration::from_millis(100));
         debug!("going to sleep: {:?}", total_sleep);
         // If start-delay is very high, this might interfere with the shutdown of the system.
         // the thread will listen for shutdown events from the bus, and will early exit if there is
         // a shuttingdowninitiated event
         let is_shutting_down_ev = |ev: Event| Event::ShuttingDownInitiated == ev;
+
         let ev = loop {
             select! {
-                    recv(bus.receiver()) -> ev => {
-                        let ev = ev.map(|message| message.into_payload()).unwrap_or(Event::ShuttingDownInitiated);
-                        if is_shutting_down_ev(ev){
+                    recv(ticker) -> _ => {
+                        let is_shutting_down = bus.try_get_events().into_iter().any(is_shutting_down_ev);
+                        if is_shutting_down {
                             break Event::SpawnFailed(service.name.clone());
                         }
                     },
