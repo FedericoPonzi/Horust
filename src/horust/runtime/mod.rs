@@ -1,21 +1,24 @@
 use crate::horust::bus::BusConnector;
 use crate::horust::formats::{
-    Component, Event, ExitStatus, FailureStrategy, HealthinessStatus, RestartStrategy, Service,
-    ServiceName, ServiceStatus,
+    Event, ExitStatus, FailureStrategy, HealthinessStatus, RestartStrategy, Service, ServiceName,
+    ServiceStatus,
 };
-use crate::horust::{healthcheck, signal_handling};
+use crate::horust::healthcheck;
 use nix::sys::signal;
+use nix::unistd;
+use repo::Repo;
+use service_handler::ServiceHandler;
 use std::fmt::Debug;
 use std::ops::Mul;
 use std::thread;
 use std::time::{Duration, Instant};
 
 mod process_spawner;
-mod service_handler;
-use service_handler::ServiceHandler;
+mod reaper;
 mod repo;
-use nix::unistd;
-use repo::Repo;
+mod service_handler;
+
+pub(crate) mod signal_handling;
 
 // Spawns and runs this component in a new thread.
 pub fn spawn(
@@ -43,31 +46,9 @@ impl Runtime {
     /// Generates events that, if applied, will make service_handler FSM progress
     fn next(&self, service_handler: &ServiceHandler) -> Vec<Event> {
         if self.is_shutting_down {
-            self.next_events_shutting_down(service_handler)
+            next_events_shutting_down(service_handler)
         } else {
             self.next_events(service_handler)
-        }
-    }
-
-    /// This next function assumes that the system is shutting down.
-    /// It will make progress in the direction of shutting everything down.
-    fn next_events_shutting_down(&self, service_handler: &ServiceHandler) -> Vec<Event> {
-        let ev_status =
-            |status: ServiceStatus| Event::new_status_changed(service_handler.name(), status);
-        let vev_status = |status: ServiceStatus| vec![ev_status(status)];
-
-        // Handle the new state separately if we're shutting down.
-        match service_handler.status {
-            ServiceStatus::Running | ServiceStatus::Started => vec![
-                ev_status(ServiceStatus::InKilling),
-                Event::Kill(service_handler.name().clone()),
-            ],
-            ServiceStatus::Success | ServiceStatus::Initial => vev_status(ServiceStatus::Finished),
-            ServiceStatus::Failed => vev_status(ServiceStatus::FinishedFailed),
-            ServiceStatus::InKilling if should_force_kill(service_handler) => {
-                vec![Event::new_force_kill(service_handler.name())]
-            }
-            _ => vec![],
         }
     }
 
@@ -128,6 +109,8 @@ impl Runtime {
     fn handle_event(&mut self, ev: Event) -> Vec<Event> {
         match ev {
             Event::ServiceExited(service_name, exit_code) => {
+                let pid = self.repo.get_sh(&service_name).pid.unwrap();
+                self.repo.remove_pid(pid);
                 let service_handler = self.repo.get_mut_sh(&service_name);
                 service_handler.shutting_down_start = None;
                 service_handler.pid = None;
@@ -244,6 +227,8 @@ impl Runtime {
                 )]
             }
             Event::PidChanged(service_name, pid) => {
+                self.repo.add_pid(pid, service_name.clone());
+
                 let service_handler = self.repo.get_mut_sh(&service_name);
                 service_handler.pid = Some(pid);
                 if service_handler.is_in_killing() {
@@ -254,6 +239,7 @@ impl Runtime {
                     service_handler.status = ServiceStatus::Started;
                     return vec![Event::StatusChanged(service_name, ServiceStatus::Started)];
                 }
+
                 vec![]
             }
             Event::HealthCheck(s_name, health) => {
@@ -286,7 +272,8 @@ impl Runtime {
         }
     }
 
-    /// Blocking call. Tries to move state machines forward
+    /// Blocking call.
+    /// This function will run the services and reap dead pids.
     fn run(mut self) -> ExitStatus {
         while !self.repo.all_have_finished() {
             // Ingest updates
@@ -306,6 +293,7 @@ impl Runtime {
                 .iter()
                 .map(|(_s_name, sh)| self.next(sh))
                 .flatten()
+                .chain(reaper::run(&self.repo))
                 .collect();
             next_evs.iter().for_each(|ev| {
                 if let Event::StatusChanged(s_name, new_status) = ev {
@@ -334,18 +322,12 @@ impl Runtime {
             let _res = signal::kill(all_processes, signal::SIGKILL);
         }
 
-        let res = if self.repo.any_finished_failed() {
+        self.repo.send_ev(Event::ShuttingDownInitiated);
+        if self.repo.any_finished_failed() {
             ExitStatus::SomeServiceFailed
         } else {
             ExitStatus::Successful
-        };
-
-        if !self.is_shutting_down {
-            self.repo.send_ev(Event::ShuttingDownInitiated);
         }
-        self.repo
-            .send_ev(Event::new_exit_success(Component::Runtime));
-        res
     }
 }
 
@@ -414,6 +396,28 @@ fn handle_status_changed_event(
         );
     }
     new_sh
+}
+
+/// This next function assumes that the system is shutting down.
+/// It will make progress in the direction of shutting everything down.
+fn next_events_shutting_down(service_handler: &ServiceHandler) -> Vec<Event> {
+    let ev_status =
+        |status: ServiceStatus| Event::new_status_changed(service_handler.name(), status);
+    let vev_status = |status: ServiceStatus| vec![ev_status(status)];
+
+    // Handle the new state separately if we're shutting down.
+    match service_handler.status {
+        ServiceStatus::Running | ServiceStatus::Started => vec![
+            ev_status(ServiceStatus::InKilling),
+            Event::Kill(service_handler.name().clone()),
+        ],
+        ServiceStatus::Success | ServiceStatus::Initial => vev_status(ServiceStatus::Finished),
+        ServiceStatus::Failed => vev_status(ServiceStatus::FinishedFailed),
+        ServiceStatus::InKilling if should_force_kill(service_handler) => {
+            vec![Event::new_force_kill(service_handler.name())]
+        }
+        _ => vec![],
+    }
 }
 
 /// Produce events based on the Restart Strategy of the service.

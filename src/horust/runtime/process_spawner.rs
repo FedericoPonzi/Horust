@@ -1,7 +1,8 @@
 use crate::horust::bus::BusConnector;
 use crate::horust::error::Result;
 use crate::horust::formats::{Event, LogOutput, Service};
-use crossbeam::after;
+use crate::horust::signal_safe::ss_panic;
+use crossbeam::{after, tick};
 use nix::fcntl;
 use nix::unistd;
 use nix::unistd::{fork, ForkResult, Pid};
@@ -21,16 +22,18 @@ pub(crate) fn spawn_fork_exec_handler(
     std::thread::spawn(move || {
         let total_sleep = service.start_delay.clone().add(backoff);
         let timeout = after(total_sleep);
+        let ticker = tick(Duration::from_millis(100));
         debug!("going to sleep: {:?}", total_sleep);
         // If start-delay is very high, this might interfere with the shutdown of the system.
         // the thread will listen for shutdown events from the bus, and will early exit if there is
         // a shuttingdowninitiated event
         let is_shutting_down_ev = |ev: Event| Event::ShuttingDownInitiated == ev;
+
         let ev = loop {
             select! {
-                    recv(bus.receiver()) -> ev => {
-                        let ev = ev.unwrap_or(Event::ShuttingDownInitiated);
-                        if is_shutting_down_ev(ev){
+                    recv(ticker) -> _ => {
+                        let is_shutting_down = bus.try_get_events().into_iter().any(is_shutting_down_ev);
+                        if is_shutting_down {
                             break Event::SpawnFailed(service.name.clone());
                         }
                     },
@@ -73,6 +76,7 @@ fn exec_args(service: &Service) -> Result<(CString, Vec<CString>, Vec<CString>)>
 
 /// Fork the process
 fn spawn_process(service: &Service) -> Result<Pid> {
+    debug!("Spawning process for service: {}", service.name);
     let (program_name, arg_cstrings, env_cstrings) = exec_args(service)?;
     let uid = service.user.get_uid()?;
     let cwd = service.working_directory.clone();
@@ -83,8 +87,7 @@ fn spawn_process(service: &Service) -> Result<Pid> {
                 .and_then(|_| exec(program_name, arg_cstrings, env_cstrings, uid, cwd));
             if let Err(error) = res {
                 let error = format!("Error spawning process: {}", error);
-                eprint_safe(error.as_str());
-                exit_safe(102);
+                ss_panic(error.as_str(), 102);
             }
             unreachable!()
         }
@@ -145,23 +148,4 @@ fn exec(
     nix::unistd::setuid(uid)?;
     nix::unistd::execvpe(program_name.as_ref(), arg_cptr.as_ref(), env_cptr.as_ref())?;
     Ok(())
-}
-
-/// Async-signal-safe stderr print
-fn eprint_safe(s: &str) {
-    use libc::{write, STDERR_FILENO};
-    use std::ffi::c_void;
-    unsafe {
-        write(STDERR_FILENO, s.as_ptr() as *const c_void, s.len());
-        let s = "\n";
-        write(STDERR_FILENO, s.as_ptr() as *const c_void, s.len());
-    }
-}
-
-/// Async-signal-safe exit
-fn exit_safe(status: i32) {
-    use libc::_exit;
-    unsafe {
-        _exit(status);
-    }
 }

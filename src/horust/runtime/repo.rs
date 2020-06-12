@@ -2,12 +2,14 @@ use crate::horust::bus::BusConnector;
 use crate::horust::formats::{Service, ServiceName};
 use crate::horust::runtime::service_handler::ServiceHandler;
 use crate::horust::Event;
+use nix::unistd::Pid;
 use std::collections::HashMap;
 
 #[derive(Debug, Clone)]
 pub(crate) struct Repo {
     pub services: HashMap<ServiceName, ServiceHandler>,
     pub(crate) bus: BusConnector<Event>,
+    pub(crate) pid_map: HashMap<Pid, ServiceName>,
 }
 
 impl Repo {
@@ -16,7 +18,22 @@ impl Repo {
             .into_iter()
             .map(|service| (service.name.clone(), service.into()))
             .collect();
-        Self { bus, services }
+        Self {
+            bus,
+            services,
+            pid_map: HashMap::new(),
+        }
+    }
+
+    pub(crate) fn get_service_by_pid(&self, pid: Pid) -> Option<&ServiceName> {
+        self.pid_map.get(&pid)
+    }
+
+    pub(crate) fn add_pid(&mut self, pid: Pid, service: ServiceName) {
+        self.pid_map.insert(pid, service);
+    }
+    pub(crate) fn remove_pid(&mut self, pid: Pid) {
+        self.pid_map.remove(&pid);
     }
 
     /// Non blocking

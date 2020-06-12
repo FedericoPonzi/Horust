@@ -5,13 +5,6 @@ use nix::unistd::Pid;
 pub use service::*;
 
 #[derive(Debug, Clone, PartialEq)]
-pub enum Component {
-    Reaper,
-    Runtime,
-    Healthchecker,
-}
-
-#[derive(Debug, Clone, PartialEq)]
 pub enum Event {
     PidChanged(ServiceName, Pid),
     ServiceStarted(ServiceName),
@@ -21,7 +14,6 @@ pub enum Event {
     Kill(ServiceName),
     SpawnFailed(ServiceName),
     Run(ServiceName),
-    Exiting(Component, ExitStatus),
     ShuttingDownInitiated,
     HealthCheck(ServiceName, HealthinessStatus),
     // TODO: to allow changes of service at runtime:
@@ -40,9 +32,6 @@ impl Event {
     }
     pub(crate) fn new_force_kill(service_name: &str) -> Self {
         Self::ForceKill(service_name.to_string())
-    }
-    pub(crate) fn new_exit_success(component: Component) -> Self {
-        Event::Exiting(component, ExitStatus::Successful)
     }
 }
 

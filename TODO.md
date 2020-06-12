@@ -1,6 +1,7 @@
 * Count all time the unhealthy events, if threshold is passed and 
     service is in started then stop it.
 * Better loggig facility. Using a file as stdio it's not the best.
+* Send SIGKILL to whole processgroup when killing a service
 
 ## Long todo:
 * Parameter "start-if-failed"
