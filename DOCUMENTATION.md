@@ -45,7 +45,7 @@ attempts = 0
 ```
 * **`strategy` = `always|on-failure|never`**: Defines the restart strategy.
 
-    * Always: Failure or Success, it will be always restarted
+    * `always`: Failure or Success, it will be always restarted
     * `on-failure`: Only if it has failed. Please check the attempts parameter below.
     * `never`: It won't be restarted, no matter what's the exit status. Please check the attempts parameter below.
 
