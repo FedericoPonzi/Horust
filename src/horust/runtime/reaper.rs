@@ -1,11 +1,11 @@
 use crate::horust::runtime::repo::Repo;
 use crate::horust::Event;
 
-/// Reaps up to 20 dead processes
-pub(crate) fn run(repo: &Repo) -> Vec<Event> {
+/// Reaps up to `max_iterations` dead processes
+pub(crate) fn run(repo: &Repo, max_iterations: u32) -> Vec<Event> {
     use nix::sys::wait::{waitpid, WaitPidFlag, WaitStatus};
     use nix::unistd::Pid;
-    (0..20)
+    (0..max_iterations)
         .filter_map(
             |_| match waitpid(Pid::from_raw(-1), Some(WaitPidFlag::WNOHANG)) {
                 Ok(wait_status) => {

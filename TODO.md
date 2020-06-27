@@ -7,6 +7,7 @@
 * Parameter "start-if-failed"
 * Create another binary for getting the status of the services.
     * Store timestamp when starting a new process (for knowing uptime)
-* Create another binary for validating the config file.
+    * Send ServiceAdded event and handle runtime services addition 
+    * Services config file validation
 * Setup build and release on github
     * Include git hash in version

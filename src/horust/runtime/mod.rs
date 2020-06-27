@@ -20,6 +20,8 @@ mod service_handler;
 
 pub(crate) mod signal_handling;
 
+const MAX_PROCESS_REAPS_ITERS: u32 = 20;
+
 // Spawns and runs this component in a new thread.
 pub fn spawn(
     bus: BusConnector<Event>,
@@ -30,6 +32,7 @@ pub fn spawn(
 
 #[derive(Debug)]
 pub struct Runtime {
+    /// The system is shutting down, no more services will be spawned.
     is_shutting_down: bool,
     repo: Repo,
 }
@@ -293,7 +296,7 @@ impl Runtime {
                 .iter()
                 .map(|(_s_name, sh)| self.next(sh))
                 .flatten()
-                .chain(reaper::run(&self.repo))
+                .chain(reaper::run(&self.repo, MAX_PROCESS_REAPS_ITERS))
                 .collect();
             next_evs.iter().for_each(|ev| {
                 if let Event::StatusChanged(s_name, new_status) = ev {
