@@ -10,6 +10,7 @@ homepage = "https://github.com/FedericoPonzi/horust"
 readme = "README.md"
 keywords = ["init", "container", "supervisor"]
 categories = ["command-line-utilities"]
+include = [ "src/**/*", "Cargo.*", "LICENSE.txt", "README.md", ]
 
 [dependencies]
 structopt = "~0.3"
