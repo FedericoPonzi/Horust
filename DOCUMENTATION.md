@@ -163,11 +163,22 @@ All the parameters can be passed via the cli (use `horust --help`) or via a conf
 The default path for the config file is `/etc/horust/horust.toml`.
 
 ## Single command
-WIP. It's already supported, but it needs some love.
+It's already supported, but I think it needs some love.
+You can wrap a single command with horust by running:
+``` bash
+./horust -- bash /tmp/myscript.sh
+```
+This is equivalent to running a single service defined as:
+```
+command= "bash /tmp/myscript.sh"
+```
+This will run the specified command as a one shot service, so it won't be restarted after exiting.
+Commands have precedence over services, so if you specify both a command and a services-path, the command will be executed and the services path is ignored.
 
 ## Plugins
-WIP. Horust works via message passing, so it should be fairly easy to have additional components connected to the bus.
+WIP. Horust works via message passing, so it should be fairly easy to have additional components connected to its bus.
+But I'm not sure at this time, if there is the need for this.
 
 ## Checking system status
-WIP. Feel free to contribute.
-The idea is to create another binary, which will somehow report the system status.
+WIP: https://github.com/FedericoPonzi/Horust/issues/31
+The idea is to create another binary, which will somehow report the system status. A `systemctl` for Horust.
