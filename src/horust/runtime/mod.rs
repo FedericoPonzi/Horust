@@ -68,7 +68,8 @@ impl Runtime {
             ServiceStatus::Started if service_handler.healthiness_checks_failed == 0 => {
                 vev_status(ServiceStatus::Running)
             }
-            // If 2 healthcheks are failed, then kill the service. Maybe this should be parametrized
+            // This will kill the service after 3 failed healthchecks in a row.
+            // Maybe this should be parametrized
             ServiceStatus::Running if service_handler.healthiness_checks_failed > 2 => vec![
                 ev_status(ServiceStatus::InKilling),
                 Event::Kill(service_handler.name().clone()),
