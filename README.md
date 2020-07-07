@@ -2,7 +2,7 @@
 
 [![CI](https://github.com/FedericoPonzi/horust/workflows/CI/badge.svg?branch=master&event=push)](https://github.com/FedericoPonzi/Horust/actions?query=workflow%3ACI) [![MIT licensed](https://img.shields.io/badge/license-MIT-blue.svg)](./LICENSE) [![Gitter chat](https://badges.gitter.im/gitterHQ/gitter.png)](https://gitter.im/horust-init/community)
  
-[Horust](https://github.com/FedericoPonzi/Horust) is a supervisor system written in rust and designed to be run inside containers.
+[Horust](https://github.com/FedericoPonzi/Horust) is a supervisor / init system written in rust and designed to be run inside containers.
 
 # Table of contents
 * [Goals](#goals)
