@@ -62,7 +62,11 @@ where
     pub fn join_bus(&mut self) -> BusConnector<T> {
         let (sender, receiver) = unbounded();
         self.senders.push((self.senders.len() as u64, sender));
-        BusConnector::new(self.shared_sender.clone(), receiver, self.senders.len() as u64)
+        BusConnector::new(
+            self.shared_sender.clone(),
+            receiver,
+            self.senders.len() as u64,
+        )
     }
 
     /// Dispatching loop
@@ -71,7 +75,8 @@ where
         drop(self.shared_sender);
         if self.forward_to_sender {
             for ev in self.receiver {
-                self.senders.retain(|(_idx, sender)| sender.send(ev.clone()).is_ok());
+                self.senders
+                    .retain(|(_idx, sender)| sender.send(ev.clone()).is_ok());
             }
         } else {
             for ev in self.receiver {
@@ -136,7 +141,11 @@ where
     T: Clone,
 {
     fn new(sender: Sender<Message<T>>, receiver: Receiver<Message<T>>, id: u64) -> Self {
-        Self { sender, receiver, id }
+        Self {
+            sender,
+            receiver,
+            id,
+        }
     }
     fn wrap(&self, payload: T) -> Message<T> {
         Message::new(self.id, payload)
@@ -145,7 +154,11 @@ where
     /// Blocking
     #[cfg(test)]
     pub fn get_n_events_blocking(&self, quantity: usize) -> Vec<T> {
-        self.receiver.iter().map(|m| m.into_payload()).take(quantity).collect()
+        self.receiver
+            .iter()
+            .map(|m| m.into_payload())
+            .take(quantity)
+            .collect()
     }
 
     pub fn iter(&self) -> impl Iterator<Item = T> + '_ {
@@ -159,7 +172,9 @@ where
     }
 
     pub(crate) fn send_event(&self, ev: T) {
-        self.sender.send(self.wrap(ev)).expect("Failed sending update event!");
+        self.sender
+            .send(self.wrap(ev))
+            .expect("Failed sending update event!");
     }
 }
 
@@ -173,7 +188,11 @@ mod test {
     use std::thread;
     use std::time::Duration;
 
-    fn init_bus() -> (BusConnector<Event>, BusConnector<Event>, channel::Receiver<()>) {
+    fn init_bus() -> (
+        BusConnector<Event>,
+        BusConnector<Event>,
+        channel::Receiver<()>,
+    ) {
         let mut bus = Bus::new();
         let a = bus.join_bus();
         let b = bus.join_bus();

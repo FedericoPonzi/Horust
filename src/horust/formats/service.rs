@@ -606,16 +606,19 @@ pub fn validate(services: Vec<Service>) -> Result<Vec<Service>, Vec<ValidationEr
                 service.name, service.start_after
             );
         }
-        service
-            .start_after
-            .iter()
-            .for_each(|name| {
-                let passed = services.iter().any(|s| s.name == *name);
-                if !passed {
-                    let err = format!("Service '{}', should start after '{}', but there is no service with such name.", service.name, name);
-                    errors.push(ValidationError::new(err.as_str(), ValidationErrorKind::MissingDependency));
-                }
-            });
+        service.start_after.iter().for_each(|name| {
+            let passed = services.iter().any(|s| s.name == *name);
+            if !passed {
+                let err = format!(
+                    "Service '{}', should start after '{}', but there is no service with such name.",
+                    service.name, name
+                );
+                errors.push(ValidationError::new(
+                    err.as_str(),
+                    ValidationErrorKind::MissingDependency,
+                ));
+            }
+        });
     });
     if errors.is_empty() {
         Ok(services)
