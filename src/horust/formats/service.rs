@@ -11,8 +11,7 @@ use std::str::FromStr;
 use std::time::Duration;
 
 pub fn get_sample_service() -> String {
-    r#"
-command = "/bin/bash -c 'echo hello world'"
+    r#"command = "/bin/bash -c 'echo hello world'"
 start-delay = "2s"
 start-after = ["another.toml", "second.toml"]
 stdout = "STDOUT"
@@ -98,8 +97,8 @@ impl Service {
         toml::from_str::<Service>(content.as_str()).map_err(HorustError::from)
     }
 
-    /// Create the environment K=V variables, used for exec into the new process.
-    /// User defined environment variables overwrite the predefined variables.
+    /// Creates the environment K=V variables, used for exec into the new process.
+    /// User defined environment variables overwrite the predefined values.
     pub fn get_environment(&self) -> crate::horust::error::Result<Vec<String>> {
         Ok(self.environment.get_environment(
             self.user.clone().get_name()?,
@@ -107,7 +106,7 @@ impl Service {
         ))
     }
 
-    /// Wrapper for single command executions
+    /// Wrapper for single command horust run
     pub fn from_command(command: String) -> Self {
         Service {
             name: command.clone(),
@@ -607,16 +606,19 @@ pub fn validate(services: Vec<Service>) -> Result<Vec<Service>, Vec<ValidationEr
                 service.name, service.start_after
             );
         }
-        service
-            .start_after
-            .iter()
-            .for_each(|name| {
-                let passed = services.iter().any(|s| s.name == *name);
-                if !passed {
-                    let err = format!("Service '{}', should start after '{}', but there is no service with such name.", service.name, name);
-                    errors.push(ValidationError::new(err.as_str(), ValidationErrorKind::MissingDependency));
-                }
-            });
+        service.start_after.iter().for_each(|name| {
+            let passed = services.iter().any(|s| s.name == *name);
+            if !passed {
+                let err = format!(
+                    "Service '{}', should start after '{}', but there is no service with such name.",
+                    service.name, name
+                );
+                errors.push(ValidationError::new(
+                    err.as_str(),
+                    ValidationErrorKind::MissingDependency,
+                ));
+            }
+        });
     });
     if errors.is_empty() {
         Ok(services)

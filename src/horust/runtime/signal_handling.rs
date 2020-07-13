@@ -1,4 +1,4 @@
-use crate::horust::signal_safe::ss_panic;
+use crate::horust::signal_safe::panic_ssafe;
 use nix::sys::signal::{sigaction, SaFlags, SigAction, SigHandler, SigSet, SIGINT, SIGTERM};
 
 static mut SIGTERM_RECEIVED: bool = false;
@@ -16,18 +16,16 @@ pub(crate) fn init() {
 
     if let Err(err) = unsafe { sigaction(SIGTERM, &sig_action) } {
         let error = format!("sigaction() failed: {}", err);
-        ss_panic(error.as_str(), 103);
+        panic_ssafe(error.as_str(), 103);
     };
 
     if let Err(err) = unsafe { sigaction(SIGINT, &sig_action) } {
         let error = format!("sigaction() failed: {}", err);
-        ss_panic(error.as_str(), 104);
+        panic_ssafe(error.as_str(), 104);
     };
 }
 
 extern "C" fn handle_sigterm(_signal: libc::c_int) {
-    //let s = format!("Received signal: {} (SIGTERM | SIGINT)\n", signal);
-    //print(s.as_str());
     unsafe {
         SIGTERM_RECEIVED = true;
     }

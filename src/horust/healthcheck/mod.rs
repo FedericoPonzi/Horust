@@ -1,3 +1,6 @@
+//! If a service has defined an healthchecker, this module will spawn a worker to making sure that
+//! everything
+
 use crate::horust::bus::BusConnector;
 use crate::horust::formats::{
     Event, Healthiness, HealthinessStatus, Service, ServiceName, ServiceStatus,

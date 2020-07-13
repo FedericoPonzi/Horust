@@ -1,3 +1,6 @@
+//! The runtime is one of the biggest module. It is responsbile for supervising the services, and
+//! keeping track of their current state.
+
 use crate::horust::bus::BusConnector;
 use crate::horust::formats::{
     Event, ExitStatus, FailureStrategy, HealthinessStatus, RestartStrategy, Service, ServiceName,
@@ -17,8 +20,9 @@ mod process_spawner;
 mod reaper;
 mod repo;
 mod service_handler;
+mod signal_handling;
 
-pub(crate) mod signal_handling;
+pub(crate) use signal_handling::init;
 
 const MAX_PROCESS_REAPS_ITERS: u32 = 20;
 
@@ -424,7 +428,7 @@ fn next_events_shutting_down(service_handler: &ServiceHandler) -> Vec<Event> {
     }
 }
 
-/// Produce events based on the Restart Strategy of the service.
+/// Produces events based on the Restart Strategy of the service.
 fn handle_restart_strategy(service: &Service, is_failed: bool) -> Event {
     let new_status = |status| Event::new_status_changed(&service.name, status);
     let ev = match service.restart.strategy {

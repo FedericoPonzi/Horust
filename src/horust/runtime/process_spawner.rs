@@ -1,7 +1,7 @@
 use crate::horust::bus::BusConnector;
 use crate::horust::error::Result;
 use crate::horust::formats::{Event, LogOutput, Service};
-use crate::horust::signal_safe::ss_panic;
+use crate::horust::signal_safe::panic_ssafe;
 use crossbeam::{after, tick};
 use nix::fcntl;
 use nix::unistd;
@@ -87,7 +87,7 @@ fn spawn_process(service: &Service) -> Result<Pid> {
                 .and_then(|_| exec(program_name, arg_cstrings, env_cstrings, uid, cwd));
             if let Err(error) = res {
                 let error = format!("Error spawning process: {}", error);
-                ss_panic(error.as_str(), 102);
+                panic_ssafe(error.as_str(), 102);
             }
             unreachable!()
         }
@@ -130,7 +130,10 @@ fn redirect_output(val: &LogOutput, output: LogOutput) -> Result<()> {
 }
 
 /// Exec wrapper.
-/// Warning: use only async-signal-safe, otherwise it might lock
+///
+/// # Safety
+///
+/// Use only async-signal-safe, otherwise it might lock.
 fn exec(
     program_name: CString,
     arg_cstrings: Vec<CString>,

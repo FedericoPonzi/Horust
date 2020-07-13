@@ -1,13 +1,20 @@
+//! A simple bus implementation: distributes the messages among the queues
+//! There is one single input pipe (`public_sender` ; `receiver`). The sender side is shared among
+//! all the publishers. The bus reads from the receiver, and publishes to all the `senders`.
+//! This is a very simple wrapper around crossbeam, that allows multiple sender send messages which
+//! will arrive to every receiver. For this reason, the message should implement Clone.
+//!
+
 use crossbeam::channel::{unbounded, Receiver, Sender};
+use serde::export::Formatter;
 use std::fmt::Debug;
 
 /// A simple bus implementation: distributes the messages among the queues
 /// There is one single input pipe (`public_sender` ; `receiver`). The sender side is shared among
 /// all the publishers. The bus reads from the receiver, and publishes to all the `senders`.
-#[derive(Debug)]
 pub struct Bus<T>
 where
-    T: Clone + Debug,
+    T: Clone,
 {
     /// Bus input - sender side
     shared_sender: Sender<Message<T>>,
@@ -18,10 +25,23 @@ where
     /// Forward the message to the sender as well.
     forward_to_sender: bool,
 }
+impl<T> Debug for Bus<T>
+where
+    T: Debug + Clone,
+{
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "Bus {{ senders: {}, forward_to_sender: {} ...}}",
+            self.senders.len(),
+            self.forward_to_sender
+        )
+    }
+}
 
 impl<T> Bus<T>
 where
-    T: Clone + Debug,
+    T: Clone,
 {
     pub fn new() -> Self {
         let (public_sender, receiver) = unbounded();
@@ -73,17 +93,17 @@ where
 }
 
 /// The payload with wrapped with some metadata
-#[derive(Clone, Debug)]
+#[derive(Clone)]
 struct Message<T>
 where
-    T: Clone + Debug,
+    T: Clone,
 {
     sender_id: u64,
     payload: T,
 }
 impl<T> Message<T>
 where
-    T: Clone + Debug,
+    T: Clone,
 {
     pub fn new(sender_id: u64, payload: T) -> Self {
         Self { payload, sender_id }
@@ -96,18 +116,29 @@ where
 }
 
 /// A connector to the shared bus
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub struct BusConnector<T>
 where
-    T: Clone + Debug,
+    T: Clone,
 {
     sender: Sender<Message<T>>,
     receiver: Receiver<Message<T>>,
     id: u64,
 }
+
+impl<T: Debug + Clone> Debug for BusConnector<T> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "BusConnection {{ sender: {:?}, receiver: {:?}, id: {} }}",
+            self.sender, self.receiver, self.id
+        )
+    }
+}
+
 impl<T> BusConnector<T>
 where
-    T: Clone + Debug,
+    T: Clone,
 {
     fn new(sender: Sender<Message<T>>, receiver: Receiver<Message<T>>, id: u64) -> Self {
         Self {

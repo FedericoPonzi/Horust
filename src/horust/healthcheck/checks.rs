@@ -7,8 +7,7 @@ static FILE_CHECK: FilePathCheck = FilePathCheck {};
 static HTTP_CHECK: HttpCheck = HttpCheck {};
 
 pub(crate) fn get_checks() -> Vec<&'static dyn Check> {
-    let checks: Vec<&dyn Check> = vec![&FILE_CHECK, &HTTP_CHECK];
-    checks
+    vec![&FILE_CHECK, &HTTP_CHECK]
 }
 
 pub(crate) trait Check {
@@ -17,8 +16,11 @@ pub(crate) trait Check {
         Ok(())
     }
 }
-
+/// HTTP based healthcheck: will send an head request with 1 second timeout, and the test will be
+/// considered failed if the repsonse is anything other than `200`.
 pub(crate) struct HttpCheck;
+
+static HTTP_REQUEST_TIMEOUT: u64 = 1;
 
 impl Check for HttpCheck {
     fn run(&self, healthiness: &Healthiness) -> bool {
@@ -32,7 +34,7 @@ impl Check for HttpCheck {
                 #[cfg(feature = "http-healthcheck")]
                     {
                         let client = Client::builder()
-                            .timeout(Duration::from_secs(1))
+                            .timeout(Duration::from_secs(HTTP_REQUEST_TIMEOUT))
                             .build().expect("Http client");
                         let resp: Result<reqwest::blocking::Response, reqwest::Error> = client.head(endpoint).send();
                         resp.map(|resp| resp.status().is_success()).unwrap_or(false)
@@ -53,16 +55,12 @@ impl Check for FilePathCheck {
             .unwrap_or(true)
     }
     fn prepare(&self, healthiness: &Healthiness) -> Result<(), std::io::Error> {
-        //TODO: check if user has permissions to remove this file.
-        if let Some(file_path) = healthiness.file_path.as_ref() {
-            // If it's a dir, remove_file will fail.
-            if file_path.exists() {
-                std::fs::remove_file(file_path)
-            } else {
-                Ok(())
-            }
-        } else {
-            Ok(())
-        }
+        //TODO: check if user has permissions to remove the file.
+        healthiness
+            .file_path
+            .as_ref()
+            .filter(|file| file.exists())
+            .map(std::fs::remove_file)
+            .unwrap_or(Ok(()))
     }
 }
