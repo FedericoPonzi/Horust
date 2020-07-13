@@ -56,7 +56,7 @@ impl Horust {
         unsafe {
             prctl(PR_SET_CHILD_SUBREAPER, 1, 0, 0, 0);
         }
-        runtime::signal_handling::init();
+        runtime::init();
 
         let mut dispatcher = Bus::new();
         debug!("Services: {:?}", self.services);

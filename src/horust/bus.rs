@@ -1,13 +1,20 @@
+//! A simple bus implementation: distributes the messages among the queues
+//! There is one single input pipe (`public_sender` ; `receiver`). The sender side is shared among
+//! all the publishers. The bus reads from the receiver, and publishes to all the `senders`.
+//! This is a very simple wrapper around crossbeam, that allows multiple sender send messages which
+//! will arrive to every receiver. For this reason, the message should implement Clone.
+//!
+
 use crossbeam::channel::{unbounded, Receiver, Sender};
+use serde::export::Formatter;
 use std::fmt::Debug;
 
 /// A simple bus implementation: distributes the messages among the queues
 /// There is one single input pipe (`public_sender` ; `receiver`). The sender side is shared among
 /// all the publishers. The bus reads from the receiver, and publishes to all the `senders`.
-#[derive(Debug)]
 pub struct Bus<T>
 where
-    T: Clone + Debug,
+    T: Clone,
 {
     /// Bus input - sender side
     shared_sender: Sender<Message<T>>,
@@ -18,10 +25,23 @@ where
     /// Forward the message to the sender as well.
     forward_to_sender: bool,
 }
+impl<T> Debug for Bus<T>
+where
+    T: Debug + Clone,
+{
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "Bus {{ senders: {}, forward_to_sender: {} ...}}",
+            self.senders.len(),
+            self.forward_to_sender
+        )
+    }
+}
 
 impl<T> Bus<T>
 where
-    T: Clone + Debug,
+    T: Clone,
 {
     pub fn new() -> Self {
         let (public_sender, receiver) = unbounded();
@@ -42,11 +62,7 @@ where
     pub fn join_bus(&mut self) -> BusConnector<T> {
         let (sender, receiver) = unbounded();
         self.senders.push((self.senders.len() as u64, sender));
-        BusConnector::new(
-            self.shared_sender.clone(),
-            receiver,
-            self.senders.len() as u64,
-        )
+        BusConnector::new(self.shared_sender.clone(), receiver, self.senders.len() as u64)
     }
 
     /// Dispatching loop
@@ -55,8 +71,7 @@ where
         drop(self.shared_sender);
         if self.forward_to_sender {
             for ev in self.receiver {
-                self.senders
-                    .retain(|(_idx, sender)| sender.send(ev.clone()).is_ok());
+                self.senders.retain(|(_idx, sender)| sender.send(ev.clone()).is_ok());
             }
         } else {
             for ev in self.receiver {
@@ -73,17 +88,17 @@ where
 }
 
 /// The payload with wrapped with some metadata
-#[derive(Clone, Debug)]
+#[derive(Clone)]
 struct Message<T>
 where
-    T: Clone + Debug,
+    T: Clone,
 {
     sender_id: u64,
     payload: T,
 }
 impl<T> Message<T>
 where
-    T: Clone + Debug,
+    T: Clone,
 {
     pub fn new(sender_id: u64, payload: T) -> Self {
         Self { payload, sender_id }
@@ -96,25 +111,32 @@ where
 }
 
 /// A connector to the shared bus
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub struct BusConnector<T>
 where
-    T: Clone + Debug,
+    T: Clone,
 {
     sender: Sender<Message<T>>,
     receiver: Receiver<Message<T>>,
     id: u64,
 }
+
+impl<T: Debug + Clone> Debug for BusConnector<T> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "BusConnection {{ sender: {:?}, receiver: {:?}, id: {} }}",
+            self.sender, self.receiver, self.id
+        )
+    }
+}
+
 impl<T> BusConnector<T>
 where
-    T: Clone + Debug,
+    T: Clone,
 {
     fn new(sender: Sender<Message<T>>, receiver: Receiver<Message<T>>, id: u64) -> Self {
-        Self {
-            sender,
-            receiver,
-            id,
-        }
+        Self { sender, receiver, id }
     }
     fn wrap(&self, payload: T) -> Message<T> {
         Message::new(self.id, payload)
@@ -123,11 +145,7 @@ where
     /// Blocking
     #[cfg(test)]
     pub fn get_n_events_blocking(&self, quantity: usize) -> Vec<T> {
-        self.receiver
-            .iter()
-            .map(|m| m.into_payload())
-            .take(quantity)
-            .collect()
+        self.receiver.iter().map(|m| m.into_payload()).take(quantity).collect()
     }
 
     pub fn iter(&self) -> impl Iterator<Item = T> + '_ {
@@ -141,9 +159,7 @@ where
     }
 
     pub(crate) fn send_event(&self, ev: T) {
-        self.sender
-            .send(self.wrap(ev))
-            .expect("Failed sending update event!");
+        self.sender.send(self.wrap(ev)).expect("Failed sending update event!");
     }
 }
 
@@ -157,11 +173,7 @@ mod test {
     use std::thread;
     use std::time::Duration;
 
-    fn init_bus() -> (
-        BusConnector<Event>,
-        BusConnector<Event>,
-        channel::Receiver<()>,
-    ) {
+    fn init_bus() -> (BusConnector<Event>, BusConnector<Event>, channel::Receiver<()>) {
         let mut bus = Bus::new();
         let a = bus.join_bus();
         let b = bus.join_bus();
