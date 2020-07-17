@@ -32,6 +32,7 @@ impl Worker {
             self.bus.send_event(Event::HealthCheck(
                 self.service.name.clone(),
                 status.clone(),
+                println!("Testing some shit"),
             ));
             match self
                 .work_done_notifier
