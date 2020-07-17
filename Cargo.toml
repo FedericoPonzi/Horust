@@ -12,6 +12,11 @@ keywords = ["init", "container", "supervisor"]
 categories = ["command-line-utilities"]
 include = [ "src/**/*", "Cargo.*", "LICENSE.txt", "README.md", ]
 
+# Used for local development in a container - see the localdev folder
+[[bin]]
+name="horust"
+path="src/main.rs"
+
 [dependencies]
 structopt = "~0.3"
 # Still not released: clap = { git = "https://github.com/clap-rs/clap/", rev = "28c46b5", version = "3.0.0-beta.1" }

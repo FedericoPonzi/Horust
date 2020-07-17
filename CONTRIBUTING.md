@@ -60,6 +60,16 @@ make help
 
 ---
 
+## Local development using a container
+
+Horust was developed to be used inside containers. That means that it's primarily built to be used in *nix environments,
+and even more specifically in Linux and its flavours. At the time of writing, Horust fails to compile on Mac OSX due 
+to a dependency (`prctl`) that does not exist on Mac, as well as some `libc` functions that are Linux-sepcific and are
+not available on OSX. 
+
+To solve this issue, the [`localdev`](https://github.com/FedericoPonzi/Horust/blob/edfbeaee6d56d2121a445ea6e249d471d62aac4f/localdev#L70-L70) folder contains a small set of files that aid in creating a container-based development workflow.
+
+### Add some more info about process
 
 ### Useful Links:
 Just a small collection of useful links:
