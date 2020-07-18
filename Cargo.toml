@@ -15,7 +15,7 @@ include = [ "src/**/*", "Cargo.*", "LICENSE.txt", "README.md", ]
 # Used for local development in a container - see the localdev folder
 [[bin]]
 name="horust"
-path="dummy.rs"
+path="src/dummy.rs"
 
 [dependencies]
 structopt = "~0.3"

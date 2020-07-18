@@ -8,12 +8,13 @@ ARG CARGO_PARAMS
 # Note that COPY only runs if the files it is provided has changed, otherwise the Docker cache is hit
 COPY Cargo.toml Cargo.lock ./
 # This uses the dummy Rust program to compile all deps
-RUN echo 'fn main() {}' > dummy.rs
-RUN sed -i 's^src/main.rs^dummy.rs^' Cargo.toml
+RUN echo 'fn main() {}' > src/dummy.rs
+RUN sed -i 's^src/main.rs^src/dummy.rs^' Cargo.toml
 RUN echo "Running cargo build with dummy program to build all deps: $CARGO_PARAMS" && cargo build $CARGO_PARAMS
 # Now switch back to the main problem before actually creating the Horust binary
-RUN sed -i 's^dummy.rs^src/main.rs^' Cargo.toml
+RUN sed -i 's^src/dummy.rs^src/main.rs^' Cargo.toml
 # Get everything else into the conatiner
 COPY . .
 # And now build without re-compiling all the things! Profit!
 RUN echo "Running cargo build with actual Rust code to build all deps: $CARGO_PARAMS" && cargo build $CARGO_PARAMS
+

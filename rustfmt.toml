@@ -61,6 +61,6 @@ error_on_line_overflow = false
 error_on_unformatted = false
 report_todo = "Never"
 report_fixme = "Never"
-ignore = []
+ignore = ["src/dummy.rs"]
 emit_mode = "Files"
 make_backup = false
