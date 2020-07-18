@@ -69,12 +69,14 @@ and then work off the binary instead of compiling yourself.
 One example would be if you're developing on a system that does not support a certain Linux command that Horust uses.
 Mac users, for example, would prefer this approach (since `prctl` is not available on Mac OSX).
 
-To solve this issue, the `Makefile` contains a `dlocal X` command, that allows for a container-based development workflow.
-Specifically:
+To solve this issue, the `Makefile` contains a `dlocal CARGO_COMMAND` command, where `CARGO_COMMAND` is passed to `cargo`
+inside the container. This flow allows for a container-based development workflow that's similar to the normal one.
+Some examples:
 
-`dlocal build` - Compiles Horust and its dependecies
-`dlocal test`  - Compiles Horust and its dependencies and tests the project using `cargo test`
-`dlocal run`   - Compiles Horust and its dependencies and runs the project using `cargo run` and a set of example services
+`dlocal build` - Compiles Horust and its dependecies (need to run this once, to compile all the dependencies)
+`dlocal test`  - Runs the test suite without re-compiling all dependencies
+`dlocal run`   - Runs Horust inside a container
+`dlocal check` - Performs 
 
 ### Container-based development example
 

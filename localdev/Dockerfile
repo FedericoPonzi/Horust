@@ -4,3 +4,4 @@
 FROM rust:1.42
 WORKDIR /usr/src/Horust
 CMD ["/bin/bash"]
+

@@ -47,16 +47,40 @@ tag-latest: ## tags the latest container with the version listed above
 	docker tag $(DOCKER_REMOTE_REPO)/$(APP_NAME):$(VERSION) $(DOCKER_REMOTE_REPO)/$(APP_NAME):latest
 
 version: ## output to version
-	@echo $(VERSION)
+	@echo ''$(VERSION)
 
 # Docker local development tasks
-dlocal: ## Build a new docker image for local development
-	@echo 'Building an Horust image for local development'
-	DOCKER_BUILDKIT=1 docker build -t $(DOCKER_LOCAL_REPO)/$(APP_NAME) -f localdev/Dockerfile --build-arg CARGO_COMMAND=$(CARGO_COMMAND) .
+## Dargo == Docker Cargo
+dargo-prep: ## This runs everything neccessary to start developing locally in a container
+	# Spin up a long-running rust container
+	dargo-create-container
+	# Compile and cache all dependencies
+	dargo COMMAND=build
+    # Compile and cache test dependencies, run tests
+	dargo COMMAND=test ## Runs all of Horust's tests inside the container, making sure all test dependncies are cached
 
-dlocal-run: ## Run the local development docker image
-	@echo 'Local Docker run not yet implemented'
+dargo: ## Run a cargo command inside the container
+	docker exec -ti $(docker ps -a | grep local:horust | cut -c1-12) cargo $(COMMAND)
 
-dlocal-test:
-	@echo 'Local Docker development testing not yet implemented'
+dargo-create-container: ## Create a Rust container with this folder bind-mounted to it
+	@echo 'building rust image for local development'
+	docker build -t local:horust -f localdev/Dockerfile localdev/
+	@echo 'running interactive rust container for local development'
+	docker run -dt \
+ 	--name local-horust \
+ 	--user "$(id -u)":"$(id -g)" \
+ 	--mount type=bind,source="$(pwd)"/,target=/usr/src/Horust \
+ 	local:horust
 
+#
+#dargo build: ## shorthand for `cargo build` inside the container
+#	dargo COMMAND=build
+#
+#dargo test: ## shorthand for `cargo test` inside the container
+#	dargo COMMAND=test
+#
+#dargo check: ## shorthand for `cargo check` inside the container
+#	dargo COMMAND=check
+#
+#dargo run: ## shorthand for `cargo run` inside the container
+#	dargo COMMAND=run
