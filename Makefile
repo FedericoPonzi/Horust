@@ -1,3 +1,4 @@
+SHELL := /bin/bash
 NAME = "horust"
 VERSION = "v0.2.0"
 DOCKER_REMOTE_REPO = "federicoponzi"
@@ -53,34 +54,24 @@ version: ## output to version
 ## Dargo == Docker Cargo
 dargo-prep: ## This runs everything neccessary to start developing locally in a container
 	# Spin up a long-running rust container
-	dargo-create-container
+	make dargo-create-container
 	# Compile and cache all dependencies
-	dargo COMMAND=build
+	make dargo COMMAND=build
     # Compile and cache test dependencies, run tests
-	dargo COMMAND=test ## Runs all of Horust's tests inside the container, making sure all test dependncies are cached
+	make dargo COMMAND=test
+	# Perform a first-sweep check, to make latter ones faster
+	make dargo COMMAND=check
+	# Now everything should be pretty fast:)
 
 dargo: ## Run a cargo command inside the container
-	docker exec -ti $(docker ps -a | grep local:horust | cut -c1-12) cargo $(COMMAND)
+	docker exec -ti local-horust cargo $(COMMAND)
 
 dargo-create-container: ## Create a Rust container with this folder bind-mounted to it
 	@echo 'building rust image for local development'
-	docker build -t local:horust -f localdev/Dockerfile localdev/
+	docker build -t horust -f localdev/Dockerfile localdev/
 	@echo 'running interactive rust container for local development'
 	docker run -dt \
  	--name local-horust \
  	--user "$(id -u)":"$(id -g)" \
  	--mount type=bind,source="$(pwd)"/,target=/usr/src/Horust \
- 	local:horust
-
-#
-#dargo build: ## shorthand for `cargo build` inside the container
-#	dargo COMMAND=build
-#
-#dargo test: ## shorthand for `cargo test` inside the container
-#	dargo COMMAND=test
-#
-#dargo check: ## shorthand for `cargo check` inside the container
-#	dargo COMMAND=check
-#
-#dargo run: ## shorthand for `cargo run` inside the container
-#	dargo COMMAND=run
+ 	horust
