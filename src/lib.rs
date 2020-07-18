@@ -1,6 +1,3 @@
-// Remove once https://github.com/FedericoPonzi/Horust/issues/42 is fixed
-mod dummy;
-
 #[macro_use]
 extern crate log;
 
