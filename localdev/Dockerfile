@@ -7,8 +7,8 @@ ARG CARGO_PARAMS
 # The dummy file is just used to get the deps into our project
 # Note that COPY only runs if the files it is provided has changed, otherwise the Docker cache is hit
 COPY Cargo.toml Cargo.lock ./
-# This uses the dummy Rust program to compile all deps
-RUN echo 'fn main() {}' > src/dummy.rs
+COPY src/dummy.rs ./src/dummy.rs
+# This uses a dummy Rust program to compile all deps
 RUN sed -i 's^src/main.rs^src/dummy.rs^' Cargo.toml
 RUN echo "Running cargo build with dummy program to build all deps: $CARGO_PARAMS" && cargo build $CARGO_PARAMS
 # Now switch back to the main problem before actually creating the Horust binary

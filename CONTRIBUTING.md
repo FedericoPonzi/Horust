@@ -62,16 +62,25 @@ make help
 
 ## Local development using a container
 
-Horust was developed to be used inside containers. That means that it's primarily built to be used in *nix environments,
-and even more specifically in Linux and its flavours. At the time of writing, Horust fails to compile on Mac OSX due 
-to a dependency (`prctl`) that does not exist on Mac, as well as some `libc` functions that are Linux-sepcific and are
-not available on OSX. 
+If you'd like to skip all the bells and whistles of setting up the project, you can get up and running quickly using an
+"All-In-One" Docker solution. It's basically a wrapper around Horust that enables you to compile it and all of its dependencies,
+and then work off the binary instead of compiling yourself.
 
-To solve this issue, the [`localdev`](https://github.com/FedericoPonzi/Horust/blob/edfbeaee6d56d2121a445ea6e249d471d62aac4f/localdev#L70-L70) folder contains a small set of files that aid in creating a container-based development workflow.
+One example would be if you're developing on a system that does not support a certain Linux command that Horust uses.
+Mac users, for example, would prefer this approach (since `prctl` is not available on Mac OSX).
 
-### Add some more info about process
+To solve this issue, the `Makefile` contains a `dlocal X` command, that allows for a container-based development workflow.
+Specifically:
 
-### Useful Links:
+`dlocal build` - Compiles Horust and its dependecies
+`dlocal test`  - Compiles Horust and its dependencies and tests the project using `cargo test`
+`dlocal run`   - Compiles Horust and its dependencies and runs the project using `cargo run` and a set of example services
+
+### Container-based development example
+
+ADD EXAMPLE
+
+## Useful Links:
 Just a small collection of useful links:
 * https://www.youtube.com/watch?v=gZqIEstv5lM
 * https://docs.google.com/presentation/d/1jpAOBDiYfTvK3mWHuzrP8vaK7OUoALNCvegiibuvmYc/edit
@@ -83,14 +92,14 @@ Just a small collection of useful links:
 * https://www.mustafaak.in/posts/2016-02-09-forking-process-in-myinit-go/
 * https://blog.darknedgy.net/technology/2015/09/05/0/
 
-### Random init systems:
+## Random init systems:
 * https://github.com/Yelp/dumb-init
 * https://github.com/fpco/pid1
 * https://github.com/krallin/tini/
 * https://github.com/OpenRC/openrc
 * https://github.com/OpenRC/openrc/blob/master/supervise-daemon-guide.md
 
-### Useful man pages:
+## Useful man pages:
 * man runlevel
 * man 8 init
 * man getty

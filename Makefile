@@ -50,9 +50,9 @@ version: ## output to version
 	@echo $(VERSION)
 
 # Docker local development tasks
-dlocal-build: ## Build a new docker image for local development
+dlocal: ## Build a new docker image for local development
 	@echo 'Building an Horust image for local development'
-	docker build -t $(DOCKER_LOCAL_REPO)/$(APP_NAME) -f localdev/Dockerfile $(COMMON_DOCKER_PARAMS)  .
+	docker build -t $(DOCKER_LOCAL_REPO)/$(APP_NAME) -f localdev/Dockerfile .
 
 dlocal-run: ## Run the local development docker image
 	@echo 'Local Docker run not yet implemented'
