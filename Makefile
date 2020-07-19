@@ -57,11 +57,12 @@ dargo-prep: ## This runs everything neccessary to start developing locally in a 
 	make dargo-create-container
 	# Compile and cache all dependencies
 	make dargo COMMAND=build
+	# Perform a first-sweep check, to fill up the cache (it seems to be different than the build one)
+	make dargo COMMAND=check
     # Compile and cache test dependencies, run tests
 	make dargo COMMAND=test
-	# Perform a first-sweep check, to make latter ones faster
-	make dargo COMMAND=check
-	# Now everything should be pretty fast:)
+	# Now all caches are filled, and subsequent operations will be faster
+	alias dargo="dargo COMMAND="
 
 dargo: ## Run a cargo command inside the container
 	docker exec -ti local-horust cargo $(COMMAND)
