@@ -2,6 +2,8 @@ SHELL := /bin/bash
 NAME = "horust"
 VERSION = "v0.2.0"
 DOCKER_REMOTE_REPO = "federicoponzi"
+LOCAL_DEV_CONTAINER_NAME = "docker-horust"
+LOCAL_DEV_WORKDIR = "/usr/src/Horust"
 REPO_HOME := $(shell git rev-parse --show-toplevel)
 GIT_COMMIT := $(shell git rev-parse HEAD)
 GIT_BRANCH := $(shell git rev-parse --abbrev-ref HEAD)
@@ -47,7 +49,7 @@ tag-latest: ## tags the latest container with the version listed above
 	docker tag $(DOCKER_REMOTE_REPO)/$(APP_NAME):$(VERSION) $(DOCKER_REMOTE_REPO)/$(APP_NAME):latest
 
 version: ## output to version
-	@echo ''$(VERSION)
+	@echo $(VERSION)
 
 # Docker local development tasks
 ## Dargo == Docker Cargo
@@ -64,13 +66,14 @@ dargo-prep: ## This runs everything neccessary to start developing locally in a 
 	# Consider adding dargo(){ make dargo COMMAND=$1} to your ~/.zshrc or ~/.bashrc for ergonomics
 
 dargo: ## Run a cargo command inside the container
-	docker exec -ti docker-horust cargo $(COMMAND)
+	docker exec -ti $(LOCAL_DEV_CONTAINER_NAME) cargo $(COMMAND)
 
 dargo-create-container: ## Create a Rust container with this folder bind-mounted to it
-	@echo 'building rust image for local development'
-	docker build -t horust -f localdev/Dockerfile localdev/
 	@echo 'running interactive rust container for local development'
-	docker run -dt \
- 	--name docker-horust \
- 	--mount type=bind,source="$(shell pwd)",target=/usr/src/Horust \
- 	horust
+	docker run \
+	--detach \
+	--tty \
+ 	--name $(LOCAL_DEV_CONTAINER_NAME) \
+ 	--workdir $(LOCAL_DEV_WORKDIR) \
+ 	--mount type=bind,source="$(shell pwd)",target=$(LOCAL_DEV_WORKDIR) \
+ 	rust:1.42
