@@ -2,7 +2,6 @@ SHELL := /bin/bash
 NAME = "horust"
 VERSION = "v0.2.0"
 DOCKER_REMOTE_REPO = "federicoponzi"
-DOCKER_LOCAL_REPO = "local"
 REPO_HOME := $(shell git rev-parse --show-toplevel)
 GIT_COMMIT := $(shell git rev-parse HEAD)
 GIT_BRANCH := $(shell git rev-parse --abbrev-ref HEAD)
@@ -62,17 +61,16 @@ dargo-prep: ## This runs everything neccessary to start developing locally in a 
     # Compile and cache test dependencies, run tests
 	make dargo COMMAND=test
 	# Now all caches are filled, and subsequent operations will be faster
-	alias dargo="dargo COMMAND="
+	# Consider adding dargo(){ make dargo COMMAND=$1} to your ~/.zshrc or ~/.bashrc for ergonomics
 
 dargo: ## Run a cargo command inside the container
-	docker exec -ti local-horust cargo $(COMMAND)
+	docker exec -ti docker-horust cargo $(COMMAND)
 
 dargo-create-container: ## Create a Rust container with this folder bind-mounted to it
 	@echo 'building rust image for local development'
 	docker build -t horust -f localdev/Dockerfile localdev/
 	@echo 'running interactive rust container for local development'
 	docker run -dt \
- 	--name local-horust \
- 	--user "$(shell id -u)":"$(shell id -g)" \
+ 	--name docker-horust \
  	--mount type=bind,source="$(shell pwd)",target=/usr/src/Horust \
  	horust

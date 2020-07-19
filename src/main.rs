@@ -48,7 +48,7 @@ fn main() -> Result<(), horust::HorustError> {
     let config = HorustConfig::load_and_merge(opts.horust_config, &opts.config_path)?;
 
     let mut horust = if !opts.command.is_empty() {
-        debug!("Running AAA command: {:?}", opts.command);
+        debug!("Running command: {:?}", opts.command);
 
         Horust::from_command(
             opts.command

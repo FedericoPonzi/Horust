@@ -63,24 +63,58 @@ make help
 ## Local development using a container
 
 If you'd like to skip all the bells and whistles of setting up the project, you can get up and running quickly using an
-"All-In-One" Docker solution. It's basically a wrapper around Horust that enables you to compile it and all of its dependencies,
+"All-In-One" Docker container. It's a wrapper around Horust that enables you to compile it and all of its dependencies,
 and then work off the binary instead of compiling yourself.
 
-One example would be if you're developing on a system that does not support a certain Linux command that Horust uses.
-Mac users, for example, would prefer this approach (since `prctl` is not available on Mac OSX).
+The `Makefile` contains a set of commands intended to scaffold an AIO container from scratch.
+ 
+Just run `make dargo-prep` inside the project's root folder.
+This will:
 
-To solve this issue, the `Makefile` contains a `dlocal CARGO_COMMAND` command, where `CARGO_COMMAND` is passed to `cargo`
-inside the container. This flow allows for a container-based development workflow that's similar to the normal one.
-Some examples:
+1. Create a Docker image with a pre-determined working directory
+2. Run an (interactive / long-running) container off that image, with the local Horust project folder bind-mounted to the working directory
+3. Compile Horust and all its dependencies inside the container, using the local folder as storage for the cache
+4. Compile test dependencies and fill a few more caches (using `cargo test` and `cargo check`)
 
-`dlocal build` - Compiles Horust and its dependecies (need to run this once, to compile all the dependencies)
-`dlocal test`  - Runs the test suite without re-compiling all dependencies
-`dlocal run`   - Runs Horust inside a container
-`dlocal check` - Performs 
+When the Makefile target finishes, you will have a running container on your machine that you can compile Horust in.
+That container allows you to take advantage of `rustc`'s incremental compilation, without compiling locally.
+
+You can now run `make dargo COMMAND=X`, where `X` is some `cargo` command (like `build` / `test` / `check`) to run `cargo`
+inside that container with command `X`.
+
+If you like to go for maximum ergonomics, run the following command (swapping `~/.bashrc` for `~/.zshrc` or wherever you keep your shell stuff):
+ 
+```bash
+echo 'dargo(){ make dargo COMMAND=$1}' >> ~/.bashrc
+source ~/.bashrc
+```
+
+This will now enable you to run `dargo X` instead of `make dargo COMMAND=X`, to get a more `cargo`-like feel while using the container.
+Try running `dargo check` to see how if feels!
 
 ### Container-based development example
 
-ADD EXAMPLE
+Just to make sure everything is clear, let's run a step-by-step mini tutorial on developing in container-based workflow "mode":
+
+1. Clone the repo to your local machine:
+```shell 
+git clone https://github.com/FedericoPonzi/Horust.git`
+cd Horust
+```
+2. Create the AIO container (can take a while):
+```shell
+make dargo-prep
+``` 
+3. Add "alias" to `make dargo COMMAND=X`:
+```shell
+echo 'dargo(){ make dargo COMMAND=$1}' >> ~/.bashrc
+source ~/.bashrc
+```
+4. Make some changes to a source file.
+5. Run the following to test your changes:
+```shell
+dargo test
+```
 
 ## Useful Links:
 Just a small collection of useful links:
