@@ -72,6 +72,6 @@ dargo-create-container: ## Create a Rust container with this folder bind-mounted
 	@echo 'running interactive rust container for local development'
 	docker run -dt \
  	--name local-horust \
- 	--user "$(id -u)":"$(id -g)" \
- 	--mount type=bind,source="$(pwd)"/,target=/usr/src/Horust \
+ 	--user "$(shell id -u)":"$(shell id -g)" \
+ 	--mount type=bind,source="$(shell pwd)",target=/usr/src/Horust \
  	horust
