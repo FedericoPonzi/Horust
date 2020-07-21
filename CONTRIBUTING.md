@@ -73,8 +73,6 @@ If this is the first time you run the command, it will:
 
 1. Create a Docker image with a pre-determined working directory
 2. Run an (interactive / long-running) container off that image, with the local Horust project folder bind-mounted to the working directory
-3. Compile Horust and all its dependencies inside the container, using the local folder as storage for the cache
-4. Compile test dependencies and fill a few more caches (using `cargo test` and `cargo check`)
 5. Run `cargo X` inside the container
 
 When the Makefile target finishes, you will have a running container on your machine that you can compile Horust in.
@@ -82,7 +80,7 @@ That container allows you to take advantage of `rustc`'s incremental compilation
 
 If it's not the first time you run the command, it will just run `cargo X` inside the container.
 
-If you like to go for maximum ergonomics, run the following command (swapping `~/.bashrc` for `~/.zshrc` or wherever you keep your shell stuff):
+If you'd like to go for maximum ergonomics, run the following command (swapping `~/.bashrc` for `~/.zshrc` or wherever you keep your shell stuff):
  
 ```bash
 echo 'dargo(){ make dargo COMMAND=$1}' >> ~/.bashrc
@@ -106,8 +104,6 @@ cd Horust
 ```shell
 make dargo COMMAND=test
 ```
-
-Note that it will run `cargo test` twice the first time, so you can simply ignore the output of the first `cargo test` run.
 
 ## Useful Links:
 Just a small collection of useful links:
