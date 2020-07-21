@@ -64,23 +64,23 @@ make help
 
 If you'd like to skip all the bells and whistles of setting up the project, you can get up and running quickly using an
 "All-In-One" Docker container. It's a wrapper around Horust that enables you to compile it and all of its dependencies,
-and then work off the binary instead of compiling yourself.
+and then work off the container instead of compiling locally.
 
 The `Makefile` contains a set of commands intended to scaffold an AIO container from scratch.
  
-Just run `make dargo-prep` inside the project's root folder.
-This will:
+Just run `make dargo COMMAND=X`, where `X` is any valid `cargo` command, inside the project's root folder.
+If this is the first time you run the command, it will:
 
 1. Create a Docker image with a pre-determined working directory
 2. Run an (interactive / long-running) container off that image, with the local Horust project folder bind-mounted to the working directory
 3. Compile Horust and all its dependencies inside the container, using the local folder as storage for the cache
 4. Compile test dependencies and fill a few more caches (using `cargo test` and `cargo check`)
+5. Run `cargo X` inside the container
 
 When the Makefile target finishes, you will have a running container on your machine that you can compile Horust in.
 That container allows you to take advantage of `rustc`'s incremental compilation, without compiling locally.
 
-You can now run `make dargo COMMAND=X`, where `X` is some `cargo` command (like `build` / `test` / `check`) to run `cargo`
-inside that container with command `X`.
+If it's not the first time you run the command, it will just run `cargo X` inside the container.
 
 If you like to go for maximum ergonomics, run the following command (swapping `~/.bashrc` for `~/.zshrc` or wherever you keep your shell stuff):
  
@@ -101,20 +101,13 @@ Just to make sure everything is clear, let's run a step-by-step mini tutorial on
 git clone https://github.com/FedericoPonzi/Horust.git`
 cd Horust
 ```
-2. Create the AIO container (can take a while):
+2. Make some changes to a source file.
+3. Run the following to create the AIO container and then test your changes:
 ```shell
-make dargo-prep
-``` 
-3. Add "alias" to `make dargo COMMAND=X`:
-```shell
-echo 'dargo(){ make dargo COMMAND=$1}' >> ~/.bashrc
-source ~/.bashrc
+make dargo COMMAND=test
 ```
-4. Make some changes to a source file.
-5. Run the following to test your changes:
-```shell
-dargo test
-```
+
+Note that it will run `cargo test` twice the first time, so you can simply ignore the output of the first `cargo test` run.
 
 ## Useful Links:
 Just a small collection of useful links:

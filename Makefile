@@ -55,7 +55,7 @@ version: ## output to version
 ## Dargo == Docker Cargo
 dargo-prep: ## This runs everything neccessary to start developing locally in a container
 	@# Spin up a long-running rust container
-	make dargo-create-container
+	make dargo-run-container
 	# Compile and cache all dependencies
 	@make dargo COMMAND=build
 	@# Perform a first-sweep check, to fill up the cache (it seems to be different than the build one)
@@ -67,11 +67,11 @@ dargo-prep: ## This runs everything neccessary to start developing locally in a 
 
 dargo: ## Run a cargo command inside the container
 	@# If the dargo container does not exist, create it
-	@if [ -z $(shell docker ps | grep "$(LOCAL_DEV_CONTAINER_NAME)" | cut -c1-12) ]; then make dargo-prep; fi
+	@if [ -z $(shell docker ps --format "{{.ID}}" --filter "name=$(LOCAL_DEV_CONTAINER_NAME)") ]; then make dargo-prep; fi
 	@# Run a command inside the container
 	docker exec -ti $(LOCAL_DEV_CONTAINER_NAME) cargo $(COMMAND)
 
-dargo-create-container: ## Create a Rust container with this folder bind-mounted to it
+dargo-run-container: ## Runs a Rust container with the pwd (i.e. current folder) bind-mounted to it
 	@echo 'running interactive rust container for local development'
 	@docker run \
 	--detach \
