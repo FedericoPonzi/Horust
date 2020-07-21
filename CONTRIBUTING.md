@@ -73,7 +73,7 @@ If this is the first time you run the command, it will:
 
 1. Create a Docker image with a pre-determined working directory
 2. Run an (interactive / long-running) container off that image, with the local Horust project folder bind-mounted to the working directory
-5. Run `cargo X` inside the container
+3. Run `cargo X` inside the container
 
 When the Makefile target finishes, you will have a running container on your machine that you can compile Horust in.
 That container allows you to take advantage of `rustc`'s incremental compilation, without compiling locally.
