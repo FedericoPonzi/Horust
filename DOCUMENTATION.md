@@ -130,7 +130,7 @@ die-if-failed = ["db.toml"]
 ---
 
 ## State machine
-[![State machne](https://github.com/FedericoPonzi/Horust/raw/master/res/state-machine.png)](https://github.com/FedericoPonzi/Horust/raw/master/res/state-machine.png)
+[![State machine](https://github.com/FedericoPonzi/Horust/raw/master/res/state-machine.png)](https://github.com/FedericoPonzi/Horust/raw/master/res/state-machine.png)
 
 You can compile this on https://state-machine-cat.js.org/
 ```

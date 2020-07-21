@@ -60,8 +60,52 @@ make help
 
 ---
 
+## Local development using a container
 
-### Useful Links:
+If you'd like to skip all the bells and whistles of setting up the project, you can get up and running quickly using an
+"All-In-One" Docker container. It's a wrapper around Horust that enables you to compile it and all of its dependencies,
+and then work off the container instead of compiling locally.
+
+The `Makefile` contains a set of commands intended to scaffold an AIO container from scratch.
+ 
+Just run `make dargo COMMAND=X`, where `X` is any valid `cargo` command, inside the project's root folder.
+If this is the first time you run the command, it will:
+
+1. Create a Docker image with a pre-determined working directory
+2. Run an (interactive / long-running) container off that image, with the local Horust project folder bind-mounted to the working directory
+3. Run `cargo X` inside the container
+
+When the Makefile target finishes, you will have a running container on your machine that you can compile Horust in.
+That container allows you to take advantage of `rustc`'s incremental compilation, without compiling locally.
+
+If it's not the first time you run the command, it will just run `cargo X` inside the container.
+
+If you'd like to go for maximum ergonomics, run the following command (swapping `~/.bashrc` for `~/.zshrc` or wherever you keep your shell stuff):
+ 
+```bash
+echo 'dargo(){ make dargo COMMAND=$1}' >> ~/.bashrc
+source ~/.bashrc
+```
+
+This will now enable you to run `dargo X` instead of `make dargo COMMAND=X`, to get a more `cargo`-like feel while using the container.
+Try running `dargo check` to see how if feels!
+
+### Container-based development example
+
+Just to make sure everything is clear, let's run a step-by-step mini tutorial on developing in container-based workflow "mode":
+
+1. Clone the repo to your local machine:
+```shell 
+git clone https://github.com/FedericoPonzi/Horust.git`
+cd Horust
+```
+2. Make some changes to a source file.
+3. Run the following to create the AIO container and then test your changes:
+```shell
+make dargo COMMAND=test
+```
+
+## Useful Links:
 Just a small collection of useful links:
 * https://www.youtube.com/watch?v=gZqIEstv5lM
 * https://docs.google.com/presentation/d/1jpAOBDiYfTvK3mWHuzrP8vaK7OUoALNCvegiibuvmYc/edit
@@ -73,14 +117,14 @@ Just a small collection of useful links:
 * https://www.mustafaak.in/posts/2016-02-09-forking-process-in-myinit-go/
 * https://blog.darknedgy.net/technology/2015/09/05/0/
 
-### Random init systems:
+## Random init systems:
 * https://github.com/Yelp/dumb-init
 * https://github.com/fpco/pid1
 * https://github.com/krallin/tini/
 * https://github.com/OpenRC/openrc
 * https://github.com/OpenRC/openrc/blob/master/supervise-daemon-guide.md
 
-### Useful man pages:
+## Useful man pages:
 * man runlevel
 * man 8 init
 * man getty
