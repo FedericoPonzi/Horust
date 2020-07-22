@@ -1,5 +1,5 @@
 //! If a service has defined an healthchecker, this module will spawn a worker to making sure that
-//! everything
+//! the service is working as supposed to.
 
 use crate::horust::bus::BusConnector;
 use crate::horust::formats::{

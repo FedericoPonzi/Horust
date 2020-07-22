@@ -1,5 +1,6 @@
-//! The runtime is one of the biggest module. It is responsbile for supervising the services, and
+//! The runtime is one of the biggest module. It is responsible for supervising the services, and
 //! keeping track of their current state.
+//! It will also reap the dead processes
 
 use crate::horust::bus::BusConnector;
 use crate::horust::formats::{
@@ -24,6 +25,7 @@ mod signal_handling;
 
 pub(crate) use signal_handling::init;
 
+/// How many pid reap per iteration of the reaper
 const MAX_PROCESS_REAPS_ITERS: u32 = 20;
 
 // Spawns and runs this component in a new thread.
@@ -114,14 +116,14 @@ impl Runtime {
     }
 
     /// Handle the events, returns Events (state changes) to be dispatched.
+    /// The resulted StatusChanged events are handeled as soon as this functions is over -
+    /// so no need to update Service handlers states here.
     fn handle_event(&mut self, ev: Event) -> Vec<Event> {
         match ev {
             Event::ServiceExited(service_name, exit_code) => {
                 let pid = self.repo.get_sh(&service_name).pid.unwrap();
                 self.repo.remove_pid(pid);
                 let service_handler = self.repo.get_mut_sh(&service_name);
-                service_handler.shutting_down_start = None;
-                service_handler.pid = None;
 
                 let has_failed = !service_handler
                     .service()
@@ -130,6 +132,7 @@ impl Runtime {
                     .contains(&exit_code);
                 let healthcheck_failed = service_handler.healthiness_checks_failed > 0
                     && service_handler.status == ServiceStatus::Running;
+                // TODO: if replace with let status, hell breaks loose.
                 service_handler.status = if has_failed || healthcheck_failed {
                     warn!(
                         "Service: {} has failed, exit code: {}, healthchecks: {}",
@@ -140,12 +143,12 @@ impl Runtime {
 
                     // If it has failed too quickly, increase service_handler's restart attempts
                     // and check if it has more attempts left.
-                    let early_states = vec![
+                    const EARLY_STATES: [ServiceStatus; 3] = [
                         ServiceStatus::Initial,
                         ServiceStatus::Starting,
                         ServiceStatus::Started,
                     ];
-                    if early_states.contains(&service_handler.status) {
+                    if EARLY_STATES.contains(&service_handler.status) {
                         service_handler.restart_attempts += 1;
                         if service_handler.restart_attempts_are_over() {
                             //Game over!
@@ -154,7 +157,7 @@ impl Runtime {
                             ServiceStatus::Initial
                         }
                     } else {
-                        // If wasn't starting, then it's just failed in a usual way:
+                        // If wasn't in a early state, then it has failed in a usual way
                         ServiceStatus::Failed
                     }
                 } else {
@@ -273,6 +276,11 @@ impl Runtime {
                 self.is_shutting_down = true;
                 vec![]
             }
+            Event::StatusChanged(service_name, new_status) => {
+                let service_handler = self.repo.get_mut_sh(&service_name);
+                handle_status_changed_event(service_handler, new_status);
+                vec![]
+            }
             ev => {
                 trace!("ignoring: {:?}", ev);
                 vec![]
@@ -285,16 +293,23 @@ impl Runtime {
     fn run(mut self) -> ExitStatus {
         while !self.repo.all_have_finished() {
             // Ingest updates
-            let events = self.repo.get_events();
-            debug!("Applying events... {:?}", events);
+            let received_events = self.repo.get_events();
+            debug!("Applying events... {:?}", received_events);
             if signal_handling::is_sigterm_received() && !self.is_shutting_down {
                 self.repo.send_ev(Event::ShuttingDownInitiated);
             }
-            let produced_evs: Vec<Event> = events
-                .into_iter()
-                .map(|ev| self.handle_event(ev))
-                .flatten()
-                .collect();
+            let mut produced_events = vec![];
+            for ev in received_events {
+                // Apply state changes:
+                self.handle_event(ev)
+                    .into_iter()
+                    .inspect(|ev| {
+                        if let Event::StatusChanged(..) = ev {
+                            self.handle_event((*ev).clone());
+                        }
+                    })
+                    .for_each(|ev| produced_events.push(ev))
+            }
             let next_evs: Vec<Event> = self
                 .repo
                 .services
@@ -303,19 +318,11 @@ impl Runtime {
                 .flatten()
                 .chain(reaper::run(&self.repo, MAX_PROCESS_REAPS_ITERS))
                 .collect();
-            next_evs.iter().for_each(|ev| {
-                if let Event::StatusChanged(s_name, new_status) = ev {
-                    let new_sh = handle_status_changed_event(
-                        self.repo.services.remove(s_name).unwrap(),
-                        new_status,
-                    );
-                    self.repo.services.insert(s_name.clone(), new_sh);
-                }
-            });
-            produced_evs
+            produced_events
                 .into_iter()
                 .chain(next_evs)
                 .for_each(|ev| self.repo.send_ev(ev));
+
             std::thread::sleep(Duration::from_millis(300));
         }
 
@@ -342,12 +349,17 @@ impl Runtime {
 // TODO: test
 /// Handles the status changed event
 fn handle_status_changed_event(
-    service_handler: ServiceHandler,
-    new_status: &ServiceStatus,
-) -> ServiceHandler {
+    mut service_handler: &mut ServiceHandler,
+    new_status: ServiceStatus,
+) {
+    if new_status == service_handler.status {
+        return;
+    }
+
     // A -> [B,C] means that transition to A is allowed only if service is in state B or C.
     let allowed_transitions = hashmap! {
         ServiceStatus::Initial        => vec![ServiceStatus::Success, ServiceStatus::Failed],
+        ServiceStatus::Starting       => vec![ServiceStatus::Initial],
         ServiceStatus::Started        => vec![ServiceStatus::Starting],
         ServiceStatus::InKilling      => vec![ServiceStatus::Initial,
                                               ServiceStatus::Running,
@@ -366,17 +378,18 @@ fn handle_status_changed_event(
         ServiceStatus::Finished       => vec![ServiceStatus::Success,
                                              ServiceStatus::Initial],
     };
-    let allowed = allowed_transitions.get(&new_status).unwrap();
-    let mut new_sh = service_handler.clone();
+    let allowed = allowed_transitions
+        .get(&new_status)
+        .unwrap_or_else(|| panic!("New status: {} not found!", new_status));
     if allowed.contains(&service_handler.status) {
         match new_status {
             ServiceStatus::Started if allowed.contains(&service_handler.status) => {
-                new_sh.status = ServiceStatus::Started;
-                new_sh.restart_attempts = 0;
+                service_handler.status = ServiceStatus::Started;
+                service_handler.restart_attempts = 0;
             }
             ServiceStatus::Running if allowed.contains(&service_handler.status) => {
-                new_sh.status = ServiceStatus::Running;
-                new_sh.healthiness_checks_failed = 0;
+                service_handler.status = ServiceStatus::Running;
+                service_handler.healthiness_checks_failed = 0;
             }
             ServiceStatus::InKilling if allowed.contains(&service_handler.status) => {
                 debug!(
@@ -386,13 +399,13 @@ fn handle_status_changed_event(
                     new_status
                 );
                 if service_handler.status == ServiceStatus::Initial {
-                    new_sh.status = ServiceStatus::Success;
+                    service_handler.status = ServiceStatus::Success;
                 } else {
-                    new_sh.status = ServiceStatus::InKilling;
+                    service_handler.status = ServiceStatus::InKilling;
                 }
             }
             new_status => {
-                new_sh.status = new_status.clone();
+                service_handler.status = new_status;
             }
         }
     } else {
@@ -403,7 +416,6 @@ fn handle_status_changed_event(
             service_handler.name()
         );
     }
-    new_sh
 }
 
 /// This next function assumes that the system is shutting down.
