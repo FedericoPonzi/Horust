@@ -27,7 +27,7 @@ Assume you'd like to create a website health monitoring system. You can create o
 That will contain our services: 
 
 ```shell
-mkdir -p /etc/horust/services`
+mkdir -p /etc/horust/services
 ```
 
 #### 2. Create your first Horust service:
