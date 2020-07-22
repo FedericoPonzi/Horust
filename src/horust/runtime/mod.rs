@@ -442,15 +442,14 @@ fn next_events_shutting_down(service_handler: &ServiceHandler) -> Vec<Event> {
 
 /// Produces events based on the Restart Strategy of the service.
 fn handle_restart_strategy(service: &Service, is_failed: bool) -> Event {
-    let new_status = |status| Event::new_status_changed(&service.name, status);
-    let ev = match service.restart.strategy {
-        RestartStrategy::Never if is_failed => new_status(ServiceStatus::FinishedFailed),
-        RestartStrategy::OnFailure if is_failed => new_status(ServiceStatus::Initial),
-        RestartStrategy::Never | RestartStrategy::OnFailure => new_status(ServiceStatus::Finished),
-        RestartStrategy::Always => new_status(ServiceStatus::Initial),
+    let new_status = match service.restart.strategy {
+        RestartStrategy::Never if is_failed => ServiceStatus::FinishedFailed,
+        RestartStrategy::OnFailure if is_failed => ServiceStatus::Initial,
+        RestartStrategy::Never | RestartStrategy::OnFailure => ServiceStatus::Finished,
+        RestartStrategy::Always => ServiceStatus::Initial,
     };
-    debug!("Restart strategy applied, ev: {:?}", ev);
-    ev
+    debug!("Restart strategy applied, ev: {:?}", new_status);
+    Event::new_status_changed(&service.name, new_status)
 }
 
 /// This is applied to both failed and FinishedFailed services.
