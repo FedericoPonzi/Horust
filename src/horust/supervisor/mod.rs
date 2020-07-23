@@ -135,7 +135,7 @@ impl Runtime {
                 let healthcheck_failed = service_handler.healthiness_checks_failed > 0
                     && service_handler.status == ServiceStatus::Running;
                 // TODO: if replace with let status, hell breaks loose.
-                let new_status = if has_failed || healthcheck_failed {
+                service_handler.status = if has_failed || healthcheck_failed {
                     warn!(
                         "Service: {} has failed, exit code: {}, healthchecks: {}",
                         service_handler.name(),
@@ -171,7 +171,10 @@ impl Runtime {
                     ServiceStatus::Success
                 };
                 debug!("New state for exited service: {:?}", service_handler.status);
-                vec![Event::StatusChanged(service_name, new_status)]
+                vec![Event::StatusChanged(
+                    service_name,
+                    service_handler.status.clone(),
+                )]
             }
             Event::Run(service_name) if self.repo.get_sh(&service_name).is_initial() => {
                 let mut evs = vec![];

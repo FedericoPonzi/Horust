@@ -28,6 +28,9 @@ exit 1
 }
 
 #[test]
+/// This tests prints a couple of log lines:
+/// Error spawning process: NixError: ENOENT: No such file or directory
+/// it's fine
 fn test_command_not_found() {
     let (mut cmd, temp_dir) = get_cli();
     let dir = temp_dir.path();
@@ -38,8 +41,9 @@ fn test_command_not_found() {
     let service_name = format!("{}.toml", rnd_name.as_str());
     let service = format!(r#"command = ",sorry_not_found{}""#, rnd_name);
     std::fs::write(dir.join(&service_name), service).unwrap();
-    let mut cmd = cmd.args(vec!["--unsuccessful-exit-finished-failed"]);
     let recv = run_async(&mut cmd, true);
+    // Error spawning process: NixError: ENOENT: No such file or directory
+    // It's fine
     recv.recv_or_kill(Duration::from_secs(15));
     let mut cmd = cmd.args(vec!["--unsuccessful-exit-finished-failed"]);
     let recv = run_async(&mut cmd, false);
