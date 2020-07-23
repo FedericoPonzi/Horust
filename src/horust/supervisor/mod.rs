@@ -1,4 +1,4 @@
-//! The runtime is one of the biggest module. It is responsible for supervising the services, and
+//! The supervisor is one of the biggest module. It is responsible for supervising the services, and
 //! keeping track of their current state.
 //! It will also reap the dead processes
 
@@ -124,6 +124,8 @@ impl Runtime {
                 let pid = self.repo.get_sh(&service_name).pid.unwrap();
                 self.repo.remove_pid(pid);
                 let service_handler = self.repo.get_mut_sh(&service_name);
+                service_handler.shutting_down_start = None;
+                service_handler.pid = None;
 
                 let has_failed = !service_handler
                     .service()
@@ -133,7 +135,7 @@ impl Runtime {
                 let healthcheck_failed = service_handler.healthiness_checks_failed > 0
                     && service_handler.status == ServiceStatus::Running;
                 // TODO: if replace with let status, hell breaks loose.
-                service_handler.status = if has_failed || healthcheck_failed {
+                let new_status = if has_failed || healthcheck_failed {
                     warn!(
                         "Service: {} has failed, exit code: {}, healthchecks: {}",
                         service_handler.name(),
@@ -169,10 +171,7 @@ impl Runtime {
                     ServiceStatus::Success
                 };
                 debug!("New state for exited service: {:?}", service_handler.status);
-                vec![Event::StatusChanged(
-                    service_name.clone(),
-                    service_handler.status.clone(),
-                )]
+                vec![Event::StatusChanged(service_name, new_status)]
             }
             Event::Run(service_name) if self.repo.get_sh(&service_name).is_initial() => {
                 let mut evs = vec![];
@@ -398,11 +397,11 @@ fn handle_status_changed_event(
                     service_handler.status,
                     new_status
                 );
-                if service_handler.status == ServiceStatus::Initial {
-                    service_handler.status = ServiceStatus::Success;
+                service_handler.status = if service_handler.status == ServiceStatus::Initial {
+                    ServiceStatus::Success
                 } else {
-                    service_handler.status = ServiceStatus::InKilling;
-                }
+                    ServiceStatus::InKilling
+                };
             }
             new_status => {
                 service_handler.status = new_status;
@@ -490,15 +489,15 @@ fn should_force_kill(service_handler: &ServiceHandler) -> bool {
         shutting_down_elapsed_secs > service_handler.service().termination.wait.clone().as_secs()
     } else {
         // this might happen, because InKilling state is emitted before the Kill event.
-        // So maybe the runtime has received only the InKilling state change, but hasn't sent the
+        // So maybe the supervisor has received only the InKilling state change, but hasn't sent the
         // signal yet. So it should be fine.
         debug!("There is no shutting down elapsed secs.");
         false
     }
 }
 
-/// Kill wrapper, will send signal to sh and handles the result.
-/// By default it will send the signal defined in the termination section of the service.
+/// A Kill wrapper which will send a signal to sh.
+/// It will send the signal set out in the termination section of the service
 fn kill(sh: &ServiceHandler, signal: Option<signal::Signal>) {
     let signal = signal.unwrap_or_else(|| sh.service().termination.signal.into());
     debug!("Going to send {} signal to pid {:?}", signal, sh.pid());
@@ -528,8 +527,8 @@ fn kill(sh: &ServiceHandler, signal: Option<signal::Signal>) {
 #[cfg(test)]
 mod test {
     use crate::horust::formats::{FailureStrategy, Service, ServiceStatus};
-    use crate::horust::runtime::service_handler::ServiceHandler;
-    use crate::horust::runtime::{
+    use crate::horust::supervisor::service_handler::ServiceHandler;
+    use crate::horust::supervisor::{
         handle_failed_service, handle_restart_strategy, should_force_kill,
     };
     use crate::horust::Event;

@@ -1,6 +1,6 @@
 use crate::horust::bus::BusConnector;
 use crate::horust::formats::{Service, ServiceName};
-use crate::horust::runtime::service_handler::ServiceHandler;
+use crate::horust::supervisor::service_handler::ServiceHandler;
 use crate::horust::Event;
 use nix::unistd::Pid;
 use std::collections::HashMap;

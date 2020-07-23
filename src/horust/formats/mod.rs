@@ -16,7 +16,7 @@ pub enum Event {
     Run(ServiceName),
     ShuttingDownInitiated,
     HealthCheck(ServiceName, HealthinessStatus),
-    // TODO: to allow changes of service at runtime:
+    // TODO: to allow changes of service at supervisor:
     //ServiceCreated(ServiceHandler)
 }
 
