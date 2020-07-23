@@ -38,9 +38,12 @@ fn test_command_not_found() {
     let service_name = format!("{}.toml", rnd_name.as_str());
     let service = format!(r#"command = ",sorry_not_found{}""#, rnd_name);
     std::fs::write(dir.join(&service_name), service).unwrap();
-    cmd.assert().success();
-    let cmd = cmd.args(vec!["--unsuccessful-exit-finished-failed"]);
-    cmd.assert().failure();
+    let mut cmd = cmd.args(vec!["--unsuccessful-exit-finished-failed"]);
+    let recv = run_async(&mut cmd, true);
+    recv.recv_or_kill(Duration::from_secs(15));
+    let mut cmd = cmd.args(vec!["--unsuccessful-exit-finished-failed"]);
+    let recv = run_async(&mut cmd, false);
+    recv.recv_or_kill(Duration::from_secs(15));
 }
 
 #[test]
