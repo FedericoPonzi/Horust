@@ -33,17 +33,17 @@ pub fn spawn(
     bus: BusConnector<Event>,
     services: Vec<Service>,
 ) -> std::thread::JoinHandle<ExitStatus> {
-    thread::spawn(move || Runtime::new(bus, services).run())
+    thread::spawn(move || Supervisor::new(bus, services).run())
 }
 
 #[derive(Debug)]
-pub struct Runtime {
+pub struct Supervisor {
     /// The system is shutting down, no more services will be spawned.
     is_shutting_down: bool,
     repo: Repo,
 }
 
-impl Runtime {
+impl Supervisor {
     fn new(bus: BusConnector<Event>, services: Vec<Service>) -> Self {
         let repo = Repo::new(bus, services);
         Self {
