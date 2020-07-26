@@ -57,67 +57,11 @@ impl Supervisor {
         if self.is_shutting_down {
             next_events_shutting_down(service_handler)
         } else {
-            self.next_events(service_handler)
-        }
-    }
-
-    /// Generate the events needed for moving forward the FSM for the service handler
-    /// If the system is shutting down, it will call next_shutting_down.
-    fn next_events(&self, service_handler: &ServiceHandler) -> Vec<Event> {
-        let ev_status =
-            |status: ServiceStatus| Event::new_status_update(service_handler.name(), status);
-        let vev_status = |status: ServiceStatus| vec![ev_status(status)];
-        match service_handler.status {
-            ServiceStatus::Initial if self.repo.is_service_runnable(&service_handler) => {
-                vec![Event::Run(service_handler.name().clone())]
-            }
-            ServiceStatus::Started if service_handler.healthiness_checks_failed == 0 => {
-                vev_status(ServiceStatus::Running)
-            }
-            // This will kill the service after 3 failed healthchecks in a row.
-            // Maybe this should be parametrized
-            ServiceStatus::Running if service_handler.healthiness_checks_failed > 2 => vec![
-                ev_status(ServiceStatus::InKilling),
-                Event::Kill(service_handler.name().clone()),
-            ],
-            ServiceStatus::Success => {
-                vec![handle_restart_strategy(service_handler.service(), false)]
-            }
-            ServiceStatus::Failed => {
-                let mut failure_evs = handle_failed_service(
-                    self.repo.get_dependents(service_handler.name()),
-                    service_handler.service(),
-                );
-                let other_services_termination = self
-                    .repo
-                    .get_die_if_failed(service_handler.name())
-                    .into_iter()
-                    .map(|sh_name| {
-                        vec![
-                            Event::new_status_update(sh_name, ServiceStatus::InKilling),
-                            Event::Kill(sh_name.clone()),
-                        ]
-                    })
-                    .flatten();
-
-                let service_ev = handle_restart_strategy(service_handler.service(), true);
-
-                failure_evs.push(service_ev);
-                failure_evs.extend(other_services_termination);
-                failure_evs
-            }
-            ServiceStatus::InKilling if should_force_kill(service_handler) => vec![
-                Event::new_force_kill(service_handler.name()),
-                Event::new_status_changed(service_handler.name(), ServiceStatus::Failed),
-            ],
-
-            _ => vec![],
+            next_events(&self.repo, service_handler)
         }
     }
 
     /// Handle the events, returns Events (state changes) to be dispatched.
-    /// The resulted StatusChanged events are handeled as soon as this functions is over -
-    /// so no need to update Service handlers states here.
     fn handle_event(&mut self, ev: Event) -> Vec<Event> {
         match ev {
             Event::ServiceExited(service_name, exit_code) => {
@@ -134,8 +78,7 @@ impl Supervisor {
                     .contains(&exit_code);
                 let healthcheck_failed = service_handler.healthiness_checks_failed > 0
                     && service_handler.status == ServiceStatus::Running;
-                // TODO: if replace with let status, hell breaks loose.
-                service_handler.status = if has_failed || healthcheck_failed {
+                let new_status = if has_failed || healthcheck_failed {
                     warn!(
                         "Service: {} has failed, exit code: {}, healthchecks: {}",
                         service_handler.name(),
@@ -150,6 +93,7 @@ impl Supervisor {
                         ServiceStatus::Starting,
                         ServiceStatus::Started,
                     ];
+                    //TODO: this check should be moved to next.
                     if EARLY_STATES.contains(&service_handler.status) {
                         service_handler.restart_attempts += 1;
                         if service_handler.restart_attempts_are_over() {
@@ -170,18 +114,17 @@ impl Supervisor {
                     );
                     ServiceStatus::Success
                 };
+                let (_sh, new_status) = handle_status_change(service_handler, new_status);
+
+                service_handler.status = new_status.clone();
                 debug!("New state for exited service: {:?}", service_handler.status);
-                vec![Event::StatusUpdate(
-                    service_name,
-                    service_handler.status.clone(),
-                )]
+                vec![Event::StatusChanged(service_name, new_status)]
             }
             Event::Run(service_name) if self.repo.get_sh(&service_name).is_initial() => {
-                let mut evs = vec![];
                 let service_handler = self.repo.get_mut_sh(&service_name);
-                //TODO: review.
-                evs.push(Event::StatusUpdate(service_name, ServiceStatus::Starting));
                 service_handler.status = ServiceStatus::Starting;
+                let evs = vec![Event::StatusChanged(service_name, ServiceStatus::Starting)];
+
                 let res = healthcheck::prepare_service(&service_handler.service().healthiness);
                 if res.is_err() {
                     //TODO: maybe this is a bit too aggressive.
@@ -251,7 +194,7 @@ impl Supervisor {
                     kill(service_handler, None)
                 } else {
                     service_handler.status = ServiceStatus::Started;
-                    return vec![Event::StatusUpdate(service_name, ServiceStatus::Started)];
+                    return vec![Event::StatusChanged(service_name, ServiceStatus::Started)];
                 }
 
                 vec![]
@@ -280,10 +223,19 @@ impl Supervisor {
                 vec![]
             }
             Event::StatusUpdate(service_name, new_status) => {
-                let service_handler = self.repo.get_mut_sh(&service_name);
-                handle_status_changed_event(service_handler, new_status.clone());
-                // RMME: this is the only place where the new_status changed is emitted.
-                vec![Event::new_status_changed(&service_name, new_status)]
+                let service_handler = self.repo.get_sh(&service_name);
+                let (new_sh, new_status) = handle_status_change(service_handler, new_status);
+                if new_status != service_handler.status {
+                    self.repo.insert_sh_by_name(service_name.clone(), new_sh);
+                    // this is the only place where the new_status changed is emitted.
+                    vec![Event::new_status_changed(&service_name, new_status)]
+                } else {
+                    debug!(
+                        "Status Update event handler, new status {} == {} old status",
+                        new_status, service_handler.status
+                    );
+                    vec![]
+                }
             }
             ev => {
                 trace!("ignoring: {:?}", ev);
@@ -346,18 +298,20 @@ impl Supervisor {
 }
 
 // TODO: test
-/// Handles the status changed event
-fn handle_status_changed_event(
-    mut service_handler: &mut ServiceHandler,
-    new_status: ServiceStatus,
-) {
-    if new_status == service_handler.status {
-        return;
+/// Handles the service handler's status change
+fn handle_status_change(
+    service_handler: &ServiceHandler,
+    next_status: ServiceStatus,
+) -> (ServiceHandler, ServiceStatus) {
+    let mut new_service_handler = service_handler.clone();
+    if next_status == service_handler.status {
+        return (new_service_handler, next_status);
     }
-
+    //TODO: refactor + cleanup.
     // A -> [B,C] means that transition to A is allowed only if service is in state B or C.
     let allowed_transitions = hashmap! {
-        ServiceStatus::Initial        => vec![ServiceStatus::Success, ServiceStatus::Failed],
+        ServiceStatus::Initial        => vec![ServiceStatus::Success, ServiceStatus::Failed,
+                                              ServiceStatus::Started],
         ServiceStatus::Starting       => vec![ServiceStatus::Initial],
         ServiceStatus::Started        => vec![ServiceStatus::Starting],
         ServiceStatus::InKilling      => vec![ServiceStatus::Initial,
@@ -365,7 +319,10 @@ fn handle_status_changed_event(
                                               ServiceStatus::Starting,
                                               ServiceStatus::Started],
         ServiceStatus::Running        => vec![ServiceStatus::Started],
-        ServiceStatus::FinishedFailed => vec![ServiceStatus::Failed, ServiceStatus::InKilling],
+        ServiceStatus::FinishedFailed => vec![ServiceStatus::Starting,
+                                              ServiceStatus::Started,
+                                              ServiceStatus::Failed,
+                                              ServiceStatus::InKilling],
         ServiceStatus::Success        => vec![ServiceStatus::Starting,
                                               ServiceStatus::Started,
                                               ServiceStatus::Running,
@@ -378,42 +335,95 @@ fn handle_status_changed_event(
                                              ServiceStatus::Initial],
     };
     let allowed = allowed_transitions
-        .get(&new_status)
-        .unwrap_or_else(|| panic!("New status: {} not found!", new_status));
+        .get(&next_status)
+        .unwrap_or_else(|| panic!("New status: {} not found!", next_status));
     if allowed.contains(&service_handler.status) {
-        match new_status {
+        match next_status {
             ServiceStatus::Started if allowed.contains(&service_handler.status) => {
-                service_handler.status = ServiceStatus::Started;
-                service_handler.restart_attempts = 0;
+                new_service_handler.status = ServiceStatus::Started;
+                new_service_handler.restart_attempts = 0;
             }
             ServiceStatus::Running if allowed.contains(&service_handler.status) => {
-                service_handler.status = ServiceStatus::Running;
-                service_handler.healthiness_checks_failed = 0;
+                new_service_handler.status = ServiceStatus::Running;
+                new_service_handler.healthiness_checks_failed = 0;
             }
             ServiceStatus::InKilling if allowed.contains(&service_handler.status) => {
                 debug!(
                     " service: {},  status: {}, new status: {}",
                     service_handler.name(),
                     service_handler.status,
-                    new_status
+                    next_status
                 );
-                service_handler.status = if service_handler.status == ServiceStatus::Initial {
+                new_service_handler.status = if service_handler.status == ServiceStatus::Initial {
                     ServiceStatus::Success
                 } else {
                     ServiceStatus::InKilling
                 };
             }
             new_status => {
-                service_handler.status = new_status;
+                new_service_handler.status = new_status;
             }
         }
     } else {
         debug!(
             "Tried to make an illegal transition: (current) {} -> {} (received) for service: {}",
             service_handler.status,
-            new_status,
+            next_status,
             service_handler.name()
         );
+    }
+    let new_status = new_service_handler.status.clone();
+    (new_service_handler, new_status)
+}
+
+/// Generate the events needed for moving forward the FSM for the service handler
+/// If the system is shutting down, it will call next_shutting_down.
+fn next_events(repo: &Repo, service_handler: &ServiceHandler) -> Vec<Event> {
+    let ev_status =
+        |status: ServiceStatus| Event::new_status_update(service_handler.name(), status);
+    let vev_status = |status: ServiceStatus| vec![ev_status(status)];
+    match service_handler.status {
+        ServiceStatus::Initial if repo.is_service_runnable(&service_handler) => {
+            vec![Event::Run(service_handler.name().clone())]
+        }
+        ServiceStatus::Started if service_handler.healthiness_checks_failed == 0 => {
+            vev_status(ServiceStatus::Running)
+        }
+        // This will kill the service after 3 failed healthchecks in a row.
+        // Maybe this should be parametrized
+        ServiceStatus::Running if service_handler.healthiness_checks_failed > 2 => vec![
+            ev_status(ServiceStatus::InKilling),
+            Event::Kill(service_handler.name().clone()),
+        ],
+        ServiceStatus::Success => vec![handle_restart_strategy(service_handler.service(), false)],
+        ServiceStatus::Failed => {
+            let mut failure_evs = handle_failed_service(
+                repo.get_dependents(service_handler.name()),
+                service_handler.service(),
+            );
+            let other_services_termination = repo
+                .get_die_if_failed(service_handler.name())
+                .into_iter()
+                .map(|sh_name| {
+                    vec![
+                        Event::new_status_update(sh_name, ServiceStatus::InKilling),
+                        Event::Kill(sh_name.clone()),
+                    ]
+                })
+                .flatten();
+
+            let service_ev = handle_restart_strategy(service_handler.service(), true);
+
+            failure_evs.push(service_ev);
+            failure_evs.extend(other_services_termination);
+            failure_evs
+        }
+        ServiceStatus::InKilling if should_force_kill(service_handler) => vec![
+            Event::new_force_kill(service_handler.name()),
+            Event::new_status_changed(service_handler.name(), ServiceStatus::Failed),
+        ],
+
+        _ => vec![],
     }
 }
 

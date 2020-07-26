@@ -24,7 +24,9 @@ impl Repo {
             pid_map: HashMap::new(),
         }
     }
-
+    pub(crate) fn insert_sh_by_name(&mut self, name: ServiceName, sh: ServiceHandler) {
+        self.services.insert(name, sh);
+    }
     pub(crate) fn get_service_by_pid(&self, pid: Pid) -> Option<&ServiceName> {
         self.pid_map.get(&pid)
     }
