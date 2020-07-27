@@ -3,9 +3,7 @@
 //! It will also reap the dead processes
 
 use crate::horust::bus::BusConnector;
-use crate::horust::formats::{
-    Event, ExitStatus, HealthinessStatus, Service, ServiceName, ServiceStatus,
-};
+use crate::horust::formats::{Event, ExitStatus, HealthinessStatus, Service, ServiceStatus};
 use crate::horust::healthcheck;
 use nix::sys::signal;
 use nix::unistd;

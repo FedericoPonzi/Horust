@@ -4,7 +4,6 @@ use nix::sys::signal::{kill, Signal};
 use nix::unistd::Pid;
 use rand::distributions::Alphanumeric;
 use rand::{thread_rng, Rng};
-use std;
 use std::path::Path;
 use std::process::Command;
 use std::sync::mpsc;
