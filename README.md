@@ -70,7 +70,7 @@ else:
 Don't forget to make it executable:
 
 ```shell
-chmod +x /tmp/healthcheck.py`.
+chmod +x /tmp/healthcheck.py
 ```
 
 #### 4. Build Horust:
