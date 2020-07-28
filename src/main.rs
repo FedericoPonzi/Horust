@@ -4,8 +4,8 @@ use horust::Horust;
 use std::path::PathBuf;
 use structopt::StructOpt;
 
-#[macro_use]
-extern crate log;
+// #[macro_use]
+// extern crate log;
 
 #[derive(StructOpt, Debug)]
 #[structopt(author, about)]
@@ -39,7 +39,7 @@ fn main() -> Result<(), horust::HorustError> {
     env_logger::init_from_env(env);
 
     let opts = Opts::from_args();
-
+    println!("Horust is now running");
     if opts.sample_service {
         println!("{}", horust::get_sample_service());
         return Ok(());
@@ -48,7 +48,7 @@ fn main() -> Result<(), horust::HorustError> {
     let config = HorustConfig::load_and_merge(opts.horust_config, &opts.config_path)?;
 
     let mut horust = if !opts.command.is_empty() {
-        debug!("Running command: {:?}", opts.command);
+        println!("Running command: {:?}", opts.command);
 
         Horust::from_command(
             opts.command
@@ -56,7 +56,7 @@ fn main() -> Result<(), horust::HorustError> {
                 .fold(String::new(), |acc, w| format!("{} {}", acc, w)),
         )
     } else {
-        debug!(
+        println!(
             "Loading services from directory: {}",
             opts.services_path.display()
         );

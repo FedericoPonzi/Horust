@@ -1,5 +1,5 @@
 //! If a service has defined an healthchecker, this module will spawn a worker to making sure that
-//! everything
+//! everything is A-OK with that service.
 
 use crate::horust::bus::BusConnector;
 use crate::horust::formats::{
@@ -62,7 +62,7 @@ fn check_health(healthiness: &Healthiness) -> HealthinessStatus {
         .into_iter()
         .filter(|check| !check.run(healthiness))
         .count();
-    let is_healthy = failed_checks == 0;
+    let is_healthy = failed_checks > healthiness.max_failed_http_requests.unwrap();
     is_healthy.into()
 }
 
@@ -123,6 +123,7 @@ pub fn prepare_service(healthiness: &Healthiness) -> Result<Vec<()>, std::io::Er
         .collect()
 }
 
+// TODO: Test for max-failed-http-requests properly
 #[cfg(test)]
 mod test {
     use crate::horust::error::Result;
@@ -145,6 +146,7 @@ mod test {
         let healthiness = Healthiness {
             file_path: Some(file_path.clone()),
             http_endpoint: None,
+            max_failed_http_requests: None,
         };
         assert!(!check_health_w(&healthiness));
         std::fs::write(file_path, "Hello world!")?;
@@ -171,6 +173,7 @@ mod test {
         let healthiness = Healthiness {
             file_path: None,
             http_endpoint: Some("http://localhost:123/".into()),
+            max_failed_http_requests: None,
         };
         assert!(!check_health_w(&healthiness));
         let loopback = Ipv4Addr::new(127, 0, 0, 1);
@@ -181,6 +184,7 @@ mod test {
         let healthiness = Healthiness {
             file_path: None,
             http_endpoint: Some(endpoint),
+            max_failed_http_requests: None,
         };
         let (sender, receiver) = mpsc::sync_channel(0);
         thread::spawn(move || {

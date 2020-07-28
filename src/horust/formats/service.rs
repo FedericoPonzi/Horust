@@ -27,6 +27,7 @@ attempts = 0
 [healthiness]
 http-endpoint = "http://localhost:8080/healthcheck"
 file-path = "/var/myservice/up"
+max-failed-http-requests = 2
 
 [failure]
 successful-exit-code = [ 0, 1, 255]
@@ -324,6 +325,7 @@ impl Environment {
 pub struct Healthiness {
     pub http_endpoint: Option<String>,
     pub file_path: Option<PathBuf>,
+    pub max_failed_http_requests: Option<usize>,
 }
 
 impl Default for Healthiness {
@@ -331,6 +333,7 @@ impl Default for Healthiness {
         Self {
             http_endpoint: None,
             file_path: None,
+            max_failed_http_requests: None,
         }
     }
 }
@@ -679,6 +682,7 @@ mod test {
             healthiness: Healthiness {
                 http_endpoint: Some("http://localhost:8080/healthcheck".into()),
                 file_path: Some("/var/myservice/up".into()),
+                max_failed_http_requests: Some(2),
             },
             signal_rewrite: None,
             failure: Failure {

@@ -1,7 +1,7 @@
 //! A simple bus implementation: distributes the messages among the queues
 //! There is one single input pipe (`public_sender` ; `receiver`). The sender side is shared among
 //! all the publishers. The bus reads from the receiver, and publishes to all the `senders`.
-//! This is a very simple wrapper around crossbeam, that allows multiple sender send messages which
+//! This is a very simple wrapper around crossbeam, that allows multiple senders send messages which
 //! will arrive to every receiver. For this reason, the message should implement Clone.
 //!
 

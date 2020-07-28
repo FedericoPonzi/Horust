@@ -59,7 +59,7 @@ impl Horust {
         runtime::init();
 
         let mut dispatcher = Bus::new();
-        debug!("Services: {:?}", self.services);
+        println!("Services: {:?}", self.services);
         // Spawn helper threads:
         healthcheck::spawn(dispatcher.join_bus(), self.services.clone());
         let handle = runtime::spawn(dispatcher.join_bus(), self.services.clone());

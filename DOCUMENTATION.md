@@ -75,10 +75,12 @@ immediately pass to the running state.
 [healthiness]
 http-endpoint = "http://localhost:8080/healthcheck"
 file-path = "/var/myservice/up"
+max-failed-http-requests = 2
 ```
  * **`http-endpoint` = `<http endpoint>`**: It will send an HEAD request to the specified http endpoint. 200 means the service is healthy, otherwise it will change the status to failure.
     This requires horust to be built with the `http-healthcheck` feature (included by default).
  * **`file-path` = `/path/to/file`**: Before running the service, it will remove this file if it exists. Then, as soon as this file is created, the service will be considered running. 
+ * **`max-failed-http-requests` = `2`**: The maximum amount of failed HTTP requests to make before considering a service dead.
  * You can check the healthiness of your system using an http endpoint or a flag file.
  * You can use the enforce dependency to kill every dependent system.
 
