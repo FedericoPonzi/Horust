@@ -1,5 +1,5 @@
 use crate::horust::formats::{
-    FailureStrategy, RestartStrategy, Service, ServiceName, ServiceStatus,
+    FailureStrategy, HealthinessStatus, RestartStrategy, Service, ServiceName, ServiceStatus,
 };
 use crate::horust::supervisor::repo::Repo;
 use crate::horust::Event;
@@ -12,7 +12,7 @@ pub(crate) struct ServiceHandler {
     pub(crate) status: ServiceStatus,
     pub(crate) pid: Option<Pid>,
     pub(crate) restart_attempts: u32,
-    pub(crate) healthiness_checks_failed: u32,
+    pub(crate) healthiness_checks_failed: Option<i32>,
     /// Instant representing at which time we received a shutdown request. Will be used for comparing Service.termination.wait
     pub(crate) shutting_down_start: Option<Instant>,
 }
@@ -25,7 +25,7 @@ impl From<Service> for ServiceHandler {
             pid: None,
             shutting_down_start: None,
             restart_attempts: 0,
-            healthiness_checks_failed: 1,
+            healthiness_checks_failed: None,
         }
     }
 }
@@ -41,6 +41,14 @@ impl ServiceHandler {
         self.service.start_after.as_ref()
     }
 
+    pub(crate) fn is_early_state(&self) -> bool {
+        const EARLY_STATES: [ServiceStatus; 3] = [
+            ServiceStatus::Initial,
+            ServiceStatus::Starting,
+            ServiceStatus::Started,
+        ];
+        EARLY_STATES.contains(&self.status)
+    }
     pub fn service(&self) -> &Service {
         &self.service
     }
@@ -61,7 +69,28 @@ impl ServiceHandler {
     }
 
     pub fn restart_attempts_are_over(&self) -> bool {
-        self.restart_attempts > self.service.restart.attempts
+        self.service.restart.attempts == 0 || self.restart_attempts > self.service.restart.attempts
+    }
+    pub fn add_healthcheck_event(&mut self, check: HealthinessStatus) {
+        let old_val = self.healthiness_checks_failed.unwrap_or(0);
+        let new_val = old_val
+            + if vec![
+                ServiceStatus::Running,
+                ServiceStatus::Started,
+                ServiceStatus::Starting,
+            ]
+            .contains(&self.status)
+            {
+                if let HealthinessStatus::Healthy = check {
+                    0
+                } else {
+                    warn!("{}: healthchecks failed: {}", self.name(), old_val);
+                    1
+                }
+            } else {
+                0
+            };
+        self.healthiness_checks_failed = Some(new_val);
     }
 
     pub fn is_finished_failed(&self) -> bool {
@@ -70,6 +99,13 @@ impl ServiceHandler {
 
     pub fn is_in_killing(&self) -> bool {
         ServiceStatus::InKilling == self.status
+    }
+
+    /// Returns true if the last few events of the healthchecker were Unhealthy events.
+    pub fn has_some_failed_healthchecks(&self) -> bool {
+        // If health status message didn't reach the service handler on time, it has failed too fast
+        // So we consider it as unhealthy (thus the `1` for the unwrap).
+        self.healthiness_checks_failed.unwrap_or(1) > 0
     }
 
     pub fn is_initial(&self) -> bool {
@@ -112,16 +148,19 @@ fn next_events(repo: &Repo, service_handler: &ServiceHandler) -> Vec<Event> {
         ServiceStatus::Initial if repo.is_service_runnable(&service_handler) => {
             vec![Event::Run(service_handler.name().clone())]
         }
-        ServiceStatus::Started if service_handler.healthiness_checks_failed == 0 => {
+        // if enough time have passed, this will be considered running
+        ServiceStatus::Started if !service_handler.has_some_failed_healthchecks() => {
             vev_status(ServiceStatus::Running)
         }
         // This will kill the service after 3 failed healthchecks in a row.
         // Maybe this should be parametrized
-        ServiceStatus::Running if service_handler.healthiness_checks_failed > 2 => vec![
-            ev_status(ServiceStatus::InKilling),
-            Event::Kill(service_handler.name().clone()),
-        ],
-        ServiceStatus::Success => vec![handle_restart_strategy(service_handler.service(), false)],
+        ServiceStatus::Running if service_handler.healthiness_checks_failed.unwrap_or(-1) > 2 => {
+            vec![
+                ev_status(ServiceStatus::InKilling),
+                Event::Kill(service_handler.name().clone()),
+            ]
+        }
+        ServiceStatus::Success => vec![handle_restart_strategy(service_handler, false)],
         ServiceStatus::Failed => {
             let mut failure_evs = handle_failed_service(
                 repo.get_dependents(service_handler.name()),
@@ -138,7 +177,7 @@ fn next_events(repo: &Repo, service_handler: &ServiceHandler) -> Vec<Event> {
                 })
                 .flatten();
 
-            let service_ev = handle_restart_strategy(service_handler.service(), true);
+            let service_ev = handle_restart_strategy(service_handler, true);
 
             failure_evs.push(service_ev);
             failure_evs.extend(other_services_termination);
@@ -223,7 +262,6 @@ fn handle_status_change(
             }
             ServiceStatus::Running if allowed.contains(&service_handler.status) => {
                 new_service_handler.status = ServiceStatus::Running;
-                new_service_handler.healthiness_checks_failed = 0;
             }
             ServiceStatus::InKilling if allowed.contains(&service_handler.status) => {
                 debug!(
@@ -255,15 +293,27 @@ fn handle_status_change(
 }
 
 /// Produces events based on the Restart Strategy of the service.
-fn handle_restart_strategy(service: &Service, is_failed: bool) -> Event {
-    let new_status = match service.restart.strategy {
-        RestartStrategy::Never if is_failed => ServiceStatus::FinishedFailed,
+fn handle_restart_strategy(service_handler: &ServiceHandler, is_failed: bool) -> Event {
+    let new_status = match service_handler.service.restart.strategy {
+        RestartStrategy::Never if is_failed => {
+            debug!(
+                "restart attemps: {}, are over: {}, max: {}",
+                service_handler.restart_attempts,
+                service_handler.restart_attempts_are_over(),
+                service_handler.service.restart.attempts
+            );
+            if service_handler.restart_attempts_are_over() {
+                ServiceStatus::FinishedFailed
+            } else {
+                ServiceStatus::Initial
+            }
+        }
         RestartStrategy::OnFailure if is_failed => ServiceStatus::Initial,
         RestartStrategy::Never | RestartStrategy::OnFailure => ServiceStatus::Finished,
         RestartStrategy::Always => ServiceStatus::Initial,
     };
     debug!("Restart strategy applied, ev: {:?}", new_status);
-    Event::new_status_update(&service.name, new_status)
+    Event::new_status_update(service_handler.name(), new_status)
 }
 
 /// This is applied to both failed and FinishedFailed services.
@@ -320,7 +370,9 @@ mod test {
     use crate::horust::Event;
     use nix::unistd::Pid;
     use std::ops::Sub;
+    use std::str::FromStr;
     use std::time::Duration;
+
     #[test]
     fn test_handle_restart_strategy() {
         let new_status = |status| Event::new_status_update(&"servicename".to_string(), status);
@@ -343,8 +395,9 @@ strategy = "{}"
 "#,
                     strategy
                 );
-                let service: Service = toml::from_str(service.as_str()).unwrap();
-                let received = handle_restart_strategy(&service, has_failed);
+                let service: Service = Service::from_str(service.as_str()).unwrap();
+                let sh = service.into();
+                let received = handle_restart_strategy(&sh, has_failed);
                 assert_eq!(received, expected);
             });
     }

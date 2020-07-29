@@ -7,7 +7,7 @@ fn restart_attempts(should_contain: bool, attempts: u32) {
     let (mut cmd, temp_dir) = get_cli();
 
     let failing_once_script = format!(
-        r#"#!/usr/bin/env bash
+        r#"#!/usr/bin/env sh
 if [ ! -f {0} ]; then
     touch {0} && exit 1
 fi

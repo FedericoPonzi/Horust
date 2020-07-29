@@ -3,7 +3,7 @@
 //! It will also reap the dead processes
 
 use crate::horust::bus::BusConnector;
-use crate::horust::formats::{Event, ExitStatus, HealthinessStatus, Service, ServiceStatus};
+use crate::horust::formats::{Event, ExitStatus, Service, ServiceStatus};
 use crate::horust::healthcheck;
 use nix::sys::signal;
 use nix::unistd;
@@ -64,36 +64,27 @@ impl Supervisor {
                     .failure
                     .successful_exit_code
                     .contains(&exit_code);
-                let healthcheck_failed = service_handler.healthiness_checks_failed > 0
-                    && service_handler.status == ServiceStatus::Running;
-                let new_status = if has_failed || healthcheck_failed {
+
+                // If it has failed too quickly, increase service_handler's restart attempts
+                // and check if it has more attempts left.
+                if service_handler.has_some_failed_healthchecks()
+                    && service_handler.is_early_state()
+                {
+                    service_handler.restart_attempts += 1;
+                }
+
+                let new_status = if has_failed
+                    || (service_handler.status == ServiceStatus::Running
+                        && service_handler.has_some_failed_healthchecks())
+                {
                     warn!(
-                        "Service: {} has failed, exit code: {}, healthchecks: {}",
+                        "Service: {} has failed, exit code: {}, healthchecks: {} ({:?})",
                         service_handler.name(),
                         exit_code,
-                        healthcheck_failed
+                        service_handler.has_some_failed_healthchecks(),
+                        service_handler.healthiness_checks_failed
                     );
-
-                    // If it has failed too quickly, increase service_handler's restart attempts
-                    // and check if it has more attempts left.
-                    const EARLY_STATES: [ServiceStatus; 3] = [
-                        ServiceStatus::Initial,
-                        ServiceStatus::Starting,
-                        ServiceStatus::Started,
-                    ];
-                    //TODO: this check should be moved to next.
-                    if EARLY_STATES.contains(&service_handler.status) {
-                        service_handler.restart_attempts += 1;
-                        if service_handler.restart_attempts_are_over() {
-                            //Game over!
-                            ServiceStatus::FinishedFailed
-                        } else {
-                            ServiceStatus::Initial
-                        }
-                    } else {
-                        // If wasn't in a early state, then it has failed in a usual way
-                        ServiceStatus::Failed
-                    }
+                    ServiceStatus::Failed
                 } else {
                     info!(
                         "Service: {} successfully exited with: {}.",
@@ -193,19 +184,7 @@ impl Supervisor {
                 let sh = self.repo.get_mut_sh(&s_name);
                 // Count the failed healthiness checks. The state change producer wll handle states
                 // changes (if they're needed)
-                if vec![
-                    ServiceStatus::Running,
-                    ServiceStatus::Started,
-                    ServiceStatus::Starting,
-                ]
-                .contains(&sh.status)
-                {
-                    if let HealthinessStatus::Healthy = health {
-                        sh.healthiness_checks_failed = 0;
-                    } else {
-                        sh.healthiness_checks_failed += 1;
-                    }
-                };
+                sh.add_healthcheck_event(health);
                 vec![]
             }
             Event::ShuttingDownInitiated => {
