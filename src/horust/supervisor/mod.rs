@@ -93,12 +93,12 @@ impl Supervisor {
                     );
                     ServiceStatus::Success
                 };
-                // TODO: Verify that it's not possible to be in a situation where the service has exited
-                // And we cannot change the status accordingly, and thus loose this information.
-                let (_sh, _new_status) = service_handler.change_status(new_status.clone());
-
-                service_handler.status = new_status.clone();
-                debug!("New state for exited service: {:?}", service_handler.status);
+                let (new_sh, new_status) = service_handler.change_status(new_status.clone());
+                self.repo.insert_sh_by_name(service_name.clone(), new_sh);
+                debug!(
+                    "{}: new status for exited service: {:?}",
+                    service_name, new_status
+                );
                 vec![Event::StatusChanged(service_name, new_status)]
             }
             Event::Run(service_name) if self.repo.get_sh(&service_name).is_initial() => {
