@@ -43,13 +43,13 @@ impl<T> Bus<T>
 where
     T: Clone,
 {
-    pub fn new() -> Self {
+    pub fn new(forward_to_sender: bool) -> Self {
         let (public_sender, receiver) = unbounded();
         Bus {
             shared_sender: public_sender,
             receiver,
             senders: Default::default(),
-            forward_to_sender: true,
+            forward_to_sender,
         }
     }
 
@@ -193,7 +193,7 @@ mod test {
         BusConnector<Event>,
         channel::Receiver<()>,
     ) {
-        let mut bus = Bus::new();
+        let mut bus = Bus::new(true);
         let a = bus.join_bus();
         let b = bus.join_bus();
         let (sender, receiver) = channel::bounded(48);
@@ -255,7 +255,7 @@ mod test {
 
     #[test]
     fn test_stress() {
-        let mut bus = Bus::new();
+        let mut bus = Bus::new(true);
         let mut connectors = vec![];
         let last = bus.join_bus();
         for _i in 0..100 {

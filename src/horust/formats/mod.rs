@@ -8,6 +8,9 @@ pub use service::*;
 pub enum Event {
     PidChanged(ServiceName, Pid),
     ServiceStarted(ServiceName),
+    // This command updates the service status.
+    StatusUpdate(ServiceName, ServiceStatus),
+    // This event represents a status change.
     StatusChanged(ServiceName, ServiceStatus),
     ServiceExited(ServiceName, i32),
     ForceKill(ServiceName),
@@ -16,7 +19,7 @@ pub enum Event {
     Run(ServiceName),
     ShuttingDownInitiated,
     HealthCheck(ServiceName, HealthinessStatus),
-    // TODO: to allow changes of service at runtime:
+    // TODO: to allow changes of service at supervisor:
     //ServiceCreated(ServiceHandler)
 }
 
@@ -26,6 +29,9 @@ impl Event {
     }
     pub(crate) fn new_status_changed(service_name: &str, status: ServiceStatus) -> Self {
         Self::StatusChanged(service_name.to_string(), status)
+    }
+    pub(crate) fn new_status_update(service_name: &str, status: ServiceStatus) -> Self {
+        Self::StatusUpdate(service_name.to_string(), status)
     }
     pub(crate) fn new_service_exited(service_name: ServiceName, exit_status: i32) -> Self {
         Self::ServiceExited(service_name, exit_status)

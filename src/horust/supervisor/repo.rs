@@ -1,6 +1,6 @@
 use crate::horust::bus::BusConnector;
 use crate::horust::formats::{Service, ServiceName};
-use crate::horust::runtime::service_handler::ServiceHandler;
+use crate::horust::supervisor::service_handler::ServiceHandler;
 use crate::horust::Event;
 use nix::unistd::Pid;
 use std::collections::HashMap;
@@ -24,7 +24,9 @@ impl Repo {
             pid_map: HashMap::new(),
         }
     }
-
+    pub(crate) fn insert_sh_by_name(&mut self, name: ServiceName, sh: ServiceHandler) {
+        self.services.insert(name, sh);
+    }
     pub(crate) fn get_service_by_pid(&self, pid: Pid) -> Option<&ServiceName> {
         self.pid_map.get(&pid)
     }
@@ -42,6 +44,8 @@ impl Repo {
     }
 
     pub fn all_have_finished(&self) -> bool {
+        //TODO: This can be improved. When a service is finished, it can be added in a list, or even
+        // a number. Then this check can be reduced to `return self.services.len() == self.finished_services`
         self.services
             .iter()
             .all(|(_s_name, sh)| sh.is_finished() || sh.is_finished_failed())

@@ -3,7 +3,7 @@
 //! collect its exit status. This module will make sure to reap also zombie processes and not only
 //! child services.
 
-use crate::horust::runtime::repo::Repo;
+use crate::horust::supervisor::repo::Repo;
 use crate::horust::Event;
 use nix::sys::wait::{waitpid, WaitPidFlag, WaitStatus};
 use nix::unistd::Pid;

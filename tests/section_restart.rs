@@ -1,19 +1,13 @@
-use assert_cmd::prelude::*;
-use predicates::prelude::*;
-use predicates::str::contains;
-
 #[allow(dead_code)]
 mod utils;
 use std::time::Duration;
 use utils::*;
 
-//TODO: remove stdout check, and use unsuccessful_exit_finished_failed instead
-// with assert.success() and assert.failure()
 fn restart_attempts(should_contain: bool, attempts: u32) {
     let (mut cmd, temp_dir) = get_cli();
 
     let failing_once_script = format!(
-        r#"#!/usr/bin/env bash
+        r#"#!/usr/bin/env sh
 if [ ! -f {0} ]; then
     touch {0} && exit 1
 fi
@@ -40,11 +34,9 @@ attempts = {}
         Some(service.as_str()),
         None,
     );
-    if should_contain {
-        cmd.assert().stdout(contains("File is there"));
-    } else {
-        cmd.assert().stdout(contains("File is there").not());
-    }
+    let mut cmd = cmd.args(vec!["--unsuccessful-exit-finished-failed"]);
+    let recv = run_async(&mut cmd, should_contain);
+    recv.recv_or_kill(Duration::from_secs(15));
 }
 
 #[test]

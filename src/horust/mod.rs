@@ -2,8 +2,8 @@ mod bus;
 mod error;
 mod formats;
 mod healthcheck;
-mod runtime;
 mod signal_safe;
+mod supervisor;
 
 pub use self::error::HorustError;
 pub use self::formats::{get_sample_service, ExitStatus, HorustConfig};
@@ -56,13 +56,13 @@ impl Horust {
         unsafe {
             prctl(PR_SET_CHILD_SUBREAPER, 1, 0, 0, 0);
         }
-        runtime::init();
+        supervisor::init();
 
-        let mut dispatcher = Bus::new();
+        let mut dispatcher = Bus::new(true);
         debug!("Services: {:?}", self.services);
         // Spawn helper threads:
         healthcheck::spawn(dispatcher.join_bus(), self.services.clone());
-        let handle = runtime::spawn(dispatcher.join_bus(), self.services.clone());
+        let handle = supervisor::spawn(dispatcher.join_bus(), self.services.clone());
         dispatcher.run();
         handle.join().unwrap()
     }

@@ -4,7 +4,6 @@ use nix::sys::signal::{kill, Signal};
 use nix::unistd::Pid;
 use rand::distributions::Alphanumeric;
 use rand::{thread_rng, Rng};
-use std;
 use std::path::Path;
 use std::process::Command;
 use std::sync::mpsc;
@@ -83,7 +82,10 @@ pub struct RecvWrapper {
 impl RecvWrapper {
     pub fn recv_or_kill(self, sleep: Duration) {
         match self.receiver.recv_timeout(sleep) {
-            Ok(is_success) => assert_eq!(is_success, self.should_succeed, "Wrong exit status"),
+            Ok(is_success) => assert_eq!(
+                is_success, self.should_succeed,
+                "Wrong exit status, right=expected."
+            ),
             Err(_err) => {
                 println!("Test didn't terminate on time, going to kill horust...");
                 kill(self.pid, Signal::SIGKILL).expect("horust kill");

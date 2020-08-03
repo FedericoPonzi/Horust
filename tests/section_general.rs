@@ -106,7 +106,7 @@ echo "c""#;
 #[test]
 #[ignore]
 fn test_user() {
-    //TODO: figure how to run this test. ( Sys(EPERM))
+    //TODO: figure how to run this test. ( Sys(EPERM)) maybe in docker?
     let (mut cmd, temp_dir) = get_cli();
     let service = r#"user = "games""#;
     let script = r#"#!/usr/bin/env bash

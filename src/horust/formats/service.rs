@@ -439,16 +439,17 @@ pub struct Restart {
     #[serde(default = "default_attempts")]
     pub attempts: u32,
 }
+
 fn default_attempts() -> u32 {
-    10
+    0
 }
 
 impl Default for Restart {
     fn default() -> Self {
         Restart {
-            strategy: RestartStrategy::Never,
+            strategy: Default::default(),
             backoff: Duration::from_secs(0),
-            attempts: 0,
+            attempts: default_attempts(),
         }
     }
 }
