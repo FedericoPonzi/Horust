@@ -27,6 +27,8 @@ attempts = 0
 [healthiness]
 http-endpoint = "http://localhost:8080/healthcheck"
 file-path = "/var/myservice/up"
+# Max healthchecks allowed to fail in a row before considering this service failed.
+max-failed = 3
 
 [failure]
 successful-exit-code = [ 0, 1, 255]
@@ -320,17 +322,23 @@ impl Environment {
 
 #[derive(Serialize, Clone, Deserialize, Debug, Eq, PartialEq)]
 #[serde(rename_all = "kebab-case", deny_unknown_fields)]
-// TODO: Add a retry instead of instantly giving up.
 pub struct Healthiness {
     pub http_endpoint: Option<String>,
     pub file_path: Option<PathBuf>,
+    #[serde(default = "Healthiness::default_max_failed")]
+    pub max_failed: i32,
 }
-
+impl Healthiness {
+    fn default_max_failed() -> i32 {
+        3
+    }
+}
 impl Default for Healthiness {
     fn default() -> Self {
         Self {
             http_endpoint: None,
             file_path: None,
+            max_failed: 3,
         }
     }
 }
@@ -680,6 +688,7 @@ mod test {
             healthiness: Healthiness {
                 http_endpoint: Some("http://localhost:8080/healthcheck".into()),
                 file_path: Some("/var/myservice/up".into()),
+                ..Default::default()
             },
             signal_rewrite: None,
             failure: Failure {

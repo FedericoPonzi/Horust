@@ -154,7 +154,10 @@ fn next_events(repo: &Repo, service_handler: &ServiceHandler) -> Vec<Event> {
         }
         // This will kill the service after 3 failed healthchecks in a row.
         // Maybe this should be parametrized
-        ServiceStatus::Running if service_handler.healthiness_checks_failed.unwrap_or(-1) > 2 => {
+        ServiceStatus::Running
+            if service_handler.healthiness_checks_failed.unwrap_or(-1)
+                > service_handler.service.healthiness.max_failed =>
+        {
             vec![
                 ev_status(ServiceStatus::InKilling),
                 Event::Kill(service_handler.name().clone()),
