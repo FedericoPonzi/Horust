@@ -145,6 +145,7 @@ mod test {
         let healthiness = Healthiness {
             file_path: Some(file_path.clone()),
             http_endpoint: None,
+            ..Default::default()
         };
         assert!(!check_health_w(&healthiness));
         std::fs::write(file_path, "Hello world!")?;
@@ -171,6 +172,7 @@ mod test {
         let healthiness = Healthiness {
             file_path: None,
             http_endpoint: Some("http://localhost:123/".into()),
+            ..Default::default()
         };
         assert!(!check_health_w(&healthiness));
         let loopback = Ipv4Addr::new(127, 0, 0, 1);
@@ -181,6 +183,7 @@ mod test {
         let healthiness = Healthiness {
             file_path: None,
             http_endpoint: Some(endpoint),
+            ..Default::default()
         };
         let (sender, receiver) = mpsc::sync_channel(0);
         thread::spawn(move || {
