@@ -86,7 +86,10 @@ fn spawn_process(service: &Service) -> Result<Pid> {
                 .and_then(|_| redirect_output(&service.stderr, LogOutput::Stderr))
                 .and_then(|_| exec(program_name, arg_cstrings, env_cstrings, uid, cwd));
             if let Err(error) = res {
-                let error = format!("Error spawning process: {}", error);
+                let error = format!(
+                    "Error spawning process for service '{}', command: {}: {}",
+                    service.name, service.command, error
+                );
                 panic_ssafe(error.as_str(), 102);
             }
             unreachable!()
