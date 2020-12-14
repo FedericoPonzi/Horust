@@ -6,8 +6,7 @@ use serde::export::fmt::Error;
 use serde::export::Formatter;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use std::collections::HashMap;
-use std::fs::File;
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 use std::str::FromStr;
 use std::time::Duration;
 
@@ -95,23 +94,9 @@ impl Service {
         LogOutput::Stderr
     }
 
-    pub fn from_file<P: AsRef<Path>>(path: P) -> crate::horust::error::Result<Self> {
-        let content = std::fs::read_to_string(&path)?;
-        toml::from_str::<Service>(content.as_str())
-            .map_err(HorustError::from)
-            .map(|mut service| {
-                if service.name == "" {
-                    let filename = path
-                        .as_ref()
-                        .file_name()
-                        .unwrap()
-                        .to_str()
-                        .unwrap()
-                        .to_owned();
-                    service.name = filename;
-                }
-                service
-            })
+    pub fn from_file(path: &PathBuf) -> crate::horust::error::Result<Self> {
+        let content = std::fs::read_to_string(path)?;
+        toml::from_str::<Service>(content.as_str()).map_err(HorustError::from)
     }
 
     /// Creates the environment K=V variables, used for exec into the new process.

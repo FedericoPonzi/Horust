@@ -18,10 +18,6 @@ struct Opts {
     #[structopt(flatten)]
     horust_config: HorustConfig,
 
-    #[structopt(short = "v", parse(from_occurrences))]
-    /// Allows to tune Horust's verbosity
-    log_verbosity: u32,
-
     #[structopt(long)]
     /// Prints a sample service file with all the possible options
     sample_service: bool,
@@ -34,22 +30,15 @@ struct Opts {
     /// Specify a command to run instead of load services path. Useful if you just want to use the reaping capability. Prefix your command with --
     command: Vec<String>,
 }
-fn log_verbosity(val: u32) -> &'static str {
-    match val {
-        2 => "debug",
-        3 => "trace",
-        _ => "info",
-    }
-}
 
 fn main() -> Result<(), horust::HorustError> {
-    let opts = Opts::from_args();
-
     // Set up logging.
     let env = env_logger::Env::new()
-        .filter_or("HORUST_LOG", log_verbosity(opts.log_verbosity))
+        .filter("HORUST_LOG")
         .write_style("HORUST_LOG_STYLE");
     env_logger::init_from_env(env);
+
+    let opts = Opts::from_args();
 
     if opts.sample_service {
         println!("{}", horust::get_sample_service());

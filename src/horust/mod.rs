@@ -53,11 +53,6 @@ impl Horust {
 
     /// Blocking call, will setup the event loop and the threads and run all the available services.
     pub fn run(&mut self) -> ExitStatus {
-        // sets Horust as a subreaper. From prctl(2):
-        // A subreaper fulfills the role of init(1) for its descendant processes. Upon termination
-        // of a process that is orphaned (i.e., its immediate parent has already terminated) and
-        // marked as having a subreaper, the nearest still living ancestor subreaper will receive a
-        // SIGCHLD signal and be able to wait(2) on the process to discover its termination status.
         unsafe {
             prctl(PR_SET_CHILD_SUBREAPER, 1, 0, 0, 0);
         }
@@ -94,16 +89,24 @@ where
         .filter_map(std::result::Result::ok)
         .map(|dir_entry| dir_entry.path())
         .filter(is_toml_file)
-        .map(Service::from_file)
-        .filter_map(|res| {
-            if let Err(error) = &res {
+        .map(|file| {
+            let res = Service::from_file(&file);
+            res.map(|mut service| {
+                if service.name == "" {
+                    let filename = file.file_name().unwrap().to_str().unwrap().to_owned();
+                    service.name = filename;
+                }
+                service
+            })
+            .map_err(|error| {
                 error!("Error loading toml file: {}", error);
-            }
-            res.ok()
+                error
+            })
         })
+        .filter_map(Result::ok)
         .collect::<Vec<Service>>();
     if services.is_empty() {
-        error!("Horust: No valid services found in: {:?}", path);
+        error!("Horust: No services found in: {:?}", path);
     }
     Ok(services)
 }
