@@ -136,7 +136,7 @@ fn redirect_output(val: &LogOutput, output: LogOutput) -> Result<()> {
 ///
 /// # Safety
 ///
-/// Use only async-signal-safe, otherwise it might lock.
+/// Use only async-signal-safe, otherwise it might deadlock.
 fn exec(
     program_name: CString,
     arg_cstrings: Vec<CString>,
