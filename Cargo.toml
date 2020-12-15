@@ -26,6 +26,7 @@ serde = {version = "~1.0", features = ["derive"] }
 shlex = "~0.1"
 toml = "~0.5"
 maplit = "~1.0"
+templar = "~0.4"
 
 [features]
 default = ["http-healthcheck"]

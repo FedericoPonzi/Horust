@@ -14,6 +14,17 @@ This section describes all the possible options you can put in a service.toml fi
 You should create one different service.toml for each command you want to run. 
 A part from the `user` parameter, everything should work even with an unprivileged user.
 
+### Service templating
+Services can, but not have to, be templated. Currently templating works only via environment variables. Templating engine uses similar mechanism to popular jinja2 engine.
+
+Before loading the service file, Horust will internally search and replace every value with environment variable if it exist.
+First template example can be found in the example service. In this case, `{{ ... }}` block is replaced by environment's `USER` variable. You can use any variable your system provides or you also can set those before running Horust.
+```
+...
+user = {{ env('USER') }}
+...
+```
+
 ### Main section
 ```toml
 # name = "myname"
@@ -22,7 +33,7 @@ start-delay = "2s"
 start-after = ["another.toml", "second.toml"]
 stdout = "STDOUT"
 stderr = "/var/logs/hello_world_svc/stderr.log"
-user = "root"
+user = "{{ env('USER') }}"
 working-directory = "/tmp/"
 ```
 * **`name` = `string`**: Name of the service. Optional, uses the filename by default.

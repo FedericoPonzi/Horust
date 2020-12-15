@@ -9,6 +9,7 @@ pub enum ErrorKind {
     NullError(std::ffi::NulError),
     Nix(nix::Error),
     ValidationError(Vec<ValidationError>),
+    TemplatingError(templar::error::TemplarError),
 }
 
 #[derive(Debug)]
@@ -24,6 +25,7 @@ impl Display for HorustError {
             ErrorKind::NullError(error) => write!(f, "NullError: {}", error),
             ErrorKind::SerDe(error) => write!(f, "Deserialization error(Serde): {}", error),
             ErrorKind::ValidationError(error) => write!(f, "ValidationErrors: {:?}", error),
+            ErrorKind::TemplatingError(error) => write!(f, "Template engine failed: {:?}", error),
         }
     }
 }
@@ -72,6 +74,14 @@ impl From<Vec<ValidationError>> for HorustError {
     fn from(err: Vec<ValidationError>) -> Self {
         HorustError {
             kind: ErrorKind::ValidationError(err),
+        }
+    }
+}
+
+impl From<templar::error::TemplarError> for HorustError {
+    fn from(err: templar::error::TemplarError) -> Self {
+        HorustError {
+            kind: ErrorKind::TemplatingError(err),
         }
     }
 }
