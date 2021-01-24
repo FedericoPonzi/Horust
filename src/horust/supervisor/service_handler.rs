@@ -9,12 +9,16 @@ use std::time::Instant;
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub(crate) struct ServiceHandler {
     service: Service,
-    pub(crate) status: ServiceStatus,
-    pub(crate) pid: Option<Pid>,
-    pub(crate) restart_attempts: u32,
-    pub(crate) healthiness_checks_failed: Option<i32>,
+    /// Status of this service.
+    pub(super) status: ServiceStatus,
+    /// Process ID of this service, if any
+    pub(super) pid: Option<Pid>,
+    /// How many times in a row we failed to start this service
+    pub(super) restart_attempts: u32,
+    /// Amount of healthiness checks failed, applies only if the service is running
+    pub(super) healthiness_checks_failed: Option<i32>,
     /// Instant representing at which time we received a shutdown request. Will be used for comparing Service.termination.wait
-    pub(crate) shutting_down_start: Option<Instant>,
+    pub(super) shutting_down_start: Option<Instant>,
 }
 
 impl From<Service> for ServiceHandler {
