@@ -251,9 +251,9 @@ impl Environment {
         let hostname_path = "/etc/hostname";
         let localhost = "localhost".to_string();
         if std::path::PathBuf::from(hostname_path).is_file() {
-            std::fs::read_to_string(hostname_path).unwrap_or_else(|_| localhost)
+            std::fs::read_to_string(hostname_path).unwrap_or(localhost)
         } else {
-            std::env::var("HOSTNAME").unwrap_or_else(|_| localhost)
+            std::env::var("HOSTNAME").unwrap_or(localhost)
         }
     }
 

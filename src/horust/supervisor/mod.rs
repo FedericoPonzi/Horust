@@ -93,7 +93,7 @@ impl Supervisor {
                     );
                     ServiceStatus::Success
                 };
-                let (new_sh, new_status) = service_handler.change_status(new_status.clone());
+                let (new_sh, new_status) = service_handler.change_status(new_status);
                 self.repo.insert_sh_by_name(service_name.clone(), new_sh);
                 debug!(
                     "{}: new status for exited service: {:?}",
