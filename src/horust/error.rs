@@ -1,5 +1,6 @@
 use std::fmt::{self, Display, Formatter};
 
+use shellexpand::LookupError;
 pub type Result<T> = std::result::Result<T, HorustError>;
 
 #[derive(Debug)]
@@ -9,7 +10,7 @@ pub enum ErrorKind {
     NullError(std::ffi::NulError),
     Nix(nix::Error),
     ValidationError(Vec<ValidationError>),
-    TemplatingError(templar::error::TemplarError),
+    ShellExpandError(LookupError<std::env::VarError>),
 }
 
 #[derive(Debug)]
@@ -25,7 +26,7 @@ impl Display for HorustError {
             ErrorKind::NullError(error) => write!(f, "NullError: {}", error),
             ErrorKind::SerDe(error) => write!(f, "Deserialization error(Serde): {}", error),
             ErrorKind::ValidationError(error) => write!(f, "ValidationErrors: {:?}", error),
-            ErrorKind::TemplatingError(error) => write!(f, "Template engine failed: {:?}", error),
+            ErrorKind::ShellExpandError(error) => write!(f, "env expansion error: {:?}", error),
         }
     }
 }
@@ -77,11 +78,10 @@ impl From<Vec<ValidationError>> for HorustError {
         }
     }
 }
-
-impl From<templar::error::TemplarError> for HorustError {
-    fn from(err: templar::error::TemplarError) -> Self {
+impl From<shellexpand::LookupError<std::env::VarError>> for HorustError {
+    fn from(err: shellexpand::LookupError<std::env::VarError>) -> Self {
         HorustError {
-            kind: ErrorKind::TemplatingError(err),
+            kind: ErrorKind::ShellExpandError(err),
         }
     }
 }
