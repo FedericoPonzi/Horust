@@ -645,14 +645,14 @@ pub fn validate(services: Vec<Service>) -> Result<Vec<Service>, Vec<ValidationEr
 
 #[cfg(test)]
 mod test {
-    use crate::{horust::formats::{
+    use crate::horust::formats::{
         validate, Environment, Failure, FailureStrategy, Healthiness, Restart, RestartStrategy,
         Service, Termination, TerminationSignal::TERM,
-    }};
+    };
     use crate::horust::get_sample_service;
+    use std::env;
     use std::str::FromStr;
     use std::time::Duration;
-    use std::env;
 
     impl Service {
         pub fn start_after(name: &str, start_after: Vec<&str>) -> Self {
@@ -708,8 +708,8 @@ mod test {
                 die_if_failed: vec!["db.toml".into()],
             },
         };
-        eprintln!("{:?}",get_sample_service());
-        eprintln!("{:?}",env::var("USER").unwrap());
+        eprintln!("{:?}", get_sample_service());
+        eprintln!("{:?}", env::var("USER").unwrap());
 
         let service = Service::from_str(get_sample_service().as_str())
             .expect("error on deserializing the manifest");
@@ -718,27 +718,29 @@ mod test {
 
     #[test]
     fn test_should_fail_on_not_existing_envvar() {
-            let cfg = r#"command = "/bin/bash -c 'echo hello world'"
+        let cfg = r#"command = "/bin/bash -c 'echo hello world'"
 start-delay = "2s"
 start-after = ["another.toml", "second.toml"]
 stdout = "STDOUT"
 stderr = "/var/logs/hello_world_svc/stderr.log"
 user = "$SOMETHING"
 working-directory = "/tmp/"
-"#.to_string();
+"#
+        .to_string();
         assert!(Service::from_str(&cfg).is_err());
     }
 
     #[test]
     fn test_expansion_ok_without_env() {
-    let cfg = r#"command = "/bin/bash -c 'echo hello world'"
+        let cfg = r#"command = "/bin/bash -c 'echo hello world'"
 start-delay = "2s"
 start-after = ["another.toml", "second.toml"]
 stdout = "STDOUT"
 stderr = "/var/logs/hello_world_svc/stderr.log"
 user = "SOMETHING"
 working-directory = "/tmp/"
-"#.to_string();
+"#
+        .to_string();
         assert!(Service::from_str(&cfg).is_ok());
     }
 
