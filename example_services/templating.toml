@@ -1,8 +1,8 @@
 command = "/bin/bash -c 'echo hello world {{ env('USER')}}'"
 start-delay = "0s"
 stdout = "STDOUT"
-stderr = "/tmp/{{ env('USER') }}.horust_example.error.log"
-user = "{{ env('USER') }}"
+stderr = "/tmp/${USER}.horust_example.error.log"
+user = "${USER}"
 working-directory = "/tmp/"
 
 [restart]

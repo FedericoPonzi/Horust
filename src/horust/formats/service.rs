@@ -16,7 +16,7 @@ start-delay = "2s"
 start-after = ["another.toml", "second.toml"]
 stdout = "STDOUT"
 stderr = "/var/logs/hello_world_svc/stderr.log"
-user = "$USER"
+user = "${USER}"
 working-directory = "/tmp/"
 
 [restart]
@@ -97,7 +97,6 @@ impl Service {
     /// Tries to load specific config from path.
     /// Config will be automatically templated from env.
     /// Correct syntax is required for templating to work.
-    /// Check documentation on templating for more info.
     /// Currently only templating from environment is implemented.
     pub fn from_file(path: &PathBuf) -> crate::horust::error::Result<Self> {
         let preconfig = std::fs::read_to_string(path)?;
@@ -148,7 +147,6 @@ impl FromStr for Service {
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         let postconfig = shellexpand::full(s)?;
-        println!("{:?}", postconfig);
         toml::from_str::<Service>(&postconfig).map_err(HorustError::from)
     }
 }
@@ -650,7 +648,6 @@ mod test {
         Service, Termination, TerminationSignal::TERM,
     };
     use crate::horust::get_sample_service;
-    use std::env;
     use std::str::FromStr;
     use std::time::Duration;
 
@@ -708,8 +705,6 @@ mod test {
                 die_if_failed: vec!["db.toml".into()],
             },
         };
-        eprintln!("{:?}", get_sample_service());
-        eprintln!("{:?}", env::var("USER").unwrap());
 
         let service = Service::from_str(get_sample_service().as_str())
             .expect("error on deserializing the manifest");

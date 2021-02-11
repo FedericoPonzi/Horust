@@ -21,7 +21,7 @@ Before loading the service file, Horust will internally search and replace every
 First template example can be found in the example service. In this case, `{{ ... }}` block is replaced by environment's `USER` variable. You can use any variable your system provides or you also can set those before running Horust.
 ```
 ...
-user = {{ env('USER') }}
+user = ${USER}
 ...
 ```
 
@@ -33,7 +33,7 @@ start-delay = "2s"
 start-after = ["another.toml", "second.toml"]
 stdout = "STDOUT"
 stderr = "/var/logs/hello_world_svc/stderr.log"
-user = "{{ env('USER') }}"
+user = "${USER}"
 working-directory = "/tmp/"
 ```
 * **`name` = `string`**: Name of the service. Optional, uses the filename by default.
