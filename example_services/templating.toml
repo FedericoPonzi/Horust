@@ -1,4 +1,4 @@
-command = "/bin/bash -c 'echo hello world {{ env('USER')}}'"
+command = "/bin/bash -c 'echo hello world, ${USER}'"
 start-delay = "0s"
 stdout = "STDOUT"
 stderr = "/tmp/${USER}.horust_example.error.log"
