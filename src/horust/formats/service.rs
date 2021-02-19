@@ -16,7 +16,7 @@ start-delay = "2s"
 start-after = ["another.toml", "second.toml"]
 stdout = "STDOUT"
 stderr = "/var/logs/hello_world_svc/stderr.log"
-user = "root"
+user = "${USER}"
 working-directory = "/tmp/"
 
 [restart]
@@ -94,11 +94,15 @@ impl Service {
         LogOutput::Stderr
     }
 
+    /// Tries to load specific config from path.
+    /// Config will be automatically templated from env.
+    /// Correct syntax is required for templating to work.
+    /// Currently only templating from environment is implemented.
     pub fn from_file(path: &PathBuf) -> crate::horust::error::Result<Self> {
-        let content = std::fs::read_to_string(path)?;
-        toml::from_str::<Service>(content.as_str()).map_err(HorustError::from)
+        let preconfig = std::fs::read_to_string(path)?;
+        let postconfig = shellexpand::full(&preconfig)?;
+        toml::from_str::<Service>(&postconfig).map_err(HorustError::from)
     }
-
     /// Creates the environment K=V variables, used for exec into the new process.
     /// User defined environment variables overwrite the predefined values.
     pub fn get_environment(&self) -> crate::horust::error::Result<Vec<String>> {
@@ -142,7 +146,8 @@ impl FromStr for Service {
     type Err = HorustError;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
-        toml::from_str::<Service>(s).map_err(HorustError::from)
+        let postconfig = shellexpand::full(s)?;
+        toml::from_str::<Service>(&postconfig).map_err(HorustError::from)
     }
 }
 
@@ -638,11 +643,9 @@ pub fn validate(services: Vec<Service>) -> Result<Vec<Service>, Vec<ValidationEr
 
 #[cfg(test)]
 mod test {
-    use crate::horust::formats::TerminationSignal::TERM;
-    use crate::horust::formats::User::Name;
     use crate::horust::formats::{
         validate, Environment, Failure, FailureStrategy, Healthiness, Restart, RestartStrategy,
-        Service, Termination,
+        Service, Termination, TerminationSignal::TERM,
     };
     use crate::horust::get_sample_service;
     use std::str::FromStr;
@@ -664,10 +667,11 @@ mod test {
 
     #[test]
     fn test_should_correctly_deserialize_sample() {
+        let current_user_name: String = super::User::default().get_name().unwrap();
         let expected = Service {
             name: "".to_string(),
             command: "/bin/bash -c \'echo hello world\'".to_string(),
-            user: Name("root".into()),
+            user: super::User::Name(current_user_name),
             environment: Environment {
                 keep_env: false,
                 re_export: vec!["PATH".to_string(), "DB_PASS".to_string()],
@@ -701,10 +705,40 @@ mod test {
                 die_if_failed: vec!["db.toml".into()],
             },
         };
+
         let service = Service::from_str(get_sample_service().as_str())
             .expect("error on deserializing the manifest");
         assert_eq!(expected, service);
     }
+
+    #[test]
+    fn test_should_fail_on_not_existing_envvar() {
+        let cfg = r#"command = "/bin/bash -c 'echo hello world'"
+start-delay = "2s"
+start-after = ["another.toml", "second.toml"]
+stdout = "STDOUT"
+stderr = "/var/logs/hello_world_svc/stderr.log"
+user = "$SOMETHING"
+working-directory = "/tmp/"
+"#
+        .to_string();
+        assert!(Service::from_str(&cfg).is_err());
+    }
+
+    #[test]
+    fn test_expansion_ok_without_env() {
+        let cfg = r#"command = "/bin/bash -c 'echo hello world'"
+start-delay = "2s"
+start-after = ["another.toml", "second.toml"]
+stdout = "STDOUT"
+stderr = "/var/logs/hello_world_svc/stderr.log"
+user = "SOMETHING"
+working-directory = "/tmp/"
+"#
+        .to_string();
+        assert!(Service::from_str(&cfg).is_ok());
+    }
+
     #[test]
     fn test_validate() {
         // Service does not exists:

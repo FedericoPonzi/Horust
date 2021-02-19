@@ -1,0 +1,20 @@
+command = "/bin/bash -c 'echo hello world, ${USER}'"
+start-delay = "0s"
+stdout = "STDOUT"
+stderr = "/tmp/${USER}.horust_example.error.log"
+user = "${USER}"
+working-directory = "/tmp/"
+
+[restart]
+strategy = "never"
+backoff = "0s"
+attempts = 0
+
+[failure]
+successful-exit-code = [ 0, 1, 255]
+strategy = "ignore"
+
+[termination]
+signal = "TERM"
+wait = "0s"
+
