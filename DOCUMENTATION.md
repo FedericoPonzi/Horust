@@ -11,17 +11,20 @@ When starting horust, you can optionally specify where it should look for servic
 
 ## Service configuration
 This section describes all the possible options you can put in a service.toml file.
-You should create one different service.toml for each command you want to run. 
+You should create one different service.toml for each command you want to run.
 A part from the `user` parameter, everything should work even with an unprivileged user.
 
 ### Service templating
-Services can, but not have to, be templated. Currently templating works only via environment variables. Templating engine uses similar mechanism to popular jinja2 engine.
+Services can, but not have to, be templated. Currently, this feature works only via environment variables. The templating engine uses [bash expansion mechanism](https://docs.rs/shellexpand/2.1.0/shellexpand/). Each part of the service configuration can be used in tandem with the templating. Additionally, multiple variables can be safely used if needed. The engine does not support processing the shell queries, for example `$(cat /proc/config.gz)` will not be processed and will be used on face value.
 
-Before loading the service file, Horust will internally search and replace every value with environment variable if it exist.
-First template example can be found in the example service. In this case, `{{ ... }}` block is replaced by environment's `USER` variable. You can use any variable your system provides or you also can set those before running Horust.
+Before loading the service file, Horust will internally search and replace every value with environment variable if it exists. In this case, the `${USER}` block is replaced by the environment's `USER` variable. Alternatively `$USER` without braces is also accepted, although heavily discouraged. Variable names must follow rules of the operating system, which means that, in case of bash, variables are case-sensitive, and usage of special characters is somewhat restricted. You can use any variable your system provides, or you also can set and/or export those before running Horust.
+
+Below are some simple strings that will be properly templated. Simple feature usage in configuration is showcased in the provided sample service.
+
 ```
 ...
-user = ${USER}
+user = "${USER}"
+stderr = "${HOME}${HORUST_LOGDIR}/stderr"
 ...
 ```
 
