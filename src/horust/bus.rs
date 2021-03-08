@@ -6,8 +6,8 @@
 //!
 
 use crossbeam::channel::{unbounded, Receiver, Sender};
-use serde::export::Formatter;
 use std::fmt::Debug;
+use std::fmt::Formatter;
 
 /// A simple bus implementation: distributes the messages among the queues
 /// There is one single input pipe (`public_sender` ; `receiver`). The sender side is shared among
