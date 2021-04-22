@@ -1,10 +1,10 @@
-use crate::horust::error::{HorustError, ValidationError, ValidationErrorKind};
+use crate::horust::error::{ValidationError, ValidationErrors};
+use anyhow::{Context, Error, Result};
 use nix::sys::signal::{Signal, SIGHUP, SIGINT, SIGQUIT, SIGTERM, SIGUSR1, SIGUSR2};
 use nix::unistd;
 use serde::de::{self, Visitor};
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use std::collections::HashMap;
-use std::fmt::Error;
 use std::fmt::Formatter;
 use std::path::PathBuf;
 use std::str::FromStr;
@@ -98,14 +98,14 @@ impl Service {
     /// Config will be automatically templated from env.
     /// Correct syntax is required for templating to work.
     /// Currently only templating from environment is implemented.
-    pub fn from_file(path: &PathBuf) -> crate::horust::error::Result<Self> {
+    pub fn from_file(path: &PathBuf) -> Result<Self> {
         let preconfig = std::fs::read_to_string(path)?;
         let postconfig = shellexpand::full(&preconfig)?;
-        toml::from_str::<Service>(&postconfig).map_err(HorustError::from)
+        toml::from_str::<Service>(&postconfig).map_err(Error::from)
     }
     /// Creates the environment K=V variables, used for exec into the new process.
     /// User defined environment variables overwrite the predefined values.
-    pub fn get_environment(&self) -> crate::horust::error::Result<Vec<String>> {
+    pub fn get_environment(&self) -> Result<Vec<String>> {
         Ok(self.environment.get_environment(
             self.user.clone().get_name()?,
             self.user.clone().get_home()?.display().to_string(),
@@ -143,11 +143,11 @@ impl Default for Service {
 }
 
 impl FromStr for Service {
-    type Err = HorustError;
+    type Err = Error;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         let postconfig = shellexpand::full(s)?;
-        toml::from_str::<Service>(&postconfig).map_err(HorustError::from)
+        toml::from_str::<Service>(&postconfig).map_err(Error::from)
     }
 }
 
@@ -368,37 +368,29 @@ impl Default for User {
     }
 }
 impl User {
-    pub(crate) fn get_uid(&self) -> crate::horust::error::Result<unistd::Uid> {
+    pub(crate) fn get_uid(&self) -> Result<unistd::Uid> {
         match &self {
-            User::Name(name) => unistd::User::from_name(name)
-                .map_err(HorustError::from)
-                .and_then(|opt| {
-                    opt.ok_or_else(|| {
-                        std::io::Error::new(std::io::ErrorKind::NotFound, "User not found")
-                    })
-                    .map_err(HorustError::from)
-                    .map(|user| user.uid)
-                }),
+            User::Name(name) => {
+                let user = unistd::User::from_name(name)?
+                    .with_context(|| format!("User `{}` not found", name))?;
+                Ok(user.uid)
+            }
             User::Uid(uid) => Ok(unistd::Uid::from_raw(*uid)),
         }
     }
 
-    fn get_raw_user(&self) -> crate::horust::error::Result<unistd::User> {
-        unistd::User::from_uid(self.get_uid()?)
-            .map_err(HorustError::from)
-            .and_then(|opt| {
-                opt.ok_or_else(|| {
-                    std::io::Error::new(std::io::ErrorKind::NotFound, "User not found")
-                })
-                .map_err(HorustError::from)
-            })
+    fn get_raw_user(&self) -> Result<unistd::User> {
+        let uid = self.get_uid()?;
+        let user =
+            unistd::User::from_uid(uid)?.with_context(|| format!("User `{}` not found", uid))?;
+        Ok(user)
     }
 
-    fn get_home(&self) -> crate::horust::error::Result<PathBuf> {
+    fn get_home(&self) -> Result<PathBuf> {
         Ok(self.get_raw_user()?.dir)
     }
 
-    fn get_name(&self) -> crate::horust::error::Result<String> {
+    fn get_name(&self) -> Result<String> {
         Ok(self.get_raw_user()?.name)
     }
 }
@@ -427,7 +419,7 @@ pub enum ServiceStatus {
 }
 
 impl std::fmt::Display for ServiceStatus {
-    fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), Error> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), std::fmt::Error> {
         f.write_str(match self {
             ServiceStatus::Failed => "Failed",
             ServiceStatus::Finished => "Finished",
@@ -577,6 +569,7 @@ impl Default for Termination {
 }
 
 #[derive(Serialize, Copy, Clone, Deserialize, Debug, Eq, PartialEq)]
+#[allow(clippy::upper_case_acronyms)]
 pub enum TerminationSignal {
     TERM,
     HUP,
@@ -607,12 +600,13 @@ impl Default for TerminationSignal {
 
 /// Runs some validation checks on the services.
 /// TODO: if redirect output is file, check it exists and permissions.
-pub fn validate(services: Vec<Service>) -> Result<Vec<Service>, Vec<ValidationError>> {
+pub fn validate(services: Vec<Service>) -> Result<Vec<Service>, ValidationErrors> {
     let mut errors = vec![];
     services.iter().for_each(|service| {
         if service.command.is_empty() {
-            let err = format!("Command is defined, but it is empty for service: {}", service.name);
-            errors.push(ValidationError::new(err.as_str(), ValidationErrorKind::CommandEmpty));
+            errors.push(ValidationError::CommandEmpty {
+                service: service.name.clone(),
+            });
         }
         if !service.start_after.is_empty() {
             debug!(
@@ -623,21 +617,17 @@ pub fn validate(services: Vec<Service>) -> Result<Vec<Service>, Vec<ValidationEr
         service.start_after.iter().for_each(|name| {
             let passed = services.iter().any(|s| s.name == *name);
             if !passed {
-                let err = format!(
-                    "Service '{}', should start after '{}', but there is no service with such name.",
-                    service.name, name
-                );
-                errors.push(ValidationError::new(
-                    err.as_str(),
-                    ValidationErrorKind::MissingDependency,
-                ));
+                errors.push(ValidationError::MissingDependency {
+                    before: name.into(),
+                    after: service.name.clone(),
+                });
             }
         });
     });
     if errors.is_empty() {
         Ok(services)
     } else {
-        Err(errors)
+        Err(ValidationErrors::new(errors))
     }
 }
 

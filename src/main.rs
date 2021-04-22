@@ -1,3 +1,4 @@
+use anyhow::{Context, Result};
 use horust::horust::ExitStatus;
 use horust::horust::HorustConfig;
 use horust::Horust;
@@ -31,7 +32,7 @@ struct Opts {
     command: Vec<String>,
 }
 
-fn main() -> Result<(), horust::HorustError> {
+fn main() -> Result<()> {
     // Set up logging.
     let env = env_logger::Env::new()
         .filter("HORUST_LOG")
@@ -45,7 +46,13 @@ fn main() -> Result<(), horust::HorustError> {
         return Ok(());
     }
 
-    let config = HorustConfig::load_and_merge(opts.horust_config, &opts.config_path)?;
+    let config = HorustConfig::load_and_merge(&opts.horust_config, &opts.config_path)
+        .with_context(|| {
+            format!(
+                "Failed loading configuration: {}",
+                &opts.config_path.display()
+            )
+        })?;
 
     let mut horust = if !opts.command.is_empty() {
         debug!("Running command: {:?}", opts.command);
@@ -60,7 +67,12 @@ fn main() -> Result<(), horust::HorustError> {
             "Loading services from directory: {}",
             opts.services_path.display()
         );
-        Horust::from_services_dir(&opts.services_path)?
+        Horust::from_services_dir(&opts.services_path).with_context(|| {
+            format!(
+                "Failed loading services from directory: {}",
+                opts.services_path.display()
+            )
+        })?
     };
 
     if let ExitStatus::SomeServiceFailed = horust.run() {

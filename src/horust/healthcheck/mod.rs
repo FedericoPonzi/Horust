@@ -125,9 +125,9 @@ pub fn prepare_service(healthiness: &Healthiness) -> Result<Vec<()>, std::io::Er
 
 #[cfg(test)]
 mod test {
-    use crate::horust::error::Result;
     use crate::horust::formats::{Healthiness, HealthinessStatus};
     use crate::horust::healthcheck::check_health;
+    use anyhow::Result;
     use std::io::{Read, Write};
     use std::net::{Ipv4Addr, SocketAddrV4, TcpListener};
     use std::sync::mpsc;
