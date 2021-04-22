@@ -19,14 +19,14 @@ use std::path::{Path, PathBuf};
 #[derive(Debug)]
 pub struct Horust {
     services: Vec<Service>,
-    services_dir: Option<PathBuf>,
+    services_dirs: Vec<PathBuf>,
 }
 
 impl Horust {
-    fn new(services: Vec<Service>, services_dir: Option<PathBuf>) -> Self {
+    fn new(services: Vec<Service>, services_dirs: Vec<PathBuf>) -> Self {
         Horust {
             services,
-            services_dir,
+            services_dirs,
         }
     }
 
@@ -36,16 +36,36 @@ impl Horust {
     /// Creates a new Horust instance from a command.
     /// The command will be wrapped in a service and run with sane defaults
     pub fn from_command(command: String) -> Self {
-        Self::new(vec![Service::from_command(command)], None)
+        Self::new(vec![Service::from_command(command)], vec![])
     }
 
     /// Create a new horust instance from a path of services.
     pub fn from_services_dir<P>(path: &P) -> Result<Self>
     where
-        P: AsRef<Path> + ?Sized + AsRef<OsStr> + Debug,
+        P: AsRef<Path> + AsRef<OsStr> + Debug,
     {
-        let services = validate(fetch_services(&path)?)?;
-        Ok(Horust::new(services, Some(PathBuf::from(path))))
+        Self::from_services_dirs(&[path])
+    }
+
+    /// Create a new horust instance from multiple paths of services.
+    pub fn from_services_dirs<P>(paths: &[P]) -> Result<Self>
+    where
+        P: AsRef<Path> + Sized + AsRef<OsStr> + Debug,
+    {
+        let services = paths
+            .iter()
+            .map(|path| fetch_services(path))
+            .flat_map(|result| match result {
+                Ok(vec) => vec.into_iter().map(Ok).collect(),
+                Err(err) => vec![Err(err)],
+            })
+            .collect::<Result<Vec<_>>>()?;
+
+        let services = validate(services)?;
+        Ok(Horust::new(
+            services,
+            paths.iter().map(PathBuf::from).collect(),
+        ))
     }
 
     /// Blocking call, will setup the event loop and the threads and run all the available services.

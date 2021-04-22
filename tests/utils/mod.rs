@@ -38,6 +38,20 @@ pub fn store_service(
     service_name
 }
 
+pub fn get_cli_multiple() -> (Command, TempDir, TempDir) {
+    let temp_dir = TempDir::new("horust").unwrap();
+    let temp_dir_2 = TempDir::new("horust_2").unwrap();
+    let mut cmd = Command::cargo_bin("horust").unwrap();
+    cmd.current_dir(&temp_dir).args(vec![
+        "--services-path",
+        temp_dir.path().display().to_string().as_str(),
+        "--services-path",
+        temp_dir_2.path().display().to_string().as_str(),
+    ]);
+
+    (cmd, temp_dir, temp_dir_2)
+}
+
 pub fn get_cli() -> (Command, TempDir) {
     let temp_dir = TempDir::new("horust").unwrap();
     let mut cmd = Command::cargo_bin("horust").unwrap();

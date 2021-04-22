@@ -2,6 +2,7 @@ use anyhow::{Context, Result};
 use horust::horust::ExitStatus;
 use horust::horust::HorustConfig;
 use horust::Horust;
+use itertools::Itertools;
 use std::path::PathBuf;
 use structopt::StructOpt;
 
@@ -23,9 +24,9 @@ struct Opts {
     /// Prints a sample service file with all the possible options
     sample_service: bool,
 
-    #[structopt(long, default_value = "/etc/horust/services")]
-    /// Path to the directory containing the services
-    services_path: PathBuf,
+    #[structopt(long = "services-path", default_value = "/etc/horust/services")]
+    /// Path to the directory containing the services. User can provide more than one argument to load multiple directories.
+    services_paths: Vec<PathBuf>,
 
     #[structopt(required = false, multiple = true, min_values = 0, last = true)]
     /// Specify a command to run instead of load services path. Useful if you just want to use the reaping capability. Prefix your command with --
@@ -55,7 +56,7 @@ fn main() -> Result<()> {
         })?;
 
     let mut horust = if !opts.command.is_empty() {
-        debug!("Running command: {:?}", opts.command);
+        info!("Running command: {:?}", opts.command);
 
         Horust::from_command(
             opts.command
@@ -63,14 +64,14 @@ fn main() -> Result<()> {
                 .fold(String::new(), |acc, w| format!("{} {}", acc, w)),
         )
     } else {
-        debug!(
-            "Loading services from directory: {}",
-            opts.services_path.display()
+        info!(
+            "Loading services from {}",
+            display_directories(&opts.services_paths)
         );
-        Horust::from_services_dir(&opts.services_path).with_context(|| {
+        Horust::from_services_dirs(&opts.services_paths).with_context(|| {
             format!(
-                "Failed loading services from directory: {}",
-                opts.services_path.display()
+                "Failed loading services from {}",
+                display_directories(&opts.services_paths)
             )
         })?
     };
@@ -81,4 +82,16 @@ fn main() -> Result<()> {
         }
     }
     Ok(())
+}
+
+fn display_directories(dirs: &Vec<PathBuf>) -> String {
+    match dirs.len() {
+        1 => format!("directory: {}", dirs.first().unwrap().display()),
+        _ => format!(
+            "directories:\n{}",
+            dirs.into_iter()
+                .map(|d| format!("* {}", d.display()))
+                .join("\n")
+        ),
+    }
 }

@@ -58,6 +58,34 @@ fn test_single_command() {
 }
 
 #[test]
+fn test_multiple() {
+    let (mut cmd, temp_dir, temp_dir_2) = get_cli_multiple();
+
+    let script = r#"#!/usr/bin/env bash
+:"#;
+
+    let max = 10;
+
+    for i in 1..max {
+        let service = format!(r#"start-after = ["{}.toml"]"#, i - 1);
+        let t_dir = if i % 2 == 0 {
+            temp_dir.path()
+        } else {
+            temp_dir_2.path()
+        };
+        store_service(
+            t_dir,
+            script,
+            Some(service.as_str()),
+            Some(i.to_string().as_str()),
+        );
+    }
+    store_service(temp_dir.path(), script, None, Some("0"));
+    let recv = run_async(&mut cmd, true);
+    recv.recv_or_kill(Duration::from_secs(max * 2));
+}
+
+#[test]
 fn test_stress_test_chained_services() {
     let (mut cmd, temp_dir) = get_cli();
     let script = r#"#!/usr/bin/env bash 
@@ -71,15 +99,10 @@ fn test_stress_test_chained_services() {
             temp_dir.path(),
             script,
             Some(service.as_str()),
-            Some(format!("{}", i).as_str()),
+            Some(i.to_string().as_str()),
         );
     }
-    store_service(
-        temp_dir.path(),
-        script,
-        None,
-        Some(format!("{}", 0).as_str()),
-    );
+    store_service(temp_dir.path(), script, None, Some("0"));
     let recv = run_async(&mut cmd, true);
     recv.recv_or_kill(Duration::from_secs(max * 2));
 }
