@@ -1,116 +1,25 @@
-use std::fmt::{self, Display, Formatter};
+use itertools::Itertools;
 
-use shellexpand::LookupError;
-pub type Result<T> = std::result::Result<T, HorustError>;
+#[derive(Debug, thiserror::Error)]
+#[error("Found following errors during validation phase: {}", validation_errors(.0))]
+pub struct ValidationErrors(Vec<ValidationError>);
 
-#[derive(Debug)]
-pub enum ErrorKind {
-    Io(std::io::Error),
-    SerDe(toml::de::Error),
-    NullError(std::ffi::NulError),
-    Nix(nix::Error),
-    ValidationError(Vec<ValidationError>),
-    ShellExpandError(LookupError<std::env::VarError>),
-}
-
-#[derive(Debug)]
-pub struct HorustError {
-    kind: ErrorKind,
-}
-
-impl Display for HorustError {
-    fn fmt(&self, f: &mut Formatter<'_>) -> std::result::Result<(), fmt::Error> {
-        match &self.kind {
-            ErrorKind::Io(error) => write!(f, "IoError: {}", error),
-            ErrorKind::Nix(error) => write!(f, "NixError: {}", error),
-            ErrorKind::NullError(error) => write!(f, "NullError: {}", error),
-            ErrorKind::SerDe(error) => write!(f, "Deserialization error(Serde): {}", error),
-            ErrorKind::ValidationError(error) => write!(f, "ValidationErrors: {:?}", error),
-            ErrorKind::ShellExpandError(error) => write!(f, "env expansion error: {:?}", error),
-        }
+impl ValidationErrors {
+    pub fn new(errors: Vec<ValidationError>) -> Self {
+        Self(errors)
     }
 }
 
-impl std::error::Error for HorustError {}
-
-impl From<ErrorKind> for HorustError {
-    fn from(kind: ErrorKind) -> HorustError {
-        HorustError { kind }
-    }
+fn validation_errors(errors: &[ValidationError]) -> String {
+    errors.iter().map(|s| format!("* {}", s)).join("\n")
 }
 
-impl From<toml::de::Error> for HorustError {
-    fn from(err: toml::de::Error) -> Self {
-        HorustError {
-            kind: ErrorKind::SerDe(err),
-        }
-    }
-}
-
-impl From<std::io::Error> for HorustError {
-    fn from(err: std::io::Error) -> Self {
-        HorustError {
-            kind: ErrorKind::Io(err),
-        }
-    }
-}
-
-impl From<nix::Error> for HorustError {
-    fn from(err: nix::Error) -> Self {
-        HorustError {
-            kind: ErrorKind::Nix(err),
-        }
-    }
-}
-
-impl From<std::ffi::NulError> for HorustError {
-    fn from(err: std::ffi::NulError) -> Self {
-        HorustError {
-            kind: ErrorKind::NullError(err),
-        }
-    }
-}
-
-impl From<Vec<ValidationError>> for HorustError {
-    fn from(err: Vec<ValidationError>) -> Self {
-        HorustError {
-            kind: ErrorKind::ValidationError(err),
-        }
-    }
-}
-impl From<shellexpand::LookupError<std::env::VarError>> for HorustError {
-    fn from(err: shellexpand::LookupError<std::env::VarError>) -> Self {
-        HorustError {
-            kind: ErrorKind::ShellExpandError(err),
-        }
-    }
-}
-
-#[derive(Debug)]
-pub struct ValidationError {
-    kind: ValidationErrorKind,
-    context: String,
-}
-
-#[derive(Debug)]
-pub enum ValidationErrorKind {
-    MissingDependency,
-    CommandEmpty,
-}
-
-impl std::error::Error for ValidationError {}
-
-impl ValidationError {
-    pub fn new(context: &str, kind: ValidationErrorKind) -> Self {
-        Self {
-            context: context.to_string(),
-            kind,
-        }
-    }
-}
-
-impl fmt::Display for ValidationError {
-    fn fmt(&self, f: &mut Formatter<'_>) -> std::result::Result<(), fmt::Error> {
-        write!(f, "{}", self.context)
-    }
+#[derive(Debug, thiserror::Error)]
+pub enum ValidationError {
+    #[error(
+        "Service '{before}', should start after '{after}', but there is no service with such name."
+    )]
+    MissingDependency { before: String, after: String },
+    #[error("Command is defined, but it is empty for service: {service}")]
+    CommandEmpty { service: String },
 }

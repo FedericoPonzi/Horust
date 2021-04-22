@@ -1,7 +1,7 @@
 use crate::horust::bus::BusConnector;
-use crate::horust::error::Result;
 use crate::horust::formats::{Event, LogOutput, Service};
 use crate::horust::signal_safe::panic_ssafe;
+use anyhow::Result;
 use crossbeam::{after, tick};
 use nix::fcntl;
 use nix::unistd;

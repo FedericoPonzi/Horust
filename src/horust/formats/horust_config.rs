@@ -1,4 +1,4 @@
-use crate::horust::error::Result;
+use anyhow::Result;
 use serde::{Deserialize, Serialize};
 use std::path::Path;
 use structopt::StructOpt;
@@ -13,7 +13,7 @@ pub struct HorustConfig {
 impl HorustConfig {
     /// Load the config file, and handles the merge with the options defined in the cmdline.
     /// Cmdline defined values have precedence over config based values.
-    pub fn load_and_merge(cmd_line: HorustConfig, path: &Path) -> Result<Self> {
+    pub fn load_and_merge(cmd_line: &HorustConfig, path: &Path) -> Result<Self> {
         let config_file: HorustConfig = if path.exists() {
             let content = std::fs::read_to_string(path)?;
             toml::from_str(content.as_str())?

@@ -5,11 +5,10 @@ mod healthcheck;
 mod signal_safe;
 mod supervisor;
 
-pub use self::error::HorustError;
 pub use self::formats::{get_sample_service, ExitStatus, HorustConfig};
 use crate::horust::bus::Bus;
-use crate::horust::error::Result;
 use crate::horust::formats::{validate, Service};
+use anyhow::Result;
 pub use formats::Event;
 use libc::{prctl, PR_SET_CHILD_SUBREAPER};
 use std::ffi::OsStr;
@@ -45,10 +44,8 @@ impl Horust {
     where
         P: AsRef<Path> + ?Sized + AsRef<OsStr> + Debug,
     {
-        let services = fetch_services(&path)?;
-        validate(services)
-            .map_err(Into::into)
-            .map(|services| Horust::new(services, Some(PathBuf::from(path))))
+        let services = validate(fetch_services(&path)?)?;
+        Ok(Horust::new(services, Some(PathBuf::from(path))))
     }
 
     /// Blocking call, will setup the event loop and the threads and run all the available services.
@@ -86,7 +83,7 @@ where
 
     //TODO: option to decide to not start if the deserialization of any service failed.
     let services = dir
-        .filter_map(std::result::Result::ok)
+        .filter_map(Result::ok)
         .map(|dir_entry| dir_entry.path())
         .filter(is_toml_file)
         .map(|file| {
@@ -99,7 +96,8 @@ where
                 service
             })
             .map_err(|error| {
-                error!("Error loading toml file: {}", error);
+                let error = error.context(format!("Failed loading toml file: {}", file.display()));
+                error!("{:?}", error);
                 error
             })
         })

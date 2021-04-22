@@ -8,4 +8,4 @@ extern crate maplit;
 extern crate crossbeam;
 
 pub mod horust;
-pub use crate::horust::{get_sample_service, Horust, HorustError};
+pub use crate::horust::{get_sample_service, Horust};
