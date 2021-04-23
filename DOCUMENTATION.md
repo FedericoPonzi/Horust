@@ -4,6 +4,7 @@
 * [State machine](#state-machine)
 * [Horust's configuration](#horust-configuration)
 * [Single command](#single-command)
+* [Multiple service directories](#multiple-service-directories)
 * [Plugins](#plugins)
 * [Checking system status](#checking-system-status)
 
@@ -190,6 +191,16 @@ command= "bash /tmp/myscript.sh"
 ```
 This will run the specified command as a one shot service, so it won't be restarted after exiting.
 Commands have precedence over services, so if you specify both a command and a services-path, the command will be executed and the services path is ignored.
+
+## Multiple service directories
+
+Horust supports more than one service directory by accepting more than one `--services-path` arguemts.
+```sh
+horust --services-path ./services/core --services-path ./services/extra
+```
+
+These directories are loaded at once and treated just like all `*.toml` files were in single shared directory.
+It means that for example service from `./services/extra` can depend on service from `./services/core`.
 
 ## Plugins
 WIP. Horust works via message passing, so it should be fairly easy to have additional components connected to its bus.
