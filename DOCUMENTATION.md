@@ -194,7 +194,7 @@ Commands have precedence over services, so if you specify both a command and a s
 
 ## Multiple service directories
 
-Horust supports more than one service directory by accepting more than one `--services-path` arguemts.
+Horust supports more than one service directory by accepting more than one `--services-path` arguments.
 ```sh
 horust --services-path ./services/core --services-path ./services/extra
 ```
