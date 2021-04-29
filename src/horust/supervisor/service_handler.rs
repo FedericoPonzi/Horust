@@ -6,6 +6,8 @@ use crate::horust::Event;
 use nix::unistd::Pid;
 use std::time::Instant;
 
+use super::{LifecycleStatus, ShuttingDown};
+
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub(crate) struct ServiceHandler {
     service: Service,
@@ -65,8 +67,8 @@ impl ServiceHandler {
         self.pid
     }
 
-    pub fn next(&self, repo: &Repo, is_shutting_down: bool) -> Vec<Event> {
-        next(self, repo, is_shutting_down)
+    pub fn next(&self, repo: &Repo, status: LifecycleStatus) -> Vec<Event> {
+        next(self, repo, status)
     }
     pub fn change_status(&self, new_status: ServiceStatus) -> (ServiceHandler, ServiceStatus) {
         handle_status_change(&self, new_status)
@@ -133,12 +135,15 @@ impl ServiceHandler {
 pub(crate) fn next(
     service_handler: &ServiceHandler,
     repo: &Repo,
-    is_shutting_down: bool,
+    lifecycle_status: LifecycleStatus,
 ) -> Vec<Event> {
-    if is_shutting_down {
-        next_events_shutting_down(service_handler)
-    } else {
-        next_events(repo, service_handler)
+    match lifecycle_status {
+        LifecycleStatus::Running => {
+            next_events(repo, service_handler)
+        }
+        LifecycleStatus::ShuttingDown(shutting_down) => {
+            next_events_shutting_down(service_handler, shutting_down)
+        }
     }
 }
 
@@ -190,7 +195,7 @@ fn next_events(repo: &Repo, service_handler: &ServiceHandler) -> Vec<Event> {
             failure_evs.extend(other_services_termination);
             failure_evs
         }
-        ServiceStatus::InKilling if should_force_kill(service_handler) => vec![
+        ServiceStatus::InKilling if should_force_kill(service_handler, None) => vec![
             Event::new_force_kill(service_handler.name()),
             Event::new_status_changed(service_handler.name(), ServiceStatus::Failed),
         ],
@@ -201,20 +206,20 @@ fn next_events(repo: &Repo, service_handler: &ServiceHandler) -> Vec<Event> {
 
 /// This next function assumes that the system is shutting down.
 /// It will make progress in the direction of shutting everything down.
-fn next_events_shutting_down(service_handler: &ServiceHandler) -> Vec<Event> {
+fn next_events_shutting_down(service_handler: &ServiceHandler, shutting_down: ShuttingDown) -> Vec<Event> {
     let ev_status =
         |status: ServiceStatus| Event::new_status_update(service_handler.name(), status);
     let vev_status = |status: ServiceStatus| vec![ev_status(status)];
 
     // Handle the new state separately if we're shutting down.
-    match service_handler.status {
+    match &service_handler.status {
         ServiceStatus::Running | ServiceStatus::Started => vec![
             ev_status(ServiceStatus::InKilling),
             Event::Kill(service_handler.name().clone()),
         ],
         ServiceStatus::Success | ServiceStatus::Initial => vev_status(ServiceStatus::Finished),
         ServiceStatus::Failed => vev_status(ServiceStatus::FinishedFailed),
-        ServiceStatus::InKilling if should_force_kill(service_handler) => {
+        ServiceStatus::InKilling if should_force_kill(service_handler, shutting_down) => {
             vec![Event::new_force_kill(service_handler.name())]
         }
         _ => vec![],
@@ -326,7 +331,7 @@ fn handle_restart_strategy(service_handler: &ServiceHandler, is_failed: bool) ->
 /// This is applied to both failed and FinishedFailed services.
 fn handle_failed_service(deps: Vec<ServiceName>, failed_sh: &Service) -> Vec<Event> {
     match failed_sh.failure.strategy {
-        FailureStrategy::Shutdown => vec![Event::ShuttingDownInitiated],
+        FailureStrategy::Shutdown => vec![Event::ShuttingDownInitiated(ShuttingDown::Gracefuly)],
         FailureStrategy::KillDependents => {
             debug!("Failed service has kill-dependents strategy, going to mark them all..");
             deps.iter()
@@ -344,11 +349,15 @@ fn handle_failed_service(deps: Vec<ServiceName>, failed_sh: &Service) -> Vec<Eve
 }
 
 /// Check if we've waitied enough for the service to exit
-fn should_force_kill(service_handler: &ServiceHandler) -> bool {
+fn should_force_kill(service_handler: &ServiceHandler, shutting_down: impl Into<Option<ShuttingDown>>) -> bool {
     if service_handler.pid.is_none() {
         // Since it was in the started state, it doesn't have a pid yet.
         // Let's give it the time to start and exit.
         return false;
+    }
+    if let Some(ShuttingDown::Forcefuly) = shutting_down.into() {
+        debug!("{}, should force kill.", service_handler.name());
+        return true;
     }
     if let Some(shutting_down_elapsed_secs) = service_handler.shutting_down_start {
         let shutting_down_elapsed_secs = shutting_down_elapsed_secs.elapsed().as_secs();
@@ -370,7 +379,7 @@ fn should_force_kill(service_handler: &ServiceHandler) -> bool {
 
 #[cfg(test)]
 mod test {
-    use crate::horust::formats::{FailureStrategy, Service, ServiceStatus};
+    use crate::horust::formats::{FailureStrategy, Service, ServiceStatus, ShuttingDown};
     use crate::horust::supervisor::service_handler::{
         handle_failed_service, handle_restart_strategy, should_force_kill, ServiceHandler,
     };
@@ -417,19 +426,19 @@ wait = "10s"
 "#;
         let service: Service = toml::from_str(service).unwrap();
         let mut sh: ServiceHandler = service.into();
-        assert!(!should_force_kill(&sh));
+        assert!(!should_force_kill(&sh, None));
         sh.shutting_down_started();
         sh.status = ServiceStatus::InKilling;
-        assert!(!should_force_kill(&sh));
+        assert!(!should_force_kill(&sh, None));
         let old_start = sh.shutting_down_start;
         let past_wait = Some(sh.shutting_down_start.unwrap().sub(Duration::from_secs(20)));
         sh.shutting_down_start = past_wait;
-        assert!(!should_force_kill(&sh));
+        assert!(!should_force_kill(&sh, None));
         sh.pid = Some(Pid::this());
         sh.shutting_down_start = old_start;
-        assert!(!should_force_kill(&sh));
+        assert!(!should_force_kill(&sh, None));
         sh.shutting_down_start = past_wait;
-        assert!(should_force_kill(&sh));
+        assert!(should_force_kill(&sh, None));
     }
 
     #[test]
@@ -448,7 +457,7 @@ wait = "10s"
 
         service.failure.strategy = FailureStrategy::Shutdown;
         let evs = handle_failed_service(vec!["a".into()], &service.into());
-        let exp = vec![Event::ShuttingDownInitiated];
+        let exp = vec![Event::ShuttingDownInitiated(ShuttingDown::Gracefuly)];
         assert_eq!(evs, exp);
     }
 }

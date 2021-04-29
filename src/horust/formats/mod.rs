@@ -4,6 +4,12 @@ pub use horust_config::HorustConfig;
 use nix::unistd::Pid;
 pub use service::*;
 
+#[derive(Clone, Debug, Copy, PartialEq, Eq)]
+pub enum ShuttingDown {
+    Gracefuly,
+    Forcefuly
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub enum Event {
     PidChanged(ServiceName, Pid),
@@ -17,7 +23,7 @@ pub enum Event {
     Kill(ServiceName),
     SpawnFailed(ServiceName),
     Run(ServiceName),
-    ShuttingDownInitiated,
+    ShuttingDownInitiated(ShuttingDown),
     HealthCheck(ServiceName, HealthinessStatus),
     // TODO: to allow changes of service at supervisor:
     //ServiceCreated(ServiceHandler)

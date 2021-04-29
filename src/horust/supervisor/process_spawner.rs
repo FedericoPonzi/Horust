@@ -27,7 +27,7 @@ pub(crate) fn spawn_fork_exec_handler(
         // If start-delay is very high, this might interfere with the shutdown of the system.
         // the thread will listen for shutdown events from the bus, and will early exit if there is
         // a shuttingdowninitiated event
-        let is_shutting_down_ev = |ev: Event| Event::ShuttingDownInitiated == ev;
+        let is_shutting_down_ev = |ev: Event| matches!(ev, Event::ShuttingDownInitiated(_));
 
         let ev = loop {
             select! {

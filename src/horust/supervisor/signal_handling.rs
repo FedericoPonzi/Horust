@@ -7,6 +7,12 @@ pub(crate) fn is_sigterm_received() -> bool {
     unsafe { SIGTERM_RECEIVED }
 }
 
+pub(crate) fn clear_sigtem() {
+    unsafe {
+        SIGTERM_RECEIVED = false;
+    }
+}
+
 /// Setup the signal handlers
 pub(crate) fn init() {
     // To allow auto restart on some syscalls,

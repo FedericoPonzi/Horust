@@ -46,6 +46,7 @@ impl Repo {
     pub fn all_have_finished(&self) -> bool {
         //TODO: This can be improved. When a service is finished, it can be added in a list, or even
         // a number. Then this check can be reduced to `return self.services.len() == self.finished_services`
+
         self.services
             .iter()
             .all(|(_s_name, sh)| sh.is_finished() || sh.is_finished_failed())
