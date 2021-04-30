@@ -12,6 +12,8 @@ use std::{
     sync::{Arc, Mutex},
 };
 
+/// Bus state shared between `Bus` and all `BusConnector` instances.
+/// It contains all necessary components to send data and join the bus.
 #[derive(Clone)]
 pub struct SharedState<T>
 where
@@ -35,8 +37,6 @@ where
 
         let id = senders.len() as u64;
         senders.push((id, sender));
-
-        drop(senders);
 
         BusConnector::new(receiver, id, self.clone())
     }
