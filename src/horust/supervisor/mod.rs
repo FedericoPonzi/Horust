@@ -131,7 +131,7 @@ impl Supervisor {
                 process_spawner::spawn_fork_exec_handler(
                     service_handler.service().clone(),
                     backoff,
-                    self.repo.bus.clone(),
+                    self.repo.bus.join_bus(),
                 );
                 evs
             }

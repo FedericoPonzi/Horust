@@ -82,7 +82,7 @@ fn run(bus: BusConnector<Event>, services: Vec<Service>) {
             Event::StatusChanged(s_name, ServiceStatus::Started) => {
                 let (worker_notifier, work_done_rcv) = unbounded();
                 let service = get_service(&s_name);
-                let w = Worker::new(service, bus.clone(), work_done_rcv);
+                let w = Worker::new(service, bus.join_bus(), work_done_rcv);
                 let handle = w.spawn_thread();
                 workers.insert(s_name, (worker_notifier, handle));
             }

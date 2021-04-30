@@ -6,8 +6,41 @@
 //!
 
 use crossbeam::channel::{unbounded, Receiver, Sender};
-use std::fmt::Debug;
 use std::fmt::Formatter;
+use std::{
+    fmt::Debug,
+    sync::{Arc, Mutex},
+};
+
+#[derive(Clone)]
+pub struct SharedState<T>
+where
+    T: Clone,
+{
+    /// Bus input - sender side
+    sender: Sender<Message<T>>,
+    /// Bus output - all the senders
+    senders: Arc<Mutex<Vec<(u64, Sender<Message<T>>)>>>,
+}
+
+impl<T> SharedState<T>
+where
+    T: Clone,
+{
+    /// Add another connection to the bus
+    pub fn join_bus(&self) -> BusConnector<T> {
+        let mut senders = self.senders.lock().unwrap();
+
+        let (sender, receiver) = unbounded();
+
+        let id = senders.len() as u64;
+        senders.push((id, sender));
+
+        drop(senders);
+
+        BusConnector::new(receiver, id, self.clone())
+    }
+}
 
 /// A simple bus implementation: distributes the messages among the queues
 /// There is one single input pipe (`public_sender` ; `receiver`). The sender side is shared among
@@ -16,12 +49,10 @@ pub struct Bus<T>
 where
     T: Clone,
 {
-    /// Bus input - sender side
-    shared_sender: Sender<Message<T>>,
+    /// Bus state shared with all `BusConnector`. All necessary components to send data and join the bus.
+    state: SharedState<T>,
     /// Bus input - receiver side
     receiver: Receiver<Message<T>>,
-    /// Bus output - all the senders
-    senders: Vec<(u64, Sender<Message<T>>)>,
     /// Forward the message to the sender as well.
     forward_to_sender: bool,
 }
@@ -33,7 +64,7 @@ where
         write!(
             f,
             "Bus {{ senders: {}, forward_to_sender: {} ...}}",
-            self.senders.len(),
+            self.state.senders.lock().unwrap().len(),
             self.forward_to_sender
         )
     }
@@ -46,9 +77,11 @@ where
     pub fn new(forward_to_sender: bool) -> Self {
         let (public_sender, receiver) = unbounded();
         Bus {
-            shared_sender: public_sender,
+            state: SharedState {
+                sender: public_sender,
+                senders: Default::default(),
+            },
             receiver,
-            senders: Default::default(),
             forward_to_sender,
         }
     }
@@ -59,28 +92,23 @@ where
     }
 
     /// Add another connection to the bus
-    pub fn join_bus(&mut self) -> BusConnector<T> {
-        let (sender, receiver) = unbounded();
-        self.senders.push((self.senders.len() as u64, sender));
-        BusConnector::new(
-            self.shared_sender.clone(),
-            receiver,
-            self.senders.len() as u64,
-        )
+    pub fn join_bus(&self) -> BusConnector<T> {
+        self.state.join_bus()
     }
 
     /// Dispatching loop
     /// As soon as we don't have any senders it will exit
-    fn dispatch(mut self) {
-        drop(self.shared_sender);
+    fn dispatch(self) {
+        drop(self.state.sender);
         if self.forward_to_sender {
             for ev in self.receiver {
-                self.senders
-                    .retain(|(_idx, sender)| sender.send(ev.clone()).is_ok());
+                let mut senders = self.state.senders.lock().unwrap();
+                senders.retain(|(_idx, sender)| sender.send(ev.clone()).is_ok());
             }
         } else {
             for ev in self.receiver {
-                self.senders.retain(|(idx, sender)| {
+                let mut senders = self.state.senders.lock().unwrap();
+                senders.retain(|(idx, sender)| {
                     if *idx != ev.sender_id {
                         sender.send(ev.clone()).is_ok()
                     } else {
@@ -116,12 +144,11 @@ where
 }
 
 /// A connector to the shared bus
-#[derive(Clone)]
 pub struct BusConnector<T>
 where
     T: Clone,
 {
-    sender: Sender<Message<T>>,
+    state: SharedState<T>,
     receiver: Receiver<Message<T>>,
     id: u64,
 }
@@ -131,7 +158,7 @@ impl<T: Debug + Clone> Debug for BusConnector<T> {
         write!(
             f,
             "BusConnection {{ sender: {:?}, receiver: {:?}, id: {} }}",
-            self.sender, self.receiver, self.id
+            self.state.sender, self.receiver, self.id
         )
     }
 }
@@ -140,13 +167,19 @@ impl<T> BusConnector<T>
 where
     T: Clone,
 {
-    fn new(sender: Sender<Message<T>>, receiver: Receiver<Message<T>>, id: u64) -> Self {
+    fn new(receiver: Receiver<Message<T>>, id: u64, state: SharedState<T>) -> Self {
         Self {
-            sender,
             receiver,
             id,
+            state,
         }
     }
+
+    /// Add another connection to the bus
+    pub fn join_bus(&self) -> BusConnector<T> {
+        self.state.join_bus()
+    }
+
     fn wrap(&self, payload: T) -> Message<T> {
         Message::new(self.id, payload)
     }
@@ -172,7 +205,8 @@ where
     }
 
     pub(crate) fn send_event(&self, ev: T) {
-        self.sender
+        self.state
+            .sender
             .send(self.wrap(ev))
             .expect("Failed sending update event!");
     }
@@ -193,7 +227,7 @@ mod test {
         BusConnector<Event>,
         channel::Receiver<()>,
     ) {
-        let mut bus = Bus::new(true);
+        let bus = Bus::new(true);
         let a = bus.join_bus();
         let b = bus.join_bus();
         let (sender, receiver) = channel::bounded(48);
@@ -254,8 +288,26 @@ mod test {
     }
 
     #[test]
+    fn test_bus_nested() {
+        let (a, b, receiver) = init_bus();
+        let c = a.join_bus();
+
+        let ev = Event::new_status_changed(&"sample".to_string(), ServiceStatus::Initial);
+        a.send_event(ev.clone());
+        assert_eq!(a.receiver.recv().unwrap().into_payload(), ev);
+        assert_eq!(b.receiver.recv().unwrap().into_payload(), ev);
+        assert_eq!(c.receiver.recv().unwrap().into_payload(), ev);
+        drop(a);
+        drop(b);
+        drop(c);
+        receiver
+            .recv_timeout(Duration::from_secs(3))
+            .expect("Didn't receive an answer on time.");
+    }
+
+    #[test]
     fn test_stress() {
-        let mut bus = Bus::new(true);
+        let bus = Bus::new(true);
         let mut connectors = vec![];
         let last = bus.join_bus();
         for _i in 0..100 {
