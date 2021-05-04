@@ -40,14 +40,14 @@ Create a new configuration file for Horust under `/etc/horust/services/healthche
 command = "/tmp/healthcheck.py"
 start-delay = "10s"
 [restart]
-strategy = "always"
+strategy = "never"
 ``` 
 
 A couple of notes are due here:
 * This library uses [TOML](https://github.com/toml-lang/toml) for configuration, to go along nicely with Rust's chosen configuration language.
 * There are many [_supported_](https://github.com/FedericoPonzi/Horust/blob/master/DOCUMENTATION.md) properties for your service file, but only `command` is _required_.
 
-As soon as you run Horust, this service file will be read, and the `command` will be run. As soon as the service is done doing it's thing, it _will not restart_, and Horust will exit.
+On startup, Horust will read this service file, and run the `command`. According to the restart strategy "`never`", as soon as the service has carried out its task it _will not restart_, and Horust will exit.
 
 As you can see, it will run the `/tmp/healthcheck.py` Python script, which doesn't exist yet. Let's create it!
 
