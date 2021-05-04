@@ -140,7 +140,7 @@ signal = "TERM"
 wait = "10s"
 die-if-failed = ["db.toml"]
 ```
-* **`signal` = `"TERM|HUP|INT|QUIT|USR1|USR2|WINCH"`**: The _friendly_ signal used for shutting down the process.
+* **`signal` = `"TERM|HUP|INT|QUIT|USR1|USR2|WINCH|..."`**: The _friendly_ signal used for shutting down the process. The full list of supported signal can be found [here](https://docs.rs/nix/0.20.0/nix/sys/signal/enum.Signal.html).
 * **`wait` = `"time"`**: How much time to wait before sending a SIGKILL after `signal` has been sent.
 * **`die-if-failed` = `["<service-name>"]`**: As soon as any of the services defined in this the array fails, this service will be terminated as well.
 

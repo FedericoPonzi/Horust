@@ -1,6 +1,10 @@
 use crate::horust::error::{ValidationError, ValidationErrors};
 use anyhow::{Context, Error, Result};
-use nix::sys::signal::{Signal, SIGHUP, SIGINT, SIGQUIT, SIGTERM, SIGUSR1, SIGUSR2, SIGWINCH};
+use nix::sys::signal::{
+    Signal, SIGABRT, SIGALRM, SIGBUS, SIGCHLD, SIGCONT, SIGFPE, SIGHUP, SIGILL, SIGINT, SIGIO,
+    SIGPIPE, SIGPROF, SIGPWR, SIGQUIT, SIGSEGV, SIGSTKFLT, SIGSTOP, SIGSYS, SIGTERM, SIGTRAP,
+    SIGTSTP, SIGTTIN, SIGTTOU, SIGURG, SIGUSR1, SIGUSR2, SIGVTALRM, SIGWINCH, SIGXCPU, SIGXFSZ,
+};
 use nix::unistd;
 use serde::de::{self, Visitor};
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
@@ -571,25 +575,71 @@ impl Default for Termination {
 #[derive(Serialize, Copy, Clone, Deserialize, Debug, Eq, PartialEq)]
 #[allow(clippy::upper_case_acronyms)]
 pub enum TerminationSignal {
-    TERM,
     HUP,
     INT,
     QUIT,
+    ILL,
+    TRAP,
+    ABRT,
+    BUS,
+    FPE,
     USR1,
+    SEGV,
     USR2,
+    PIPE,
+    ALRM,
+    TERM,
+    STKFLT,
+    CHLD,
+    CONT,
+    STOP,
+    TSTP,
+    TTIN,
+    TTOU,
+    URG,
+    XCPU,
+    XFSZ,
+    VTALRM,
+    PROF,
     WINCH,
+    IO,
+    PWR,
+    SYS,
 }
 
 impl Into<Signal> for TerminationSignal {
     fn into(self) -> Signal {
         match self {
-            TerminationSignal::TERM => SIGTERM,
             TerminationSignal::HUP => SIGHUP,
             TerminationSignal::INT => SIGINT,
             TerminationSignal::QUIT => SIGQUIT,
+            TerminationSignal::ILL => SIGILL,
+            TerminationSignal::TRAP => SIGTRAP,
+            TerminationSignal::ABRT => SIGABRT,
+            TerminationSignal::BUS => SIGBUS,
+            TerminationSignal::FPE => SIGFPE,
             TerminationSignal::USR1 => SIGUSR1,
+            TerminationSignal::SEGV => SIGSEGV,
             TerminationSignal::USR2 => SIGUSR2,
+            TerminationSignal::PIPE => SIGPIPE,
+            TerminationSignal::ALRM => SIGALRM,
+            TerminationSignal::TERM => SIGTERM,
+            TerminationSignal::STKFLT => SIGSTKFLT,
+            TerminationSignal::CHLD => SIGCHLD,
+            TerminationSignal::CONT => SIGCONT,
+            TerminationSignal::STOP => SIGSTOP,
+            TerminationSignal::TSTP => SIGTSTP,
+            TerminationSignal::TTIN => SIGTTIN,
+            TerminationSignal::TTOU => SIGTTOU,
+            TerminationSignal::URG => SIGURG,
+            TerminationSignal::XCPU => SIGXCPU,
+            TerminationSignal::XFSZ => SIGXFSZ,
+            TerminationSignal::VTALRM => SIGVTALRM,
+            TerminationSignal::PROF => SIGPROF,
             TerminationSignal::WINCH => SIGWINCH,
+            TerminationSignal::IO => SIGIO,
+            TerminationSignal::PWR => SIGPWR,
+            TerminationSignal::SYS => SIGSYS,
         }
     }
 }
