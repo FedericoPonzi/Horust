@@ -79,7 +79,7 @@ wait = "10s""#,
 
 #[test]
 fn test_termination_all_custom_signals() {
-    vec!["TERM", "HUP", "INT", "QUIT", "USR1", "USR2"]
+    vec!["TERM", "HUP", "INT", "QUIT", "USR1", "USR2", "WINCH"]
         .into_iter()
         .for_each(|friendly_name| {
             println!("Testing: {}", friendly_name);

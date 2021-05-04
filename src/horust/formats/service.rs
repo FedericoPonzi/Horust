@@ -1,6 +1,6 @@
 use crate::horust::error::{ValidationError, ValidationErrors};
 use anyhow::{Context, Error, Result};
-use nix::sys::signal::{Signal, SIGHUP, SIGINT, SIGQUIT, SIGTERM, SIGUSR1, SIGUSR2};
+use nix::sys::signal::{Signal, SIGHUP, SIGINT, SIGQUIT, SIGTERM, SIGUSR1, SIGUSR2, SIGWINCH};
 use nix::unistd;
 use serde::de::{self, Visitor};
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
@@ -577,6 +577,7 @@ pub enum TerminationSignal {
     QUIT,
     USR1,
     USR2,
+    WINCH,
 }
 
 impl Into<Signal> for TerminationSignal {
@@ -588,6 +589,7 @@ impl Into<Signal> for TerminationSignal {
             TerminationSignal::QUIT => SIGQUIT,
             TerminationSignal::USR1 => SIGUSR1,
             TerminationSignal::USR2 => SIGUSR2,
+            TerminationSignal::WINCH => SIGWINCH,
         }
     }
 }
