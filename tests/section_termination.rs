@@ -79,13 +79,17 @@ wait = "10s""#,
 
 #[test]
 fn test_termination_all_custom_signals() {
-    vec!["TERM", "HUP", "INT", "QUIT", "USR1", "USR2", "WINCH"]
-        .into_iter()
-        .for_each(|friendly_name| {
-            println!("Testing: {}", friendly_name);
-            test_termination_custom_signal(friendly_name);
-            println!("Test done: {}", friendly_name);
-        })
+    vec![
+        "HUP", "INT", "QUIT", "ILL", "TRAP", "ABRT", "BUS", "FPE", "USR1", "SEGV", "USR2", "PIPE",
+        "ALRM", "TERM", "STKFLT", "CHLD", "CONT", "STOP", "TSTP", "TTIN", "TTOU", "URG", "XCPU",
+        "XFSZ", "VTALRM", "PROF", "WINCH", "IO", "PWR", "SYS",
+    ]
+    .into_iter()
+    .for_each(|friendly_name| {
+        println!("Testing: {}", friendly_name);
+        test_termination_custom_signal(friendly_name);
+        println!("Test done: {}", friendly_name);
+    })
 }
 
 #[test]
