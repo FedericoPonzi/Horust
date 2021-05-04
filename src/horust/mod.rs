@@ -75,7 +75,7 @@ impl Horust {
         }
         supervisor::init();
 
-        let mut dispatcher = Bus::new(true);
+        let dispatcher = Bus::new(true);
         debug!("Services: {:?}", self.services);
         // Spawn helper threads:
         healthcheck::spawn(dispatcher.join_bus(), self.services.clone());

@@ -5,7 +5,7 @@ use crate::horust::Event;
 use nix::unistd::Pid;
 use std::collections::HashMap;
 
-#[derive(Debug, Clone)]
+#[derive(Debug)]
 pub(crate) struct Repo {
     pub services: HashMap<ServiceName, ServiceHandler>,
     pub(crate) bus: BusConnector<Event>,
