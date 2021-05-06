@@ -1,6 +1,6 @@
 [package]
 name = "horust"
-version = "0.1.3"
+version = "0.1.4"
 authors = ["Federico Ponzi <federico.ponzi92@gmail.com>"]
 description = "A complete supervisor and init system, designed for running in containers."
 edition = "2018"
