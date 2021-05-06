@@ -98,7 +98,7 @@ fn run(bus: BusConnector<Event>, services: Vec<Service>) {
                     warn!("Worker thread for {} not found.", s_name);
                 }
             }
-            Event::ShuttingDownInitiated => {
+            Event::ShuttingDownInitiated(_) => {
                 // Stop all the workers:
                 for (ws, _wh) in workers.values() {
                     // TODO: handle these

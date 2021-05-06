@@ -217,7 +217,7 @@ mod test {
 
     use crate::horust::bus::{Bus, BusConnector};
     //TODO: remove this reference:
-    use crate::horust::formats::{Event, ServiceStatus};
+    use crate::horust::formats::{Event, ServiceStatus, ShuttingDown};
     use crossbeam::channel;
     use std::thread;
     use std::time::Duration;
@@ -321,7 +321,7 @@ mod test {
                 .expect("test didn't terminate in time, so chan is closed!");
         });
         let ev = Event::new_status_changed(&"sample".to_string(), ServiceStatus::Initial);
-        let exit_ev = Event::ShuttingDownInitiated;
+        let exit_ev = Event::ShuttingDownInitiated(ShuttingDown::Gracefuly);
 
         for _i in 0..100 {
             last.send_event(ev.clone());
@@ -334,7 +334,7 @@ mod test {
                 assert_eq!(recv.receiver.recv().unwrap().into_payload(), exit_ev);
             }
         }
-        last.send_event(Event::ShuttingDownInitiated);
+        last.send_event(Event::ShuttingDownInitiated(ShuttingDown::Gracefuly));
         drop(connectors);
         drop(last);
         receiver

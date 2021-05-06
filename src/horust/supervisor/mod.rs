@@ -3,7 +3,7 @@
 //! It will also reap the dead processes
 
 use crate::horust::bus::BusConnector;
-use crate::horust::formats::{Event, ExitStatus, Service, ServiceStatus};
+use crate::horust::formats::{Event, ExitStatus, Service, ServiceStatus, ShuttingDown};
 use crate::horust::healthcheck;
 use nix::sys::signal;
 use nix::unistd;
@@ -33,10 +33,16 @@ pub fn spawn(
     thread::spawn(move || Supervisor::new(bus, services).run())
 }
 
+#[derive(Clone, Debug, Copy, PartialEq, Eq)]
+pub enum LifecycleStatus {
+    Running,
+    ShuttingDown(ShuttingDown),
+}
+
 #[derive(Debug)]
 pub struct Supervisor {
     /// The system is shutting down, no more services will be spawned.
-    is_shutting_down: bool,
+    status: LifecycleStatus,
     repo: Repo,
 }
 
@@ -45,7 +51,7 @@ impl Supervisor {
         let repo = Repo::new(bus, services);
         Self {
             repo,
-            is_shutting_down: false,
+            status: LifecycleStatus::Running,
         }
     }
 
@@ -114,13 +120,13 @@ impl Supervisor {
                         service_handler.name()
                     );
                     service_handler.status = ServiceStatus::FinishedFailed;
-                    self.is_shutting_down = true;
+                    self.status = LifecycleStatus::ShuttingDown(ShuttingDown::Gracefuly);
                     return vec![
                         Event::StatusUpdate(
                             service_handler.name().clone(),
                             ServiceStatus::FinishedFailed,
                         ),
-                        Event::ShuttingDownInitiated,
+                        Event::ShuttingDownInitiated(ShuttingDown::Gracefuly),
                     ];
                 }
                 let backoff = service_handler
@@ -187,8 +193,17 @@ impl Supervisor {
                 sh.add_healthcheck_event(health);
                 vec![]
             }
-            Event::ShuttingDownInitiated => {
-                self.is_shutting_down = true;
+            Event::ShuttingDownInitiated(shutting_down) => {
+                match shutting_down {
+                    ShuttingDown::Gracefuly => {
+                        warn!("Gracefully stopping...");
+                    }
+                    ShuttingDown::Forcefuly => {
+                        warn!("Terminating all services...");
+                    }
+                }
+                self.status = LifecycleStatus::ShuttingDown(shutting_down);
+                signal_handling::clear_sigtem();
                 vec![]
             }
             Event::StatusUpdate(service_name, new_status) => {
@@ -221,8 +236,18 @@ impl Supervisor {
             // Ingest updates
             let received_events = self.repo.get_events();
             debug!("Applying events... {:?}", received_events);
-            if signal_handling::is_sigterm_received() && !self.is_shutting_down {
-                self.repo.send_ev(Event::ShuttingDownInitiated);
+            match (self.status, signal_handling::is_sigterm_received()) {
+                (LifecycleStatus::Running, true) => {
+                    warn!("1. SIGTERM received");
+                    self.repo
+                        .send_ev(Event::ShuttingDownInitiated(ShuttingDown::Gracefuly));
+                }
+                (LifecycleStatus::ShuttingDown(ShuttingDown::Gracefuly), true) => {
+                    warn!("2. SIGTERM received");
+                    self.repo
+                        .send_ev(Event::ShuttingDownInitiated(ShuttingDown::Forcefuly));
+                }
+                _ => {}
             }
             // Handling of the received events and commands:
             let produced_events = received_events
@@ -236,7 +261,7 @@ impl Supervisor {
                 .repo
                 .services
                 .iter()
-                .map(|(_s_name, sh)| sh.next(&self.repo, self.is_shutting_down))
+                .map(|(_s_name, sh)| sh.next(&self.repo, self.status))
                 .flatten()
                 .chain(reaper::run(&self.repo, MAX_PROCESS_REAPS_ITERS))
                 .collect();
@@ -263,7 +288,8 @@ impl Supervisor {
             let _res = signal::kill(all_processes, signal::SIGKILL);
         }
 
-        self.repo.send_ev(Event::ShuttingDownInitiated);
+        self.repo
+            .send_ev(Event::ShuttingDownInitiated(ShuttingDown::Gracefuly));
         if self.repo.any_finished_failed() {
             ExitStatus::SomeServiceFailed
         } else {
