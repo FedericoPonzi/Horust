@@ -7,7 +7,7 @@ pub use service::*;
 #[derive(Clone, Debug, Copy, PartialEq, Eq)]
 pub enum ShuttingDown {
     Gracefuly,
-    Forcefuly
+    Forcefuly,
 }
 
 #[derive(Debug, Clone, PartialEq)]

@@ -138,9 +138,7 @@ pub(crate) fn next(
     lifecycle_status: LifecycleStatus,
 ) -> Vec<Event> {
     match lifecycle_status {
-        LifecycleStatus::Running => {
-            next_events(repo, service_handler)
-        }
+        LifecycleStatus::Running => next_events(repo, service_handler),
         LifecycleStatus::ShuttingDown(shutting_down) => {
             next_events_shutting_down(service_handler, shutting_down)
         }
@@ -206,7 +204,10 @@ fn next_events(repo: &Repo, service_handler: &ServiceHandler) -> Vec<Event> {
 
 /// This next function assumes that the system is shutting down.
 /// It will make progress in the direction of shutting everything down.
-fn next_events_shutting_down(service_handler: &ServiceHandler, shutting_down: ShuttingDown) -> Vec<Event> {
+fn next_events_shutting_down(
+    service_handler: &ServiceHandler,
+    shutting_down: ShuttingDown,
+) -> Vec<Event> {
     let ev_status =
         |status: ServiceStatus| Event::new_status_update(service_handler.name(), status);
     let vev_status = |status: ServiceStatus| vec![ev_status(status)];
@@ -349,7 +350,10 @@ fn handle_failed_service(deps: Vec<ServiceName>, failed_sh: &Service) -> Vec<Eve
 }
 
 /// Check if we've waitied enough for the service to exit
-fn should_force_kill(service_handler: &ServiceHandler, shutting_down: impl Into<Option<ShuttingDown>>) -> bool {
+fn should_force_kill(
+    service_handler: &ServiceHandler,
+    shutting_down: impl Into<Option<ShuttingDown>>,
+) -> bool {
     if service_handler.pid.is_none() {
         // Since it was in the started state, it doesn't have a pid yet.
         // Let's give it the time to start and exit.

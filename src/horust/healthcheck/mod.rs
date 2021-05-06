@@ -109,7 +109,7 @@ fn run(bus: BusConnector<Event>, services: Vec<Service>) {
                     wh.join().unwrap();
                 }
                 break;
-            },
+            }
             _ => {}
         }
     }

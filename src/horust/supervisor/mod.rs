@@ -22,7 +22,6 @@ mod signal_handling;
 
 pub(crate) use signal_handling::init;
 
-
 /// How many pid reap per iteration of the reaper
 const MAX_PROCESS_REAPS_ITERS: u32 = 20;
 
@@ -37,7 +36,7 @@ pub fn spawn(
 #[derive(Clone, Debug, Copy, PartialEq, Eq)]
 pub enum LifecycleStatus {
     Running,
-    ShuttingDown(ShuttingDown)
+    ShuttingDown(ShuttingDown),
 }
 
 #[derive(Debug)]
@@ -52,7 +51,7 @@ impl Supervisor {
         let repo = Repo::new(bus, services);
         Self {
             repo,
-            status: LifecycleStatus::Running
+            status: LifecycleStatus::Running,
         }
     }
 
@@ -240,11 +239,13 @@ impl Supervisor {
             match (self.status, signal_handling::is_sigterm_received()) {
                 (LifecycleStatus::Running, true) => {
                     warn!("1. SIGTERM received");
-                    self.repo.send_ev(Event::ShuttingDownInitiated(ShuttingDown::Gracefuly));
+                    self.repo
+                        .send_ev(Event::ShuttingDownInitiated(ShuttingDown::Gracefuly));
                 }
                 (LifecycleStatus::ShuttingDown(ShuttingDown::Gracefuly), true) => {
                     warn!("2. SIGTERM received");
-                    self.repo.send_ev(Event::ShuttingDownInitiated(ShuttingDown::Forcefuly));
+                    self.repo
+                        .send_ev(Event::ShuttingDownInitiated(ShuttingDown::Forcefuly));
                 }
                 _ => {}
             }
@@ -287,7 +288,8 @@ impl Supervisor {
             let _res = signal::kill(all_processes, signal::SIGKILL);
         }
 
-        self.repo.send_ev(Event::ShuttingDownInitiated(ShuttingDown::Gracefuly));
+        self.repo
+            .send_ev(Event::ShuttingDownInitiated(ShuttingDown::Gracefuly));
         if self.repo.any_finished_failed() {
             ExitStatus::SomeServiceFailed
         } else {
