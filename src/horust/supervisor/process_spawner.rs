@@ -2,7 +2,7 @@ use crate::horust::bus::BusConnector;
 use crate::horust::formats::{Event, LogOutput, Service};
 use crate::horust::signal_safe::panic_ssafe;
 use anyhow::Result;
-use crossbeam::{after, tick};
+use crossbeam::channel::{after, tick};
 use nix::fcntl;
 use nix::unistd;
 use nix::unistd::{fork, ForkResult, Pid};
@@ -80,7 +80,7 @@ fn spawn_process(service: &Service) -> Result<Pid> {
     let (program_name, arg_cstrings, env_cstrings) = exec_args(service)?;
     let uid = service.user.get_uid()?;
     let cwd = service.working_directory.clone();
-    match fork() {
+    match unsafe { fork() } {
         Ok(ForkResult::Child) => {
             let res = redirect_output(&service.stdout, LogOutput::Stdout)
                 .and_then(|_| redirect_output(&service.stderr, LogOutput::Stderr))

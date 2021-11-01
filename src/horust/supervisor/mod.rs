@@ -305,7 +305,7 @@ fn kill(sh: &ServiceHandler, signal: Option<signal::Signal>) {
     debug!("Going to send {} signal to pid {:?}", signal, sh.pid());
     if let Some(pid) = sh.pid() {
         if let Err(error) = signal::kill(pid, signal) {
-            match error.as_errno().expect("errno empty!") {
+            match error {
                 // No process or process group can be found corresponding to that specified by pid
                 // It has exited already, so it's fine.
                 nix::errno::Errno::ESRCH => (),

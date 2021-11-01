@@ -37,6 +37,7 @@ fn test_command_not_found() {
     let rnd_name = thread_rng()
         .sample_iter(&Alphanumeric)
         .take(5)
+        .map(|x| x as char)
         .collect::<String>();
     let service_name = format!("{}.toml", rnd_name.as_str());
     let service = format!(r#"command = ",sorry_not_found{}""#, rnd_name);

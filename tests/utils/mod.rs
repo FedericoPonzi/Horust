@@ -23,6 +23,7 @@ pub fn store_service(
     let rnd_name = thread_rng()
         .sample_iter(&Alphanumeric)
         .take(5)
+        .map(|x| x as char)
         .collect::<String>();
     let service_name = format!("{}.toml", service_name.unwrap_or_else(|| rnd_name.as_str()));
     let script_name = format!("{}.sh", rnd_name);
