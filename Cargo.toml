@@ -28,7 +28,7 @@ toml = "~0.5"
 maplit = "~1.0"
 shellexpand = "~2.1"
 anyhow = "1.0.40"
-thiserror = "1.0.24"
+thiserror = "1.0.30"
 itertools = "0.10.0"
 
 [features]
