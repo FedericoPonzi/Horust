@@ -23,7 +23,7 @@ log = "~0.4"
 nix = "~0.16"
 reqwest = { version = "0.10", features = ["blocking", "json"], optional = true, default-features = false }
 serde = {version = "~1.0", features = ["derive"] }
-shlex = "~0.1"
+shlex = "~1.1"
 toml = "~0.5"
 maplit = "~1.0"
 shellexpand = "~2.1"
