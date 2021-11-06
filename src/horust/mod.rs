@@ -109,7 +109,7 @@ where
         .map(|file| {
             let res = Service::from_file(&file);
             res.map(|mut service| {
-                if service.name == "" {
+                if service.name.is_empty() {
                     let filename = file.file_name().unwrap().to_str().unwrap().to_owned();
                     service.name = filename;
                 }
@@ -180,10 +180,7 @@ mod test {
     fn test_list_files() -> io::Result<()> {
         let tempdir = TempDir::new("horust").unwrap();
         let files = vec!["a", "b", "c"];
-        let files: Vec<PathBuf> = files
-            .into_iter()
-            .map(|f| tempdir.path().join(f).to_path_buf())
-            .collect();
+        let files: Vec<PathBuf> = files.into_iter().map(|f| tempdir.path().join(f)).collect();
 
         for f in &files {
             std::fs::write(f, "Hello world")?;

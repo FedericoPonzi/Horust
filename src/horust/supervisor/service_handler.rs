@@ -71,7 +71,7 @@ impl ServiceHandler {
         next(self, repo, status)
     }
     pub fn change_status(&self, new_status: ServiceStatus) -> (ServiceHandler, ServiceStatus) {
-        handle_status_change(&self, new_status)
+        handle_status_change(self, new_status)
     }
 
     pub fn restart_attempts_are_over(&self) -> bool {
@@ -152,7 +152,7 @@ fn next_events(repo: &Repo, service_handler: &ServiceHandler) -> Vec<Event> {
         |status: ServiceStatus| Event::new_status_update(service_handler.name(), status);
     let vev_status = |status: ServiceStatus| vec![ev_status(status)];
     match service_handler.status {
-        ServiceStatus::Initial if repo.is_service_runnable(&service_handler) => {
+        ServiceStatus::Initial if repo.is_service_runnable(service_handler) => {
             vec![Event::Run(service_handler.name().clone())]
         }
         // if enough time have passed, this will be considered running
@@ -448,11 +448,11 @@ wait = "10s"
     #[test]
     fn test_handle_failed_service() {
         let mut service = Service::from_name("b");
-        let evs = handle_failed_service(vec!["a".into()], &service.clone());
+        let evs = handle_failed_service(vec!["a".into()], &service);
         assert!(evs.is_empty());
 
         service.failure.strategy = FailureStrategy::KillDependents;
-        let evs = handle_failed_service(vec!["a".into()], &service.clone());
+        let evs = handle_failed_service(vec!["a".into()], &service);
         let exp = vec![
             Event::new_status_update(&"a".to_string(), ServiceStatus::InKilling),
             Event::Kill("a".into()),

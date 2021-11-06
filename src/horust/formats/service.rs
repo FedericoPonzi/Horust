@@ -10,7 +10,7 @@ use serde::de::{self, Visitor};
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use std::collections::HashMap;
 use std::fmt::Formatter;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::str::FromStr;
 use std::time::Duration;
 
@@ -102,7 +102,7 @@ impl Service {
     /// Config will be automatically templated from env.
     /// Correct syntax is required for templating to work.
     /// Currently only templating from environment is implemented.
-    pub fn from_file(path: &PathBuf) -> Result<Self> {
+    pub fn from_file(path: &Path) -> Result<Self> {
         let preconfig = std::fs::read_to_string(path)?;
         let postconfig = shellexpand::full(&preconfig)?;
         toml::from_str::<Service>(&postconfig).map_err(Error::from)
@@ -207,12 +207,13 @@ impl From<String> for LogOutput {
         strategy.as_str().into()
     }
 }
-impl Into<String> for LogOutput {
-    fn into(self) -> String {
-        match self {
-            Self::Stdout => "STDOUT".to_string(),
-            Self::Stderr => "STDERR".to_string(),
-            Self::Path(path) => {
+impl From<LogOutput> for String {
+    fn from(l: LogOutput) -> Self {
+        use LogOutput::*;
+        match l {
+            Stdout => "STDOUT".to_string(),
+            Stderr => "STDERR".to_string(),
+            Path(path) => {
                 let path = path.display();
                 path.to_string()
             }
@@ -606,10 +607,9 @@ pub enum TerminationSignal {
     PWR,
     SYS,
 }
-
-impl Into<Signal> for TerminationSignal {
-    fn into(self) -> Signal {
-        match self {
+impl From<TerminationSignal> for Signal {
+    fn from(ts: TerminationSignal) -> Self {
+        match ts {
             TerminationSignal::HUP => SIGHUP,
             TerminationSignal::INT => SIGINT,
             TerminationSignal::QUIT => SIGQUIT,

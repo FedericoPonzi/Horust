@@ -163,7 +163,7 @@ impl Supervisor {
             Event::ForceKill(service_name) if self.repo.get_sh(&service_name).is_in_killing() => {
                 debug!("Going to forcekill {}", service_name);
                 let service_handler = self.repo.get_mut_sh(&service_name);
-                kill(&service_handler, Some(signal::SIGKILL));
+                kill(service_handler, Some(signal::SIGKILL));
                 service_handler.status = ServiceStatus::Failed;
                 vec![Event::new_status_changed(
                     service_handler.name(),

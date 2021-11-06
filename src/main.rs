@@ -84,14 +84,12 @@ fn main() -> Result<()> {
     Ok(())
 }
 
-fn display_directories(dirs: &Vec<PathBuf>) -> String {
+fn display_directories(dirs: &[PathBuf]) -> String {
     match dirs.len() {
         1 => format!("directory: {}", dirs.first().unwrap().display()),
         _ => format!(
             "directories:\n{}",
-            dirs.into_iter()
-                .map(|d| format!("* {}", d.display()))
-                .join("\n")
+            dirs.iter().map(|d| format!("* {}", d.display())).join("\n")
         ),
     }
 }

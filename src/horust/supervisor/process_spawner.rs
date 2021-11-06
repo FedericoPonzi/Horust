@@ -20,7 +20,7 @@ pub(crate) fn spawn_fork_exec_handler(
     bus: BusConnector<Event>,
 ) {
     std::thread::spawn(move || {
-        let total_sleep = service.start_delay.clone().add(backoff);
+        let total_sleep = service.start_delay.add(backoff);
         let timeout = after(total_sleep);
         let ticker = tick(Duration::from_millis(100));
         debug!("going to sleep: {:?}", total_sleep);

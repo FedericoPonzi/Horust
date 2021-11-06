@@ -22,7 +22,28 @@ where
     /// Bus input - sender side
     sender: Sender<Message<T>>,
     /// Bus output - all the senders
-    senders: Arc<Mutex<Vec<(u64, Sender<Message<T>>)>>>,
+    senders: Arc<Mutex<Vec<(SenderId, Sender<Message<T>>)>>>,
+}
+
+#[derive(Copy, Clone, Eq, PartialEq)]
+struct SenderId(u64);
+
+impl std::fmt::Display for SenderId {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.0)
+    }
+}
+
+impl From<usize> for SenderId {
+    fn from(u: usize) -> Self {
+        (u as u64).into()
+    }
+}
+
+impl From<u64> for SenderId {
+    fn from(u: u64) -> Self {
+        SenderId(u)
+    }
 }
 
 impl<T> SharedState<T>
@@ -35,7 +56,7 @@ where
 
         let (sender, receiver) = unbounded();
 
-        let id = senders.len() as u64;
+        let id = senders.len().into();
         senders.push((id, sender));
 
         BusConnector::new(receiver, id, self.clone())
@@ -126,15 +147,18 @@ struct Message<T>
 where
     T: Clone,
 {
-    sender_id: u64,
+    sender_id: SenderId,
     payload: T,
 }
 impl<T> Message<T>
 where
     T: Clone,
 {
-    pub fn new(sender_id: u64, payload: T) -> Self {
-        Self { payload, sender_id }
+    pub fn new<Z: Into<SenderId>>(sender_id: Z, payload: T) -> Self {
+        Self {
+            payload,
+            sender_id: sender_id.into(),
+        }
     }
 
     /// Consume the messages into the payload
@@ -150,7 +174,7 @@ where
 {
     state: SharedState<T>,
     receiver: Receiver<Message<T>>,
-    id: u64,
+    id: SenderId,
 }
 
 impl<T: Debug + Clone> Debug for BusConnector<T> {
@@ -167,7 +191,7 @@ impl<T> BusConnector<T>
 where
     T: Clone,
 {
-    fn new(receiver: Receiver<Message<T>>, id: u64, state: SharedState<T>) -> Self {
+    fn new(receiver: Receiver<Message<T>>, id: SenderId, state: SharedState<T>) -> Self {
         Self {
             receiver,
             id,
