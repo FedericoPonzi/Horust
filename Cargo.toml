@@ -37,6 +37,6 @@ http-healthcheck = ["reqwest"]
 
 [dev-dependencies]
 assert_cmd = "~2.0"
-predicates = "~2.0"
+predicates = "~2.1"
 tempdir = "~0.3"
 rand = "~0.8"
