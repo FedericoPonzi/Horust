@@ -3,7 +3,7 @@ use serde::{Deserialize, Serialize};
 use std::path::Path;
 use structopt::StructOpt;
 
-#[derive(Debug, StructOpt, Serialize, Deserialize)]
+#[derive(Debug, StructOpt, Serialize, Deserialize, Default)]
 pub struct HorustConfig {
     #[structopt(long)]
     /// Exits with an unsuccessful exit code if any process is in FinishedFailed state
@@ -27,13 +27,5 @@ impl HorustConfig {
         Ok(HorustConfig {
             unsuccessful_exit_finished_failed,
         })
-    }
-}
-
-impl Default for HorustConfig {
-    fn default() -> Self {
-        Self {
-            unsuccessful_exit_finished_failed: false,
-        }
     }
 }
