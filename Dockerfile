@@ -1,4 +1,4 @@
-FROM rust:1.56 as builder
+FROM rust:1 as builder
 WORKDIR /usr/src/myapp
 COPY . .
 ARG CARGO_PARAMS
