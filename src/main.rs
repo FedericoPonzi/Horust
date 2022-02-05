@@ -56,7 +56,7 @@ fn main() -> Result<()> {
     let mut horust = if !opts.command.is_empty() {
         info!("Running command: {:?}", opts.command);
         Horust::from_command(opts.command.into_iter().join(" "))
-    } else if !opts.services_paths.is_empty() {
+    } else {
         info!(
             "Loading services from {}",
             display_directories(&opts.services_paths)
@@ -67,8 +67,6 @@ fn main() -> Result<()> {
                 display_directories(&opts.services_paths)
             )
         })?
-    } else {
-        panic!("You need to specify either a path to a folder with services via --services-path or a command to run.");
     };
 
     if let ExitStatus::SomeServiceFailed = horust.run() {
