@@ -9,7 +9,8 @@ use nix::unistd;
 use serde::de::{self, Visitor};
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use std::collections::HashMap;
-use std::fmt::Formatter;
+use std::ffi::OsStr;
+use std::fmt::{Debug, Formatter};
 use std::path::{Path, PathBuf};
 use std::str::FromStr;
 use std::time::Duration;
@@ -102,9 +103,12 @@ impl Service {
     /// Config will be automatically templated from env.
     /// Correct syntax is required for templating to work.
     /// Currently only templating from environment is implemented.
-    pub fn from_file(path: &Path) -> Result<Self> {
+    pub fn from_file<P>(path: &P) -> Result<Self>
+    where
+        P: AsRef<Path> + ?Sized + AsRef<OsStr> + Debug,
+    {
         let preconfig = std::fs::read_to_string(path)?;
-        let postconfig = shellexpand::full(&preconfig)?;
+        let postconfig = shellexpand::full(&preconfig)?.to_string();
         toml::from_str::<Service>(&postconfig).map_err(Error::from)
     }
     /// Creates the environment K=V variables, used for exec into the new process.
@@ -150,7 +154,7 @@ impl FromStr for Service {
     type Err = Error;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
-        let postconfig = shellexpand::full(s)?;
+        let postconfig = shellexpand::full(s)?.to_string();
         toml::from_str::<Service>(&postconfig).map_err(Error::from)
     }
 }

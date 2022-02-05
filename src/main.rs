@@ -3,11 +3,9 @@ use horust::horust::ExitStatus;
 use horust::horust::HorustConfig;
 use horust::Horust;
 use itertools::Itertools;
+use log::{error, info};
 use std::path::PathBuf;
 use structopt::StructOpt;
-
-#[macro_use]
-extern crate log;
 
 #[derive(StructOpt, Debug)]
 #[structopt(author, about)]
@@ -21,11 +19,11 @@ struct Opts {
     horust_config: HorustConfig,
 
     #[structopt(long)]
-    /// Prints a sample service file with all the possible options
+    /// Print a sample service file with all the possible options
     sample_service: bool,
 
     #[structopt(long = "services-path", default_value = "/etc/horust/services")]
-    /// Path to the directory containing the services. User can provide more than one argument to load multiple directories.
+    /// Path to service file or a directory containing services to run. You can provide more than one argument to load multiple directories / services.
     services_paths: Vec<PathBuf>,
 
     #[structopt(required = false, multiple = true, min_values = 0, last = true)]
@@ -57,13 +55,8 @@ fn main() -> Result<()> {
 
     let mut horust = if !opts.command.is_empty() {
         info!("Running command: {:?}", opts.command);
-
-        Horust::from_command(
-            opts.command
-                .into_iter()
-                .fold(String::new(), |acc, w| format!("{} {}", acc, w)),
-        )
-    } else {
+        Horust::from_command(opts.command.into_iter().join(" "))
+    } else if !opts.services_paths.is_empty() {
         info!(
             "Loading services from {}",
             display_directories(&opts.services_paths)
@@ -74,10 +67,13 @@ fn main() -> Result<()> {
                 display_directories(&opts.services_paths)
             )
         })?
+    } else {
+        panic!("You need to specify either a path to a folder with services via --services-path or a command to run.");
     };
 
     if let ExitStatus::SomeServiceFailed = horust.run() {
         if config.unsuccessful_exit_finished_failed {
+            error!("Some processes have failed.");
             std::process::exit(101);
         }
     }
