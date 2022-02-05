@@ -108,7 +108,7 @@ Check out the [documentation](https://github.com/FedericoPonzi/Horust/blob/maste
 ```toml
 command = "/bin/bash -c 'echo hello world'"
 start-delay = "2s"
-start-after = ["another.toml", "second.toml"]
+start-after = ["database", "backend.toml"]
 stdout = "STDOUT"
 stderr = "/var/logs/hello_world_svc/stderr.log"
 user = "root"

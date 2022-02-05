@@ -34,15 +34,15 @@ stderr = "${HOME}${HORUST_LOGDIR}/stderr"
 # name = "myname"
 command = "/bin/bash -c 'echo hello world'"
 start-delay = "2s"
-start-after = ["another.toml", "second.toml"]
+start-after = ["database", "backend.toml"]
 stdout = "STDOUT"
 stderr = "/var/logs/hello_world_svc/stderr.log"
 user = "${USER}"
 working-directory = "/tmp/"
 ```
-* **`name` = `string`**: Name of the service. Optional, uses the filename by default.
+* **`name` = `string`**: Name of the service. If missing, Horust will use the filename by default.
 * **`command` = `string`**: Specify a command to run, or a full path. You can also add arguments. If a full path is not provided, the binary will be searched using the $PATH env variable.
-* **`start-after` = `[list<ServiceName>`**: Start after these other services. User their filename (e.g. `first.toml`).
+* **`start-after` = `list<ServiceName>`**: Start after these other services.
 If service `a` should start after service `b`, then `a` will be started as soon as `b` is considered Running or Finished. 
 If `b` goes in a `FinishedFailed` state (finished in an unsuccessful manner), `a` might not start at all. 
 * **`start-delay` = `time`**: Start this service with the specified delay. Check how to specify times [here](https://github.com/tailhook/humantime/blob/49f11fdc2a59746085d2457cb46bce204dec746a/src/duration.rs#L338) 
