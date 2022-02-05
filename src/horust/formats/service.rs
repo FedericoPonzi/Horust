@@ -18,7 +18,7 @@ use std::time::Duration;
 pub fn get_sample_service() -> String {
     r#"command = "/bin/bash -c 'echo hello world'"
 start-delay = "2s"
-start-after = ["another.toml", "second.toml"]
+start-after = ["database", "backend.toml"]
 stdout = "STDOUT"
 stderr = "/var/logs/hello_world_svc/stderr.log"
 user = "${USER}"
@@ -729,7 +729,7 @@ mod test {
             stdout: "STDOUT".into(),
             stderr: "/var/logs/hello_world_svc/stderr.log".into(),
             start_delay: Duration::from_secs(2),
-            start_after: vec!["another.toml".into(), "second.toml".into()],
+            start_after: vec!["database".into(), "backend.toml".into()],
             restart: Restart {
                 strategy: RestartStrategy::Never,
                 backoff: Duration::from_millis(0),
