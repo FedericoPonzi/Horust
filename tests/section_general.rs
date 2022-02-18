@@ -50,10 +50,10 @@ printf "{}" {}"#,
 }
 #[test]
 fn test_output_redirection() {
-    let from = vec!["stdout", "stderr"];
-    let to = vec!["STDOUT", "STDERR", "FILE"];
-    from.into_iter()
-        .map(|fr| to.clone().into_iter().map(move |t| (fr, t)))
+    let from = ["stdout", "stderr"];
+    let to = ["STDOUT", "STDERR", "FILE"];
+    from.iter()
+        .map(|fr| to.iter().map(move |t| (fr, t)))
         .flatten()
         .for_each(|(stream, to)| test_single_output_redirection(stream, to));
 }

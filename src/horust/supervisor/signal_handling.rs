@@ -1,5 +1,6 @@
-use crate::horust::signal_safe::panic_ssafe;
 use nix::sys::signal::{sigaction, SaFlags, SigAction, SigHandler, SigSet, SIGINT, SIGTERM};
+
+use crate::horust::signal_safe::panic_ssafe;
 
 static mut SIGTERM_RECEIVED: bool = false;
 
@@ -14,6 +15,7 @@ pub(crate) fn clear_sigtem() {
 }
 
 /// Setup the signal handlers
+#[inline]
 pub(crate) fn init() {
     // To allow auto restart on some syscalls,
     // for example: `waitpid`.
@@ -21,13 +23,11 @@ pub(crate) fn init() {
     let sig_action = SigAction::new(SigHandler::Handler(handle_sigterm), flags, SigSet::empty());
 
     if let Err(err) = unsafe { sigaction(SIGTERM, &sig_action) } {
-        let error = format!("sigaction() failed: {}", err);
-        panic_ssafe(error.as_str(), 103);
+        panic_ssafe("signal_handling: sigaction() SIGTERM failed.", err, 103);
     };
 
     if let Err(err) = unsafe { sigaction(SIGINT, &sig_action) } {
-        let error = format!("sigaction() failed: {}", err);
-        panic_ssafe(error.as_str(), 104);
+        panic_ssafe("signal_handling: sigaction() SIGINT failed .", err, 104);
     };
 }
 
