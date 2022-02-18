@@ -80,11 +80,13 @@ fn spawn_process(service: &Service) -> Result<Pid> {
     let (program_name, arg_cstrings, env_cstrings) = exec_args(service)?;
     let uid = service.user.get_uid()?;
     let cwd = service.working_directory.clone();
+    let arg_cptr: Vec<&CStr> = arg_cstrings.iter().map(|c| c.as_c_str()).collect();
+    let env_cptr: Vec<&CStr> = env_cstrings.iter().map(|c| c.as_c_str()).collect();
     match unsafe { fork() } {
         Ok(ForkResult::Child) => {
             let res = redirect_output(&service.stdout, LogOutput::Stdout)
                 .and_then(|_| redirect_output(&service.stderr, LogOutput::Stderr))
-                .and_then(|_| exec(program_name, arg_cstrings, env_cstrings, uid, cwd));
+                .and_then(|_| exec(program_name, arg_cptr, env_cptr, uid, cwd));
             if let Err(error) = res {
                 let error = format!(
                     "Error spawning process for service '{}', command: {}: {}",
@@ -102,31 +104,37 @@ fn spawn_process(service: &Service) -> Result<Pid> {
     }
 }
 
-fn redirect_output(val: &LogOutput, output: LogOutput) -> Result<()> {
+/// Sets up the stdout / stderr descriptors.
+fn redirect_output(target_stream: &LogOutput, into_output_stream: LogOutput) -> Result<()> {
     let stdout = io::stdout().as_raw_fd();
     let stderr = io::stderr().as_raw_fd();
-    match val {
+    match (target_stream, into_output_stream) {
         // stderr = "STDOUT"
-        LogOutput::Stdout if output == LogOutput::Stderr => {
+        (LogOutput::Stdout, LogOutput::Stderr) => {
             unistd::dup2(stdout, stderr)?;
         }
         // stdout = "STDERR"
-        LogOutput::Stderr if output == LogOutput::Stdout => {
+        (LogOutput::Stderr, LogOutput::Stdout) => {
             // Redirect stdout to stderr
             unistd::dup2(stderr, stdout)?;
         }
-        LogOutput::Path(path) => {
+        (LogOutput::Path(path), LogOutput::Stdout) => {
             let raw_fd = fcntl::open(
                 path,
                 fcntl::OFlag::O_CREAT | fcntl::OFlag::O_WRONLY | fcntl::OFlag::O_APPEND,
                 nix::sys::stat::Mode::S_IRWXU,
             )?;
-            if output == LogOutput::Stdout {
-                unistd::dup2(raw_fd, stdout)?;
-            } else {
-                unistd::dup2(raw_fd, stderr)?;
-            }
+            unistd::dup2(raw_fd, stdout)?;
         }
+        (LogOutput::Path(path), LogOutput::Stderr) => {
+            let raw_fd = fcntl::open(
+                path,
+                fcntl::OFlag::O_CREAT | fcntl::OFlag::O_WRONLY | fcntl::OFlag::O_APPEND,
+                nix::sys::stat::Mode::S_IRWXU,
+            )?;
+            unistd::dup2(raw_fd, stderr)?;
+        }
+        // Should never happen.
         _ => (),
     };
     Ok(())
@@ -139,13 +147,11 @@ fn redirect_output(val: &LogOutput, output: LogOutput) -> Result<()> {
 /// Use only async-signal-safe, otherwise it might lock.
 fn exec(
     program_name: CString,
-    arg_cstrings: Vec<CString>,
-    env_cstrings: Vec<CString>,
+    arg_cptr: Vec<&CStr>,
+    env_cptr: Vec<&CStr>,
     uid: unistd::Uid,
     cwd: PathBuf,
 ) -> Result<()> {
-    let arg_cptr: Vec<&CStr> = arg_cstrings.iter().map(|c| c.as_c_str()).collect();
-    let env_cptr: Vec<&CStr> = env_cstrings.iter().map(|c| c.as_c_str()).collect();
     // Changes the current working directory to the specified path.
     std::env::set_current_dir(cwd)?;
     // Create new session and set process group id
