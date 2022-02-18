@@ -68,7 +68,7 @@ impl Horust {
         }
         supervisor::init();
 
-        let dispatcher = Bus::new(true);
+        let dispatcher = Bus::new();
         debug!("Services: {:?}", self.services);
         // Spawn helper threads:
         healthcheck::spawn(dispatcher.join_bus(), self.services.clone());
@@ -174,6 +174,24 @@ mod test {
 
     #[test]
     fn test_fetch_services() -> io::Result<()> {
+        let tempdir = TempDir::new("horust").unwrap();
+        // Empty service directory will print a log but it's not an error.
+        assert_eq!(
+            fetch_services(tempdir.path().to_path_buf()).unwrap().len(),
+            0
+        );
+        let not_toml_file = tempdir.path().join("not_a_toml.toml");
+        std::fs::write(not_toml_file.clone(), "not really a toml.")?;
+
+        // Today Horust filters out invalid toml files.
+        assert_eq!(
+            fetch_services(tempdir.path().to_path_buf()).unwrap().len(),
+            0
+        );
+
+        // This is not a directory
+        assert_eq!(fetch_services(not_toml_file).unwrap().len(), 0);
+
         let tempdir = create_test_dir()?;
         std::fs::write(tempdir.path().join("not-a-service"), "Hello world")?;
         let res = fetch_services(tempdir.path().to_path_buf()).unwrap();

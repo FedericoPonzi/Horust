@@ -73,30 +73,26 @@ impl ServiceHandler {
     pub fn change_status(&self, new_status: ServiceStatus) -> (ServiceHandler, ServiceStatus) {
         handle_status_change(self, new_status)
     }
+    fn is_alive_state(&self) -> bool {
+        const ALIVE_STATES: [ServiceStatus; 3] = [
+            ServiceStatus::Running,
+            ServiceStatus::Started,
+            ServiceStatus::Starting,
+        ];
+        ALIVE_STATES.contains(&self.status)
+    }
 
     pub fn restart_attempts_are_over(&self) -> bool {
         self.service.restart.attempts == 0 || self.restart_attempts > self.service.restart.attempts
     }
     pub fn add_healthcheck_event(&mut self, check: HealthinessStatus) {
-        let old_val = self.healthiness_checks_failed.unwrap_or(0);
-        let new_val = old_val
-            + if vec![
-                ServiceStatus::Running,
-                ServiceStatus::Started,
-                ServiceStatus::Starting,
-            ]
-            .contains(&self.status)
-            {
-                if let HealthinessStatus::Healthy = check {
-                    0
-                } else {
-                    warn!("{}: healthchecks failed: {}", self.name(), old_val);
-                    1
-                }
-            } else {
-                0
-            };
-        self.healthiness_checks_failed = Some(new_val);
+        let previous_hc = self.healthiness_checks_failed.unwrap_or(0);
+        let new_hc = if self.is_alive_state() && !matches!(check, HealthinessStatus::Healthy) {
+            1
+        } else {
+            0
+        };
+        self.healthiness_checks_failed = Some(previous_hc + new_hc);
     }
 
     pub fn is_finished_failed(&self) -> bool {
@@ -151,6 +147,7 @@ fn next_events(repo: &Repo, service_handler: &ServiceHandler) -> Vec<Event> {
     let ev_status =
         |status: ServiceStatus| Event::new_status_update(service_handler.name(), status);
     let vev_status = |status: ServiceStatus| vec![ev_status(status)];
+
     match service_handler.status {
         ServiceStatus::Initial if repo.is_service_runnable(service_handler) => {
             vec![Event::Run(service_handler.name().clone())]
@@ -349,7 +346,7 @@ fn handle_failed_service(deps: Vec<ServiceName>, failed_sh: &Service) -> Vec<Eve
     }
 }
 
-/// Check if we've waitied enough for the service to exit
+/// Check if we've waited enough for the service to exit
 fn should_force_kill(
     service_handler: &ServiceHandler,
     shutting_down: impl Into<Option<ShuttingDown>>,

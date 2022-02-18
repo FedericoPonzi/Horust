@@ -4,7 +4,8 @@ use rand::distributions::Alphanumeric;
 use rand::{thread_rng, Rng};
 use std::time::Duration;
 
-pub mod utils;
+#[allow(dead_code)]
+mod utils;
 use utils::*;
 
 #[test]

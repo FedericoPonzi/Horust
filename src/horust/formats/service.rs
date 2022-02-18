@@ -235,7 +235,7 @@ impl From<&str> for LogOutput {
     }
 }
 
-#[derive(Serialize, Clone, Deserialize, Debug, Eq, PartialEq)]
+#[derive(Serialize, Clone, Default, Deserialize, Debug, Eq, PartialEq)]
 #[serde(rename_all = "kebab-case")]
 pub struct Environment {
     #[serde(default = "Environment::default_keep_env")]
@@ -244,16 +244,6 @@ pub struct Environment {
     pub re_export: Vec<String>,
     #[serde(default)]
     pub additional: HashMap<String, String>,
-}
-
-impl Default for Environment {
-    fn default() -> Self {
-        Self {
-            keep_env: false,
-            re_export: Default::default(),
-            additional: Default::default(),
-        }
-    }
 }
 
 impl Environment {

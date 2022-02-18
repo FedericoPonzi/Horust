@@ -3,6 +3,9 @@ use serde::{Deserialize, Serialize};
 use std::path::Path;
 use structopt::StructOpt;
 
+// TODO: this should be an optional
+// otherwise we wouldn't know if it was set to false on the commandline. Maybe. Because it's a flag.
+
 #[derive(Debug, StructOpt, Serialize, Deserialize, Default)]
 pub struct HorustConfig {
     #[structopt(long)]
@@ -16,7 +19,7 @@ impl HorustConfig {
     pub fn load_and_merge(cmd_line: &HorustConfig, path: &Path) -> Result<Self> {
         let config_file: HorustConfig = if path.exists() {
             let content = std::fs::read_to_string(path)?;
-            toml::from_str(content.as_str())?
+            toml::from_str(&content)?
         } else {
             Default::default()
         };
