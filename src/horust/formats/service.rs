@@ -1,13 +1,3 @@
-use crate::horust::error::{ValidationError, ValidationErrors};
-use anyhow::{Context, Error, Result};
-use nix::sys::signal::{
-    Signal, SIGABRT, SIGALRM, SIGBUS, SIGCHLD, SIGCONT, SIGFPE, SIGHUP, SIGILL, SIGINT, SIGIO,
-    SIGPIPE, SIGPROF, SIGPWR, SIGQUIT, SIGSEGV, SIGSTKFLT, SIGSTOP, SIGSYS, SIGTERM, SIGTRAP,
-    SIGTSTP, SIGTTIN, SIGTTOU, SIGURG, SIGUSR1, SIGUSR2, SIGVTALRM, SIGWINCH, SIGXCPU, SIGXFSZ,
-};
-use nix::unistd;
-use serde::de::{self, Visitor};
-use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use std::collections::HashMap;
 use std::ffi::OsStr;
 use std::fmt::{Debug, Formatter};
@@ -15,41 +5,16 @@ use std::path::{Path, PathBuf};
 use std::str::FromStr;
 use std::time::Duration;
 
-pub fn get_sample_service() -> String {
-    r#"command = "/bin/bash -c 'echo hello world'"
-start-delay = "2s"
-start-after = ["database", "backend.toml"]
-stdout = "STDOUT"
-stderr = "/var/logs/hello_world_svc/stderr.log"
-user = "${USER}"
-working-directory = "/tmp/"
+use anyhow::{Context, Error, Result};
+use nix::sys::signal::Signal;
+use nix::unistd;
+use serde::de::{self, Visitor};
+use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
-[restart]
-strategy = "never"
-backoff = "0s"
-attempts = 0
+use crate::horust::error::{ValidationError, ValidationErrors};
 
-[healthiness]
-http-endpoint = "http://localhost:8080/healthcheck"
-file-path = "/var/myservice/up"
-# Max healthchecks allowed to fail in a row before considering this service failed.
-max-failed = 3
-
-[failure]
-successful-exit-code = [ 0, 1, 255]
-strategy = "ignore"
-
-[environment]
-keep-env = false
-re-export = [ "PATH", "DB_PASS"]
-additional = { key = "value"} 
-
-[termination]
-signal = "TERM"
-wait = "10s"
-die-if-failed  = [ "db.toml"]
-"#
-    .to_string()
+pub fn get_sample_service() -> &'static str {
+    include_str!("../../../example_services/sample_service.toml")
 }
 
 pub type ServiceName = String;
@@ -603,6 +568,7 @@ pub enum TerminationSignal {
 }
 impl From<TerminationSignal> for Signal {
     fn from(ts: TerminationSignal) -> Self {
+        use nix::sys::signal::*;
         match ts {
             TerminationSignal::HUP => SIGHUP,
             TerminationSignal::INT => SIGINT,
@@ -679,13 +645,14 @@ pub fn validate(services: Vec<Service>) -> Result<Vec<Service>, ValidationErrors
 
 #[cfg(test)]
 mod test {
+    use std::str::FromStr;
+    use std::time::Duration;
+
     use crate::horust::formats::{
         validate, Environment, Failure, FailureStrategy, Healthiness, Restart, RestartStrategy,
         Service, Termination, TerminationSignal::TERM,
     };
     use crate::horust::get_sample_service;
-    use std::str::FromStr;
-    use std::time::Duration;
 
     impl Service {
         pub fn start_after(name: &str, start_after: Vec<&str>) -> Self {
@@ -742,8 +709,8 @@ mod test {
             },
         };
 
-        let service = Service::from_str(get_sample_service().as_str())
-            .expect("error on deserializing the manifest");
+        let service =
+            Service::from_str(get_sample_service()).expect("error on deserializing the manifest");
         assert_eq!(expected, service);
     }
 

@@ -1,0 +1,46 @@
+# Only required field:
+command = "/bin/bash -c 'echo hello world'"
+start-delay = "2s"
+start-after = ["database", "backend.toml"]
+stdout = "STDOUT"
+stderr = "/var/logs/hello_world_svc/stderr.log"
+# Check also `templating.toml`
+user = "${USER}"
+working-directory = "/tmp/"
+
+[restart]
+# Once has exited, it will never be restarted.
+strategy = "never"
+# Backoff time between retries.
+backoff = "0s"
+# Attempts are useful if your service is failing too quickly.
+attempts = 0
+
+[healthiness]
+http-endpoint = "http://localhost:8080/healthcheck"
+# The service is expected to create this file to let horust know that is healthy, ready and running.
+file-path = "/var/myservice/up"
+# Max healthchecks allowed to fail in a row before considering this service failed.
+max-failed = 3
+
+[failure]
+# by convention, zero conveys successful execution. Use this parameter to add more successfull exit codes.
+successful-exit-code = [ 0, 1, 255]
+# Don't shut all the services down if this service fails.
+strategy = "ignore"
+
+[environment]
+# Regardless of this value, the programm will get `USER`, `HOSTNAME`, `HOME` and `PATH`.
+keep-env = false
+# Use for fine-grained re-exports.
+re-export = [ "PATH", "DB_PASS"]
+# You can provide additional env variables using a map.
+additional = { key = "value"}
+
+[termination]
+# Signal to use for termination.
+signal = "TERM"
+# Timeout before shutting the service down.
+wait = "10s"
+# If any of the services in the list has failed, shut down this service.
+die-if-failed  = [ "db.toml"]

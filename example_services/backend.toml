@@ -1,7 +1,7 @@
-name = "second-service"
+# no name specified - filename will be used instead.
 command = "/bigger/failing.sh second"
 working-directory = "/tmp/"
-start-after = ["my-first-service"]
+start-after = ["database"]
 start-delay = "2s"
 [restart]
 strategy = "always"
