@@ -2,17 +2,21 @@
 //! keeping track of their current state.
 //! It will also reap the dead processes
 
-use crate::horust::bus::BusConnector;
-use crate::horust::formats::{Event, ExitStatus, Service, ServiceStatus, ShuttingDown};
-use crate::horust::healthcheck;
-use nix::sys::signal;
-use nix::unistd;
-use repo::Repo;
-use service_handler::ServiceHandler;
 use std::fmt::Debug;
 use std::ops::Mul;
 use std::thread;
 use std::time::{Duration, Instant};
+
+use nix::sys::signal;
+use nix::unistd;
+
+use repo::Repo;
+use service_handler::ServiceHandler;
+pub(crate) use signal_handling::init;
+
+use crate::horust::bus::BusConnector;
+use crate::horust::formats::{Event, ExitStatus, Service, ServiceStatus, ShuttingDown};
+use crate::horust::healthcheck;
 
 mod process_spawner;
 mod reaper;
@@ -20,10 +24,11 @@ mod repo;
 mod service_handler;
 mod signal_handling;
 
-pub(crate) use signal_handling::init;
-
 /// How many pid reap per iteration of the reaper
 const MAX_PROCESS_REAPS_ITERS: u32 = 20;
+
+/// PID 1 is reserved for the init process.
+const INIT_PID: unistd::Pid = unistd::Pid::from_raw(1);
 
 // Spawns and runs this component in a new thread.
 pub fn spawn(
@@ -279,9 +284,8 @@ impl Supervisor {
 
         debug!("All services have finished");
         // If we're the init system, let's be sure that everything stops before exiting.
-        let init_pid = unistd::Pid::from_raw(1);
         // TODO: Test (probably via docker).
-        if unistd::getpid() == init_pid {
+        if unistd::getpid() == INIT_PID {
             let all_processes = unistd::Pid::from_raw(-1);
             let _res = signal::kill(all_processes, signal::SIGTERM);
             thread::sleep(Duration::from_secs(3));

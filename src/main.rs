@@ -1,11 +1,13 @@
+use std::path::PathBuf;
+
 use anyhow::{Context, Result};
+use itertools::Itertools;
+use log::{error, info};
+use structopt::StructOpt;
+
 use horust::horust::ExitStatus;
 use horust::horust::HorustConfig;
 use horust::Horust;
-use itertools::Itertools;
-use log::{error, info};
-use std::path::PathBuf;
-use structopt::StructOpt;
 
 #[derive(StructOpt, Debug)]
 #[structopt(author, about)]

@@ -1,13 +1,3 @@
-use crate::horust::error::{ValidationError, ValidationErrors};
-use anyhow::{Context, Error, Result};
-use nix::sys::signal::{
-    Signal, SIGABRT, SIGALRM, SIGBUS, SIGCHLD, SIGCONT, SIGFPE, SIGHUP, SIGILL, SIGINT, SIGIO,
-    SIGPIPE, SIGPROF, SIGPWR, SIGQUIT, SIGSEGV, SIGSTKFLT, SIGSTOP, SIGSYS, SIGTERM, SIGTRAP,
-    SIGTSTP, SIGTTIN, SIGTTOU, SIGURG, SIGUSR1, SIGUSR2, SIGVTALRM, SIGWINCH, SIGXCPU, SIGXFSZ,
-};
-use nix::unistd;
-use serde::de::{self, Visitor};
-use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use std::collections::HashMap;
 use std::ffi::OsStr;
 use std::fmt::{Debug, Formatter};
@@ -15,41 +5,16 @@ use std::path::{Path, PathBuf};
 use std::str::FromStr;
 use std::time::Duration;
 
-pub fn get_sample_service() -> String {
-    r#"command = "/bin/bash -c 'echo hello world'"
-start-delay = "2s"
-start-after = ["database", "backend.toml"]
-stdout = "STDOUT"
-stderr = "/var/logs/hello_world_svc/stderr.log"
-user = "${USER}"
-working-directory = "/tmp/"
+use anyhow::{Context, Error, Result};
+use nix::sys::signal::Signal;
+use nix::unistd;
+use serde::de::{self, Visitor};
+use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
-[restart]
-strategy = "never"
-backoff = "0s"
-attempts = 0
+use crate::horust::error::{ValidationError, ValidationErrors};
 
-[healthiness]
-http-endpoint = "http://localhost:8080/healthcheck"
-file-path = "/var/myservice/up"
-# Max healthchecks allowed to fail in a row before considering this service failed.
-max-failed = 3
-
-[failure]
-successful-exit-code = [ 0, 1, 255]
-strategy = "ignore"
-
-[environment]
-keep-env = false
-re-export = [ "PATH", "DB_PASS"]
-additional = { key = "value"} 
-
-[termination]
-signal = "TERM"
-wait = "10s"
-die-if-failed  = [ "db.toml"]
-"#
-    .to_string()
+pub fn get_sample_service() -> &'static str {
+    include_str!("../../../example_services/sample_service.toml")
 }
 
 pub type ServiceName = String;
@@ -86,6 +51,7 @@ pub struct Service {
     #[serde(default)]
     pub termination: Termination,
 }
+
 impl Service {
     fn default_working_directory() -> PathBuf {
         PathBuf::from("/")
@@ -129,6 +95,7 @@ impl Service {
         }
     }
 }
+
 impl Default for Service {
     fn default() -> Self {
         Self {
@@ -186,6 +153,7 @@ impl<'de> Deserialize<'de> for LogOutput {
 }
 
 struct LogOutputVisitor;
+
 impl<'de> Visitor<'de> for LogOutputVisitor {
     type Value = LogOutput;
 
@@ -211,6 +179,7 @@ impl From<String> for LogOutput {
         strategy.as_str().into()
     }
 }
+
 impl From<LogOutput> for String {
     fn from(l: LogOutput) -> Self {
         use LogOutput::*;
@@ -235,7 +204,7 @@ impl From<&str> for LogOutput {
     }
 }
 
-#[derive(Serialize, Clone, Deserialize, Debug, Eq, PartialEq)]
+#[derive(Serialize, Clone, Default, Deserialize, Debug, Eq, PartialEq)]
 #[serde(rename_all = "kebab-case")]
 pub struct Environment {
     #[serde(default = "Environment::default_keep_env")]
@@ -244,16 +213,6 @@ pub struct Environment {
     pub re_export: Vec<String>,
     #[serde(default)]
     pub additional: HashMap<String, String>,
-}
-
-impl Default for Environment {
-    fn default() -> Self {
-        Self {
-            keep_env: false,
-            re_export: Default::default(),
-            additional: Default::default(),
-        }
-    }
 }
 
 impl Environment {
@@ -342,11 +301,13 @@ pub struct Healthiness {
     #[serde(default = "Healthiness::default_max_failed")]
     pub max_failed: i32,
 }
+
 impl Healthiness {
     fn default_max_failed() -> i32 {
         3
     }
 }
+
 impl Default for Healthiness {
     fn default() -> Self {
         Self {
@@ -356,6 +317,7 @@ impl Default for Healthiness {
         }
     }
 }
+
 /// A user in the system.
 /// It can be either a uuid or a username (available in passwd)
 #[derive(Serialize, Clone, Deserialize, Debug, Eq, PartialEq)]
@@ -376,6 +338,7 @@ impl Default for User {
         unistd::getuid().into()
     }
 }
+
 impl User {
     pub(crate) fn get_uid(&self) -> Result<unistd::Uid> {
         match &self {
@@ -611,8 +574,10 @@ pub enum TerminationSignal {
     PWR,
     SYS,
 }
+
 impl From<TerminationSignal> for Signal {
     fn from(ts: TerminationSignal) -> Self {
+        use nix::sys::signal::*;
         match ts {
             TerminationSignal::HUP => SIGHUP,
             TerminationSignal::INT => SIGINT,
@@ -689,13 +654,14 @@ pub fn validate(services: Vec<Service>) -> Result<Vec<Service>, ValidationErrors
 
 #[cfg(test)]
 mod test {
+    use std::str::FromStr;
+    use std::time::Duration;
+
     use crate::horust::formats::{
         validate, Environment, Failure, FailureStrategy, Healthiness, Restart, RestartStrategy,
         Service, Termination, TerminationSignal::TERM,
     };
     use crate::horust::get_sample_service;
-    use std::str::FromStr;
-    use std::time::Duration;
 
     impl Service {
         pub fn start_after(name: &str, start_after: Vec<&str>) -> Self {
@@ -752,8 +718,8 @@ mod test {
             },
         };
 
-        let service = Service::from_str(get_sample_service().as_str())
-            .expect("error on deserializing the manifest");
+        let service =
+            Service::from_str(get_sample_service()).expect("error on deserializing the manifest");
         assert_eq!(expected, service);
     }
 

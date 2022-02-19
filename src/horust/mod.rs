@@ -1,20 +1,24 @@
+use std::ffi::OsStr;
+use std::fmt::Debug;
+use std::fs;
+use std::path::{Path, PathBuf};
+
+use anyhow::Result;
+use libc::{prctl, PR_SET_CHILD_SUBREAPER};
+
+pub use formats::Event;
+
+use crate::horust::bus::Bus;
+use crate::horust::formats::{validate, Service};
+
+pub use self::formats::{get_sample_service, ExitStatus, HorustConfig};
+
 mod bus;
 mod error;
 mod formats;
 mod healthcheck;
 mod signal_safe;
 mod supervisor;
-
-pub use self::formats::{get_sample_service, ExitStatus, HorustConfig};
-use crate::horust::bus::Bus;
-use crate::horust::formats::{validate, Service};
-use anyhow::Result;
-pub use formats::Event;
-use libc::{prctl, PR_SET_CHILD_SUBREAPER};
-use std::ffi::OsStr;
-use std::fmt::Debug;
-use std::fs;
-use std::path::{Path, PathBuf};
 
 #[derive(Debug)]
 pub struct Horust {
@@ -68,7 +72,7 @@ impl Horust {
         }
         supervisor::init();
 
-        let dispatcher = Bus::new(true);
+        let dispatcher = Bus::new();
         debug!("Services: {:?}", self.services);
         // Spawn helper threads:
         healthcheck::spawn(dispatcher.join_bus(), self.services.clone());
@@ -138,12 +142,15 @@ fn fetch_services(path: PathBuf) -> Result<Vec<Service>> {
 
 #[cfg(test)]
 mod test {
-    use crate::horust::fetch_services;
-    use crate::horust::formats::Service;
     use std::fs;
     use std::io;
     use std::path::{Path, PathBuf};
+
     use tempdir::TempDir;
+
+    use crate::horust::fetch_services;
+    use crate::horust::formats::Service;
+
     const FIRST_SERVICE_FILENAME: &str = "my-first-service.toml";
     const SECOND_SERVICE_FILENAME: &str = "my-second-service.toml";
 
@@ -174,6 +181,24 @@ mod test {
 
     #[test]
     fn test_fetch_services() -> io::Result<()> {
+        let tempdir = TempDir::new("horust").unwrap();
+        // Empty service directory will print a log but it's not an error.
+        assert_eq!(
+            fetch_services(tempdir.path().to_path_buf()).unwrap().len(),
+            0
+        );
+        let not_toml_file = tempdir.path().join("not_a_toml.toml");
+        std::fs::write(not_toml_file.clone(), "not really a toml.")?;
+
+        // Today Horust filters out invalid toml files.
+        assert_eq!(
+            fetch_services(tempdir.path().to_path_buf()).unwrap().len(),
+            0
+        );
+
+        // This is not a directory
+        assert_eq!(fetch_services(not_toml_file).unwrap().len(), 0);
+
         let tempdir = create_test_dir()?;
         std::fs::write(tempdir.path().join("not-a-service"), "Hello world")?;
         let res = fetch_services(tempdir.path().to_path_buf()).unwrap();

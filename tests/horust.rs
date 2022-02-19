@@ -4,7 +4,8 @@ use rand::distributions::Alphanumeric;
 use rand::{thread_rng, Rng};
 use std::time::Duration;
 
-pub mod utils;
+#[allow(dead_code)]
+mod utils;
 use utils::*;
 
 #[test]
@@ -56,6 +57,13 @@ fn test_single_command() {
     let (mut cmd, _temp_dir) = get_cli();
     cmd.args(vec!["--", "/usr/bin/env bash -c 'echo hello world'"]);
     cmd.assert().success().stdout(contains("hello world"));
+
+    // Invalid command
+    let (mut cmd, _temp_dir) = get_cli();
+    cmd.args(vec!["--unsuccessful-exit-finished-failed", "--", "\""]);
+    cmd.assert()
+        .failure()
+        .stderr(contains("Failed spawning the process: Invalid command:"));
 }
 
 #[test]

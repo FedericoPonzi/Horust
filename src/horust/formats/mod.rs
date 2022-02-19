@@ -1,8 +1,10 @@
+use nix::unistd::Pid;
+
+pub use horust_config::HorustConfig;
+pub use service::*;
+
 mod horust_config;
 mod service;
-pub use horust_config::HorustConfig;
-use nix::unistd::Pid;
-pub use service::*;
 
 #[derive(Clone, Debug, Copy, PartialEq, Eq)]
 pub enum ShuttingDown {

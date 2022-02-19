@@ -107,13 +107,12 @@ strategy = "ignore"
 ```
 * **`successful-exit-code` = `[\<int>]`**: A comma separated list of exit code. 
 Usually a program is considered failed if its exit code is different from zero. But not all fails are the same.
-By using this parameter, you can specify which exit codes will make this service considered as failed.
+With this parameter you can specify which exit codes will make this service considered as failed.
 
 * **`strategy` = `shutdown|kill-dependents|ignore`**': We might want to kill the whole system, or part of it, if some service fails. Default: `ignore`
-
      * `kill-dependents`: Dependents are all the services start after this one. So if service `b` has service `a` in its `start-after` section,
         and `a` has strategy=kill-dependents, then b will be stopped if `a` fails.
-     * `shutdown`: It will kill all the services.
+     * `shutdown`: Shut down all the services and exit Horust if this service has failed.
 
 ### Environment section
 ```toml

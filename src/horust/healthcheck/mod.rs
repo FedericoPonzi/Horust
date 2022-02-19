@@ -1,23 +1,27 @@
 //! If a service has defined an healthchecker, this module will spawn a worker to making sure that
 //! the service is working as supposed to.
 
+use std::thread;
+use std::thread::JoinHandle;
+use std::time::Duration;
+
+use crossbeam::channel::{unbounded, Receiver, RecvTimeoutError};
+
+use checks::*;
+
 use crate::horust::bus::BusConnector;
 use crate::horust::formats::{
     Event, Healthiness, HealthinessStatus, Service, ServiceName, ServiceStatus,
 };
-use crossbeam::channel::{unbounded, Receiver, RecvTimeoutError};
-use std::time::Duration;
 
 mod checks;
-use checks::*;
-use std::thread;
-use std::thread::JoinHandle;
 
 struct Worker {
     service: Service,
     bus: BusConnector<Event>,
     work_done_notifier: Receiver<()>,
 }
+
 impl Worker {
     fn new(service: Service, bus: BusConnector<Event>, work_done_notifier: Receiver<()>) -> Self {
         Worker {
@@ -125,19 +129,22 @@ pub fn prepare_service(healthiness: &Healthiness) -> Result<Vec<()>, std::io::Er
 
 #[cfg(test)]
 mod test {
-    use crate::horust::formats::{Healthiness, HealthinessStatus};
-    use crate::horust::healthcheck::check_health;
-    use anyhow::Result;
     use std::io::{Read, Write};
     use std::net::{Ipv4Addr, SocketAddrV4, TcpListener};
     use std::sync::mpsc;
     use std::thread;
     use std::time::Duration;
+
+    use anyhow::Result;
     use tempdir::TempDir;
+
+    use crate::horust::formats::{Healthiness, HealthinessStatus};
+    use crate::horust::healthcheck::check_health;
 
     fn check_health_w(healthiness: &Healthiness) -> bool {
         check_health(healthiness) == HealthinessStatus::Healthy
     }
+
     #[test]
     fn test_healthiness_check_file() -> Result<()> {
         let tempdir = TempDir::new("health")?;
@@ -154,9 +161,10 @@ mod test {
         assert!(check_health_w(&healthiness));
         Ok(())
     }
+
     fn handle_request(listener: TcpListener) -> std::io::Result<()> {
         for stream in listener.incoming() {
-            println!("Received request");
+            info!("Received request");
             let mut buffer = [0; 512];
             let mut stream = stream?;
             stream.read(&mut buffer).unwrap();

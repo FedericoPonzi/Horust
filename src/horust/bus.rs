@@ -5,12 +5,13 @@
 //! will arrive to every receiver. For this reason, the message should implement Clone.
 //!
 
-use crossbeam::channel::{unbounded, Receiver, Sender};
 use std::fmt::Formatter;
 use std::{
     fmt::Debug,
     sync::{Arc, Mutex},
 };
+
+use crossbeam::channel::{unbounded, Receiver, Sender};
 
 /// Bus state shared between `Bus` and all `BusConnector` instances.
 /// It contains all necessary components to send data and join the bus.
@@ -22,28 +23,7 @@ where
     /// Bus input - sender side
     sender: Sender<Message<T>>,
     /// Bus output - all the senders
-    senders: Arc<Mutex<Vec<(SenderId, Sender<Message<T>>)>>>,
-}
-
-#[derive(Copy, Clone, Eq, PartialEq)]
-struct SenderId(u64);
-
-impl std::fmt::Display for SenderId {
-    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}", self.0)
-    }
-}
-
-impl From<usize> for SenderId {
-    fn from(u: usize) -> Self {
-        (u as u64).into()
-    }
-}
-
-impl From<u64> for SenderId {
-    fn from(u: u64) -> Self {
-        SenderId(u)
-    }
+    senders: Arc<Mutex<Vec<Sender<Message<T>>>>>,
 }
 
 impl<T> SharedState<T>
@@ -55,11 +35,9 @@ where
         let mut senders = self.senders.lock().unwrap();
 
         let (sender, receiver) = unbounded();
+        senders.push(sender);
 
-        let id = senders.len().into();
-        senders.push((id, sender));
-
-        BusConnector::new(receiver, id, self.clone())
+        BusConnector::new(receiver, self.clone())
     }
 }
 
@@ -74,9 +52,8 @@ where
     state: SharedState<T>,
     /// Bus input - receiver side
     receiver: Receiver<Message<T>>,
-    /// Forward the message to the sender as well.
-    forward_to_sender: bool,
 }
+
 impl<T> Debug for Bus<T>
 where
     T: Debug + Clone,
@@ -84,9 +61,8 @@ where
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         write!(
             f,
-            "Bus {{ senders: {}, forward_to_sender: {} ...}}",
+            "Bus {{ senders.len(): {} }}",
             self.state.senders.lock().unwrap().len(),
-            self.forward_to_sender
         )
     }
 }
@@ -95,7 +71,7 @@ impl<T> Bus<T>
 where
     T: Clone,
 {
-    pub fn new(forward_to_sender: bool) -> Self {
+    pub fn new() -> Self {
         let (public_sender, receiver) = unbounded();
         Bus {
             state: SharedState {
@@ -103,7 +79,6 @@ where
                 senders: Default::default(),
             },
             receiver,
-            forward_to_sender,
         }
     }
 
@@ -121,22 +96,9 @@ where
     /// As soon as we don't have any senders it will exit
     fn dispatch(self) {
         drop(self.state.sender);
-        if self.forward_to_sender {
-            for ev in self.receiver {
-                let mut senders = self.state.senders.lock().unwrap();
-                senders.retain(|(_idx, sender)| sender.send(ev.clone()).is_ok());
-            }
-        } else {
-            for ev in self.receiver {
-                let mut senders = self.state.senders.lock().unwrap();
-                senders.retain(|(idx, sender)| {
-                    if *idx != ev.sender_id {
-                        sender.send(ev.clone()).is_ok()
-                    } else {
-                        true
-                    }
-                });
-            }
+        for ev in self.receiver {
+            let mut senders = self.state.senders.lock().unwrap();
+            senders.retain(|sender| sender.send(ev.clone()).is_ok());
         }
     }
 }
@@ -147,18 +109,15 @@ struct Message<T>
 where
     T: Clone,
 {
-    sender_id: SenderId,
     payload: T,
 }
+
 impl<T> Message<T>
 where
     T: Clone,
 {
-    pub fn new<Z: Into<SenderId>>(sender_id: Z, payload: T) -> Self {
-        Self {
-            payload,
-            sender_id: sender_id.into(),
-        }
+    pub fn new(payload: T) -> Self {
+        Self { payload }
     }
 
     /// Consume the messages into the payload
@@ -174,15 +133,14 @@ where
 {
     state: SharedState<T>,
     receiver: Receiver<Message<T>>,
-    id: SenderId,
 }
 
 impl<T: Debug + Clone> Debug for BusConnector<T> {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         write!(
             f,
-            "BusConnection {{ sender: {:?}, receiver: {:?}, id: {} }}",
-            self.state.sender, self.receiver, self.id
+            "BusConnection {{ sender: {:?}, receiver: {:?} }}",
+            self.state.sender, self.receiver
         )
     }
 }
@@ -191,12 +149,8 @@ impl<T> BusConnector<T>
 where
     T: Clone,
 {
-    fn new(receiver: Receiver<Message<T>>, id: SenderId, state: SharedState<T>) -> Self {
-        Self {
-            receiver,
-            id,
-            state,
-        }
+    fn new(receiver: Receiver<Message<T>>, state: SharedState<T>) -> Self {
+        Self { receiver, state }
     }
 
     /// Add another connection to the bus
@@ -205,7 +159,7 @@ where
     }
 
     fn wrap(&self, payload: T) -> Message<T> {
-        Message::new(self.id, payload)
+        Message::new(payload)
     }
 
     /// Blocking
@@ -238,20 +192,21 @@ where
 
 #[cfg(test)]
 mod test {
+    use std::thread;
+    use std::time::Duration;
+
+    use crossbeam::channel;
 
     use crate::horust::bus::{Bus, BusConnector};
     //TODO: remove this reference:
     use crate::horust::formats::{Event, ServiceStatus, ShuttingDown};
-    use crossbeam::channel;
-    use std::thread;
-    use std::time::Duration;
 
     fn init_bus() -> (
         BusConnector<Event>,
         BusConnector<Event>,
         channel::Receiver<()>,
     ) {
-        let bus = Bus::new(true);
+        let bus = Bus::new();
         let a = bus.join_bus();
         let b = bus.join_bus();
         let (sender, receiver) = channel::bounded(48);
@@ -331,7 +286,7 @@ mod test {
 
     #[test]
     fn test_stress() {
-        let bus = Bus::new(true);
+        let bus = Bus::new();
         let mut connectors = vec![];
         let last = bus.join_bus();
         for _i in 0..100 {

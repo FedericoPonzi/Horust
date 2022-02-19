@@ -2,7 +2,6 @@ use assert_cmd::prelude::*;
 use predicates::str::{contains, is_empty};
 use tempdir::TempDir;
 
-#[allow(dead_code)]
 mod utils;
 use nix::sys::signal::{kill, Signal};
 use std::thread::sleep;
@@ -35,13 +34,13 @@ printf "{}" {}"#,
     if to == "STDOUT" {
         cmd.assert()
             .success()
-            .stdout(contains("Hello"))
+            .stdout(contains(pattern))
             .stderr(is_empty());
     } else if to == "STDERR" {
         cmd.assert()
             .success()
             .stdout(is_empty())
-            .stderr(contains("Hello"));
+            .stderr(contains(pattern));
     } else {
         cmd.assert().success().stdout(is_empty()).stdout(is_empty());
         let content = std::fs::read_to_string(&to).unwrap();
@@ -50,16 +49,12 @@ printf "{}" {}"#,
 }
 #[test]
 fn test_output_redirection() {
-    let from = vec!["stdout", "stderr"];
-    let to = vec!["STDOUT", "STDERR", "FILE"];
-    let test_matrix: Vec<(&str, &str)> = from
-        .into_iter()
-        .map(|fr| to.clone().into_iter().map(move |t| (fr, t)))
+    let from = ["stdout", "stderr"];
+    let to = ["STDOUT", "STDERR", "FILE"];
+    from.iter()
+        .map(|fr| to.iter().map(move |t| (fr, t)))
         .flatten()
-        .collect();
-    test_matrix
-        .into_iter()
-        .for_each(|(stream, to)| test_single_output_redirection(stream, to))
+        .for_each(|(stream, to)| test_single_output_redirection(stream, to));
 }
 
 #[test]

@@ -1,4 +1,4 @@
-name = "my-first-service"
+name = "database"
 command = "/bigger/first.sh first!"
 working-directory = "/tmp/"
 start-delay = "2s"
