@@ -25,6 +25,9 @@ pub(crate) use signal_handling::init;
 /// How many pid reap per iteration of the reaper
 const MAX_PROCESS_REAPS_ITERS: u32 = 20;
 
+/// PID 1 is reserved for the init process.
+const INIT_PID: unistd::Pid = unistd::Pid::from_raw(1);
+
 // Spawns and runs this component in a new thread.
 pub fn spawn(
     bus: BusConnector<Event>,
@@ -279,9 +282,8 @@ impl Supervisor {
 
         debug!("All services have finished");
         // If we're the init system, let's be sure that everything stops before exiting.
-        let init_pid = unistd::Pid::from_raw(1);
         // TODO: Test (probably via docker).
-        if unistd::getpid() == init_pid {
+        if unistd::getpid() == INIT_PID {
             let all_processes = unistd::Pid::from_raw(-1);
             let _res = signal::kill(all_processes, signal::SIGTERM);
             thread::sleep(Duration::from_secs(3));

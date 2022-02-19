@@ -36,12 +36,6 @@ impl From<Service> for ServiceHandler {
     }
 }
 
-impl From<ServiceHandler> for Service {
-    fn from(sh: ServiceHandler) -> Self {
-        sh.service
-    }
-}
-
 impl ServiceHandler {
     pub fn start_after(&self) -> &Vec<String> {
         self.service.start_after.as_ref()
@@ -96,11 +90,11 @@ impl ServiceHandler {
     }
 
     pub fn is_finished_failed(&self) -> bool {
-        ServiceStatus::FinishedFailed == self.status
+        matches!(self.status, ServiceStatus::FinishedFailed)
     }
 
     pub fn is_in_killing(&self) -> bool {
-        ServiceStatus::InKilling == self.status
+        matches!(self.status, ServiceStatus::InKilling)
     }
 
     /// Returns true if the last few events of the healthchecker were Unhealthy events.
