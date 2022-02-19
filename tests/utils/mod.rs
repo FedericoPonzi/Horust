@@ -39,6 +39,7 @@ pub fn store_service(
     service_name
 }
 
+#[allow(dead_code)]
 pub fn get_cli_multiple() -> (Command, TempDir, TempDir) {
     let temp_dir = TempDir::new("horust").unwrap();
     let temp_dir_2 = TempDir::new("horust_2").unwrap();

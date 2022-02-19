@@ -23,11 +23,21 @@ pub(crate) fn init() {
     let sig_action = SigAction::new(SigHandler::Handler(handle_sigterm), flags, SigSet::empty());
 
     if let Err(err) = unsafe { sigaction(SIGTERM, &sig_action) } {
-        panic_ssafe("signal_handling: sigaction() SIGTERM failed.", err, 103);
+        panic_ssafe(
+            "signal_handling: sigaction() SIGTERM failed.",
+            None,
+            err,
+            103,
+        );
     };
 
     if let Err(err) = unsafe { sigaction(SIGINT, &sig_action) } {
-        panic_ssafe("signal_handling: sigaction() SIGINT failed .", err, 104);
+        panic_ssafe(
+            "signal_handling: sigaction() SIGINT failed .",
+            None,
+            err,
+            104,
+        );
     };
 }
 

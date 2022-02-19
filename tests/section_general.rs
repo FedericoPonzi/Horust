@@ -2,7 +2,6 @@ use assert_cmd::prelude::*;
 use predicates::str::{contains, is_empty};
 use tempdir::TempDir;
 
-#[allow(dead_code)]
 mod utils;
 use nix::sys::signal::{kill, Signal};
 use std::thread::sleep;

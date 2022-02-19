@@ -33,3 +33,21 @@ impl HorustConfig {
         })
     }
 }
+
+#[cfg(test)]
+mod test {
+    use anyhow::Result;
+
+    use crate::horust::HorustConfig;
+    #[test]
+    fn test_load_and_merge() -> Result<()> {
+        let tempdir = tempdir::TempDir::new("load-and-merge")?;
+        let config_path = tempdir.path().join("config.toml");
+        std::fs::write(&config_path, "Not a toml file :( ")?;
+        let config = HorustConfig {
+            unsuccessful_exit_finished_failed: true,
+        };
+        HorustConfig::load_and_merge(&config, &config_path).unwrap_err();
+        Ok(())
+    }
+}

@@ -1,3 +1,4 @@
+use log::debug;
 use nix::sys::signal::{kill, Signal};
 use std::time::Duration;
 
@@ -86,9 +87,8 @@ fn test_termination_all_custom_signals() {
     ]
     .into_iter()
     .for_each(|friendly_name| {
-        println!("Testing: {}", friendly_name);
+        eprintln!("Testing: {}", friendly_name);
         test_termination_custom_signal(friendly_name);
-        println!("Test done: {}", friendly_name);
     })
 }
 

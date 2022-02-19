@@ -84,14 +84,25 @@ fn child_process_main(
     env_cptr: Vec<&CStr>,
 ) {
     if let Err(errno) = redirect_output(&service.stdout, LogOutput::Stdout) {
-        panic_ssafe("child_process_main: Redirect stdout failed.", errno, 101);
+        panic_ssafe(
+            "child_process_main: Redirect stdout failed.",
+            Some(&service.name),
+            errno,
+            101,
+        );
     }
     if let Err(errno) = redirect_output(&service.stderr, LogOutput::Stderr) {
-        panic_ssafe("child_process_main: Redirect stderr failed.", errno, 102);
+        panic_ssafe(
+            "child_process_main: Redirect stderr failed.",
+            Some(&service.name),
+            errno,
+            102,
+        );
     }
     if let Err(errno) = exec(program_name, arg_cptr, env_cptr, uid, cwd) {
         panic_ssafe(
             "child_process_main: Failed to exec the new process.",
+            Some(&service.name),
             errno,
             103,
         );

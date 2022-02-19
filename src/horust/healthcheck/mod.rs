@@ -164,7 +164,7 @@ mod test {
 
     fn handle_request(listener: TcpListener) -> std::io::Result<()> {
         for stream in listener.incoming() {
-            println!("Received request");
+            info!("Received request");
             let mut buffer = [0; 512];
             let mut stream = stream?;
             stream.read(&mut buffer).unwrap();

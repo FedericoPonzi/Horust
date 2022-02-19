@@ -10,8 +10,12 @@ use nix::errno::Errno;
 use nix::unistd::write;
 
 /// Async-signal-safe panic. Prints s to stderr, and exit with status as code.
-pub(crate) fn panic_ssafe(s: &str, errno: Errno, status: i32) {
-    eprint_ssafe(s);
+pub(crate) fn panic_ssafe(message: &str, service: Option<&str>, errno: Errno, status: i32) {
+    if let Some(serv_name) = service {
+        eprint_ssafe(serv_name);
+        eprint_ssafe(": ");
+    }
+    eprint_ssafe(message);
     eprint_ssafe_errno(errno);
     exit_ssafe(status);
 }
@@ -92,7 +96,6 @@ mod test {
 
     #[test]
     fn test_int_to_string_conversion() {
-        println!("{}, {}", i32::MAX, i32::MIN);
         let test = |i| {
             let (res, digits) = i32_to_str_bytes(i);
             assert_eq!(&res[digits..], format!("{}", i).as_bytes());
