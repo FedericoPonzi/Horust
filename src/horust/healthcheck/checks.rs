@@ -1,7 +1,9 @@
-use crate::horust::formats::Healthiness;
+use std::time::Duration;
+
 #[cfg(feature = "http-healthcheck")]
 use reqwest::blocking::Client;
-use std::time::Duration;
+
+use crate::horust::formats::Healthiness;
 
 static FILE_CHECK: FilePathCheck = FilePathCheck {};
 static HTTP_CHECK: HttpCheck = HttpCheck {};
@@ -16,6 +18,7 @@ pub(crate) trait Check {
         Ok(())
     }
 }
+
 /// HTTP based healthcheck: will send an head request with 1 second timeout, and the test will be
 /// considered failed if the repsonse is anything other than `200`.
 pub(crate) struct HttpCheck;
@@ -27,7 +30,7 @@ impl Check for HttpCheck {
         healthiness
             .http_endpoint.as_ref()
             .map(|endpoint| {
-                if cfg!(not(feature = "http-healthcheck")){
+                if cfg!(not(feature = "http-healthcheck")) {
                     error!("There is an http based healthcheck, but horust was built without the http-healthcheck feature (thus it will never pass these checks).");
                     return false;
                 }

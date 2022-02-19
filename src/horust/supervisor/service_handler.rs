@@ -1,10 +1,12 @@
+use std::time::Instant;
+
+use nix::unistd::Pid;
+
 use crate::horust::formats::{
     FailureStrategy, HealthinessStatus, RestartStrategy, Service, ServiceName, ServiceStatus,
 };
 use crate::horust::supervisor::repo::Repo;
 use crate::horust::Event;
-use nix::unistd::Pid;
-use std::time::Instant;
 
 use super::{LifecycleStatus, ShuttingDown};
 
@@ -374,15 +376,17 @@ fn should_force_kill(
 
 #[cfg(test)]
 mod test {
+    use std::ops::Sub;
+    use std::str::FromStr;
+    use std::time::Duration;
+
+    use nix::unistd::Pid;
+
     use crate::horust::formats::{FailureStrategy, Service, ServiceStatus, ShuttingDown};
     use crate::horust::supervisor::service_handler::{
         handle_failed_service, handle_restart_strategy, should_force_kill, ServiceHandler,
     };
     use crate::horust::Event;
-    use nix::unistd::Pid;
-    use std::ops::Sub;
-    use std::str::FromStr;
-    use std::time::Duration;
 
     #[test]
     fn test_handle_restart_strategy() {

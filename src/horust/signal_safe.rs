@@ -42,6 +42,7 @@ fn exit_ssafe(status: i32) {
         _exit(status);
     }
 }
+
 /// usage:
 /// let (res, digits) = i32_to_str_bytes(10);
 /// // use it as:

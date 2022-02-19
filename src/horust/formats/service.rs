@@ -51,6 +51,7 @@ pub struct Service {
     #[serde(default)]
     pub termination: Termination,
 }
+
 impl Service {
     fn default_working_directory() -> PathBuf {
         PathBuf::from("/")
@@ -94,6 +95,7 @@ impl Service {
         }
     }
 }
+
 impl Default for Service {
     fn default() -> Self {
         Self {
@@ -151,6 +153,7 @@ impl<'de> Deserialize<'de> for LogOutput {
 }
 
 struct LogOutputVisitor;
+
 impl<'de> Visitor<'de> for LogOutputVisitor {
     type Value = LogOutput;
 
@@ -176,6 +179,7 @@ impl From<String> for LogOutput {
         strategy.as_str().into()
     }
 }
+
 impl From<LogOutput> for String {
     fn from(l: LogOutput) -> Self {
         use LogOutput::*;
@@ -297,11 +301,13 @@ pub struct Healthiness {
     #[serde(default = "Healthiness::default_max_failed")]
     pub max_failed: i32,
 }
+
 impl Healthiness {
     fn default_max_failed() -> i32 {
         3
     }
 }
+
 impl Default for Healthiness {
     fn default() -> Self {
         Self {
@@ -311,6 +317,7 @@ impl Default for Healthiness {
         }
     }
 }
+
 /// A user in the system.
 /// It can be either a uuid or a username (available in passwd)
 #[derive(Serialize, Clone, Deserialize, Debug, Eq, PartialEq)]
@@ -331,6 +338,7 @@ impl Default for User {
         unistd::getuid().into()
     }
 }
+
 impl User {
     pub(crate) fn get_uid(&self) -> Result<unistd::Uid> {
         match &self {
@@ -566,6 +574,7 @@ pub enum TerminationSignal {
     PWR,
     SYS,
 }
+
 impl From<TerminationSignal> for Signal {
     fn from(ts: TerminationSignal) -> Self {
         use nix::sys::signal::*;

@@ -1,20 +1,24 @@
+use std::ffi::OsStr;
+use std::fmt::Debug;
+use std::fs;
+use std::path::{Path, PathBuf};
+
+use anyhow::Result;
+use libc::{prctl, PR_SET_CHILD_SUBREAPER};
+
+pub use formats::Event;
+
+use crate::horust::bus::Bus;
+use crate::horust::formats::{validate, Service};
+
+pub use self::formats::{get_sample_service, ExitStatus, HorustConfig};
+
 mod bus;
 mod error;
 mod formats;
 mod healthcheck;
 mod signal_safe;
 mod supervisor;
-
-pub use self::formats::{get_sample_service, ExitStatus, HorustConfig};
-use crate::horust::bus::Bus;
-use crate::horust::formats::{validate, Service};
-use anyhow::Result;
-pub use formats::Event;
-use libc::{prctl, PR_SET_CHILD_SUBREAPER};
-use std::ffi::OsStr;
-use std::fmt::Debug;
-use std::fs;
-use std::path::{Path, PathBuf};
 
 #[derive(Debug)]
 pub struct Horust {
@@ -138,12 +142,15 @@ fn fetch_services(path: PathBuf) -> Result<Vec<Service>> {
 
 #[cfg(test)]
 mod test {
-    use crate::horust::fetch_services;
-    use crate::horust::formats::Service;
     use std::fs;
     use std::io;
     use std::path::{Path, PathBuf};
+
     use tempdir::TempDir;
+
+    use crate::horust::fetch_services;
+    use crate::horust::formats::Service;
+
     const FIRST_SERVICE_FILENAME: &str = "my-first-service.toml";
     const SECOND_SERVICE_FILENAME: &str = "my-second-service.toml";
 

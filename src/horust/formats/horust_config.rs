@@ -1,6 +1,7 @@
+use std::path::Path;
+
 use anyhow::Result;
 use serde::{Deserialize, Serialize};
-use std::path::Path;
 use structopt::StructOpt;
 
 // TODO: this should be an optional

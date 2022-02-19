@@ -5,12 +5,13 @@
 //! will arrive to every receiver. For this reason, the message should implement Clone.
 //!
 
-use crossbeam::channel::{unbounded, Receiver, Sender};
 use std::fmt::Formatter;
 use std::{
     fmt::Debug,
     sync::{Arc, Mutex},
 };
+
+use crossbeam::channel::{unbounded, Receiver, Sender};
 
 /// Bus state shared between `Bus` and all `BusConnector` instances.
 /// It contains all necessary components to send data and join the bus.
@@ -52,6 +53,7 @@ where
     /// Bus input - receiver side
     receiver: Receiver<Message<T>>,
 }
+
 impl<T> Debug for Bus<T>
 where
     T: Debug + Clone,
@@ -109,6 +111,7 @@ where
 {
     payload: T,
 }
+
 impl<T> Message<T>
 where
     T: Clone,
@@ -189,13 +192,14 @@ where
 
 #[cfg(test)]
 mod test {
+    use std::thread;
+    use std::time::Duration;
+
+    use crossbeam::channel;
 
     use crate::horust::bus::{Bus, BusConnector};
     //TODO: remove this reference:
     use crate::horust::formats::{Event, ServiceStatus, ShuttingDown};
-    use crossbeam::channel;
-    use std::thread;
-    use std::time::Duration;
 
     fn init_bus() -> (
         BusConnector<Event>,

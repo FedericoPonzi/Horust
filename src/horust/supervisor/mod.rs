@@ -2,25 +2,27 @@
 //! keeping track of their current state.
 //! It will also reap the dead processes
 
-use crate::horust::bus::BusConnector;
-use crate::horust::formats::{Event, ExitStatus, Service, ServiceStatus, ShuttingDown};
-use crate::horust::healthcheck;
-use nix::sys::signal;
-use nix::unistd;
-use repo::Repo;
-use service_handler::ServiceHandler;
 use std::fmt::Debug;
 use std::ops::Mul;
 use std::thread;
 use std::time::{Duration, Instant};
+
+use nix::sys::signal;
+use nix::unistd;
+
+use repo::Repo;
+use service_handler::ServiceHandler;
+pub(crate) use signal_handling::init;
+
+use crate::horust::bus::BusConnector;
+use crate::horust::formats::{Event, ExitStatus, Service, ServiceStatus, ShuttingDown};
+use crate::horust::healthcheck;
 
 mod process_spawner;
 mod reaper;
 mod repo;
 mod service_handler;
 mod signal_handling;
-
-pub(crate) use signal_handling::init;
 
 /// How many pid reap per iteration of the reaper
 const MAX_PROCESS_REAPS_ITERS: u32 = 20;
