@@ -30,7 +30,7 @@ pub(crate) fn eprint_ssafe_errno(s: Errno) {
     eprint_ssafe(NEW_LINE);
     eprint_ssafe("Errno: (");
     let (bytes, digits) = i32_to_str_bytes(s as i32);
-    write(STDERR_FILENO, &bytes[..digits]);
+    write(STDERR_FILENO, &bytes[digits..]);
     eprint_ssafe(") ");
     eprint_ssafe(s.desc());
     eprint_ssafe(NEW_LINE);
