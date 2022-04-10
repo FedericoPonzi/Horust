@@ -172,13 +172,12 @@ fn next_events(repo: &Repo, service_handler: &ServiceHandler) -> Vec<Event> {
             let other_services_termination = repo
                 .get_die_if_failed(service_handler.name())
                 .into_iter()
-                .map(|sh_name| {
+                .flat_map(|sh_name| {
                     vec![
                         Event::new_status_update(sh_name, ServiceStatus::InKilling),
                         Event::Kill(sh_name.clone()),
                     ]
-                })
-                .flatten();
+                });
 
             let service_ev = handle_restart_strategy(service_handler, true);
 
@@ -329,13 +328,12 @@ fn handle_failed_service(deps: Vec<ServiceName>, failed_sh: &Service) -> Vec<Eve
         FailureStrategy::KillDependents => {
             debug!("Failed service has kill-dependents strategy, going to mark them all..");
             deps.iter()
-                .map(|sh| {
+                .flat_map(|sh| {
                     vec![
                         Event::new_status_update(sh, ServiceStatus::InKilling),
                         Event::Kill(sh.clone()),
                     ]
                 })
-                .flatten()
                 .collect()
         }
         FailureStrategy::Ignore => vec![],
@@ -390,7 +388,7 @@ mod test {
 
     #[test]
     fn test_handle_restart_strategy() {
-        let new_status = |status| Event::new_status_update(&"servicename".to_string(), status);
+        let new_status = |status| Event::new_status_update("servicename", status);
         let matrix = vec![
             (false, "always", new_status(ServiceStatus::Initial)),
             (true, "always", new_status(ServiceStatus::Initial)),
@@ -449,13 +447,13 @@ wait = "10s"
         service.failure.strategy = FailureStrategy::KillDependents;
         let evs = handle_failed_service(vec!["a".into()], &service);
         let exp = vec![
-            Event::new_status_update(&"a".to_string(), ServiceStatus::InKilling),
+            Event::new_status_update("a", ServiceStatus::InKilling),
             Event::Kill("a".into()),
         ];
         assert_eq!(evs, exp);
 
         service.failure.strategy = FailureStrategy::Shutdown;
-        let evs = handle_failed_service(vec!["a".into()], &service.into());
+        let evs = handle_failed_service(vec!["a".into()], &service);
         let exp = vec![Event::ShuttingDownInitiated(ShuttingDown::Gracefuly)];
         assert_eq!(evs, exp);
     }

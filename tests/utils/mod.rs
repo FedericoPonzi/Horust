@@ -1,5 +1,4 @@
 use assert_cmd::prelude::*;
-use libc::pid_t;
 use nix::sys::signal::{kill, Signal};
 use nix::unistd::Pid;
 use rand::distributions::Alphanumeric;
@@ -25,7 +24,7 @@ pub fn store_service(
         .take(5)
         .map(|x| x as char)
         .collect::<String>();
-    let service_name = format!("{}.toml", service_name.unwrap_or_else(|| rnd_name.as_str()));
+    let service_name = format!("{}.toml", service_name.unwrap_or(rnd_name.as_str()));
     let script_name = format!("{}.sh", rnd_name);
     let script_path = dir.join(script_name);
     std::fs::write(&script_path, script).unwrap();
@@ -73,12 +72,12 @@ pub fn run_async(cmd: &mut Command, should_succeed: bool) -> RecvWrapper {
     let mut child = cmd.spawn().unwrap();
     thread::sleep(Duration::from_millis(500));
 
-    let pid = pid_from_id(child.id());
+    let pid = Pid::from_raw(child.id() as i32);
     let (sender, receiver) = mpsc::sync_channel(0);
 
     let _handle = thread::spawn(move || {
         sender
-            .send(child.wait().expect("wait").success())
+            .send(child.wait().expect("wait failed").success())
             .expect("test didn't terminate in time, so chan is closed!");
     });
     RecvWrapper {
@@ -109,9 +108,4 @@ impl RecvWrapper {
             }
         }
     }
-}
-
-fn pid_from_id(id: u32) -> Pid {
-    let id: pid_t = id as i32;
-    Pid::from_raw(id)
 }

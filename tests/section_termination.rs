@@ -78,6 +78,7 @@ wait = "10s""#,
     recv.recv_or_kill(Duration::from_secs(20));
 }
 
+/// User can set a custom termination signal, this test will ensure we're sending the correct one.
 #[test]
 fn test_termination_all_custom_signals() {
     vec![

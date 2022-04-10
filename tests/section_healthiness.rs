@@ -15,7 +15,7 @@ fn handle_requests(listener: TcpListener, stop: Receiver<()>) -> std::io::Result
                 let mut buffer = [0; 512];
                 stream.read(&mut buffer).unwrap();
                 let response = b"HTTP/1.1 200 OK\r\n\r\n";
-                stream.write(response).expect("Stream write");
+                stream.write_all(response).expect("Stream write");
             }
             Err(_error) => {
                 if let Ok(()) | Err(TryRecvError::Disconnected) = stop.try_recv() {

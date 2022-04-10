@@ -52,8 +52,7 @@ fn test_output_redirection() {
     let from = ["stdout", "stderr"];
     let to = ["STDOUT", "STDERR", "FILE"];
     from.iter()
-        .map(|fr| to.iter().map(move |t| (fr, t)))
-        .flatten()
+        .flat_map(|fr| to.iter().map(move |t| (fr, t)))
         .for_each(|(stream, to)| test_single_output_redirection(stream, to));
 }
 

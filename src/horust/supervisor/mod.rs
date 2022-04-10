@@ -257,8 +257,7 @@ impl Supervisor {
             // Handling of the received events and commands:
             let produced_events = received_events
                 .into_iter()
-                .map(|ev| self.handle_event(ev))
-                .flatten()
+                .flat_map(|ev| self.handle_event(ev))
                 .collect::<Vec<Event>>();
             debug!("Produced events: {:?}", produced_events);
             // Producing commands which will be applied in the next iteration
@@ -266,8 +265,7 @@ impl Supervisor {
                 .repo
                 .services
                 .iter()
-                .map(|(_s_name, sh)| sh.next(&self.repo, self.status))
-                .flatten()
+                .flat_map(|(_s_name, sh)| sh.next(&self.repo, self.status))
                 .chain(reaper::run(&self.repo, MAX_PROCESS_REAPS_ITERS))
                 .collect();
             debug!("Next evs: {:?}", next_evs);
