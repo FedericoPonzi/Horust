@@ -19,15 +19,21 @@ pub(crate) fn run(repo: &Repo, max_iterations: u32) -> Vec<Event> {
     (0..max_iterations)
         .filter_map(
             |_| match waitpid(Pid::from_raw(-1), Some(WaitPidFlag::WNOHANG)) {
-                Ok(wait_status) => {
-                    if let WaitStatus::Exited(pid, exit_code) = wait_status {
+                Ok(wait_status) => match wait_status {
+                    WaitStatus::Exited(pid, exit_code) => {
                         debug!("Pid '{}' has exited with status: {}", pid, exit_code);
                         repo.get_service_by_pid(pid)
                             .map(|s_name| (s_name, exit_code))
-                    } else {
-                        None
                     }
-                }
+                    WaitStatus::Signaled(pid, signal, core_dumped) => {
+                        debug!(
+                            "Pid '{:?}' has exited due to signal: {:?}. Core dumped: {}",
+                            pid, signal, core_dumped
+                        );
+                        repo.get_service_by_pid(pid).map(|s_name| (s_name, -137))
+                    }
+                    _ => None,
+                },
                 Err(err) => {
                     // waitpid() call can fail with:
                     // EINVAL: Options argument is not valid - should not apply.

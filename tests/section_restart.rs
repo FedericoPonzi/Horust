@@ -1,7 +1,15 @@
+use std::time::Duration;
+
+use assert_cmd::cmd::Command;
+use libc::{
+    c_int, SIGABRT, SIGBUS, SIGFPE, SIGHUP, SIGILL, SIGINT, SIGKILL, SIGPIPE, SIGPOLL, SIGPROF,
+    SIGQUIT, SIGSEGV, SIGSYS, SIGTERM, SIGTRAP, SIGUSR1, SIGUSR2, SIGVTALRM, SIGXCPU, SIGXFSZ,
+};
+use predicates::prelude::predicate;
+use utils::*;
+
 #[allow(dead_code)]
 mod utils;
-use std::time::Duration;
-use utils::*;
 
 fn restart_attempts(should_contain: bool, attempts: u32) {
     let (mut cmd, temp_dir) = get_cli();
@@ -35,7 +43,7 @@ attempts = {}
         None,
     );
     let mut cmd = cmd.args(vec!["--unsuccessful-exit-finished-failed"]);
-    let recv = run_async(&mut cmd, should_contain);
+    let recv = run_async(cmd, should_contain);
     recv.recv_or_kill(Duration::from_secs(15));
 }
 
@@ -59,13 +67,12 @@ fi
 "#,
         temp_dir.path().join("file.temp").display()
     );
-    let service = format!(
-        r#"
+    let service = r#"
 [restart]
 attempts = 0
 strategy = "on-failure"
-"#,
-    );
+"#
+    .to_string();
     store_service(
         temp_dir.path(),
         failing_once_script.as_str(),
@@ -73,6 +80,75 @@ strategy = "on-failure"
         None,
     );
     let mut cmd = cmd.args(vec!["--unsuccessful-exit-finished-failed"]);
-    let recv = run_async(&mut cmd, true);
+    let recv = run_async(cmd, true);
     recv.recv_or_kill(Duration::from_secs(15));
+}
+
+/// With restart strategy set to always, the child service should be always restarted regardless of
+/// the reason why it exited.
+fn test_restart_always_signal(signal: i32) -> Result<(), std::io::Error> {
+    let (cmd, temp_dir) = get_cli();
+    let mut cmd = Command::from_std(cmd);
+
+    let suicide_script = format!(
+        r#"#!/usr/bin/env bash
+echo "restarting"
+kill -{} $$
+"#,
+        signal
+    );
+    let service = r#"
+[restart]
+strategy = "always"
+"#;
+    store_service(
+        temp_dir.path(),
+        suicide_script.as_str(),
+        Some(service),
+        None,
+    );
+    cmd.timeout(Duration::from_millis(2000))
+        .assert()
+        .failure()
+        .stdout(predicate::function(|x: &str| {
+            x.matches("restarting").count() >= 2
+        }));
+
+    Ok(())
+}
+
+#[test]
+fn test_restart_always_killed_by_signals() -> Result<(), std::io::Error> {
+    const DEFAULT_TERMINATE: [c_int; 20] = [
+        SIGABRT, SIGBUS, SIGFPE, SIGHUP, SIGILL, SIGINT, SIGKILL, SIGPIPE, SIGPOLL, SIGPROF,
+        SIGQUIT, SIGSEGV, SIGSYS, SIGTERM, SIGTRAP, SIGUSR1, SIGUSR2, SIGVTALRM, SIGXCPU, SIGXFSZ,
+    ];
+    for sig in DEFAULT_TERMINATE {
+        test_restart_always_signal(sig as i32)?;
+    }
+    Ok(())
+}
+
+#[test]
+fn test_restart_always_normal_exit() -> Result<(), std::io::Error> {
+    let (cmd, temp_dir) = get_cli();
+    let mut cmd = Command::from_std(cmd);
+
+    let suicide_script = r#"#!/usr/bin/env bash
+echo "restarting"
+sleep 0.5
+"#;
+    let service = r#"
+[restart]
+strategy = "always"
+"#;
+    store_service(temp_dir.path(), suicide_script, Some(service), None);
+    cmd.timeout(Duration::from_millis(2000))
+        .assert()
+        .failure()
+        .stdout(predicate::function(|x: &str| {
+            x.matches("restarting").count() >= 2
+        }));
+
+    Ok(())
 }
