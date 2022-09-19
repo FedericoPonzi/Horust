@@ -1,4 +1,3 @@
-use log::debug;
 use nix::sys::signal::{kill, Signal};
 use std::time::Duration;
 
