@@ -1,15 +1,14 @@
 use std::path::PathBuf;
 
 use anyhow::{Context, Result};
-use itertools::Itertools;
-use log::{error, info};
-use structopt::StructOpt;
-
+use clap::Parser;
 use horust::horust::ExitStatus;
 use horust::horust::HorustConfig;
 use horust::Horust;
+use itertools::Itertools;
+use log::{error, info};
 
-#[derive(StructOpt, Debug)]
+#[derive(clap::Parser, Debug)]
 #[structopt(author, about)]
 /// Horust is a complete supervisor and init system, designed for running in containers.
 struct Opts {
@@ -40,7 +39,7 @@ fn main() -> Result<()> {
         .write_style("HORUST_LOG_STYLE");
     env_logger::init_from_env(env);
 
-    let opts = Opts::from_args();
+    let opts = Opts::parse();
 
     if opts.sample_service {
         println!("{}", horust::get_sample_service());

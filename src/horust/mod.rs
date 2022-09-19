@@ -30,7 +30,7 @@ impl Horust {
         Horust { services }
     }
 
-    pub fn get_services(&self) -> &Vec<Service> {
+    pub fn get_services(&self) -> &[Service] {
         &self.services
     }
     /// Creates a new Horust instance from a command.
@@ -39,22 +39,11 @@ impl Horust {
         Self::new(vec![Service::from_command(command)])
     }
 
-    /// Create a new horust instance from a path of services.
-    pub fn from_services_dir<P>(path: &P) -> Result<Self>
-    where
-        P: AsRef<Path> + AsRef<OsStr> + Debug,
-    {
-        Self::from_services_dirs(&[path])
-    }
-
     /// Create a new horust instance from multiple paths of services.
-    pub fn from_services_dirs<P>(paths: &[P]) -> Result<Self>
-    where
-        P: AsRef<Path> + Sized + AsRef<OsStr> + Debug,
-    {
+    pub fn from_services_dirs(paths: &[PathBuf]) -> Result<Self> {
         let services = paths
             .iter()
-            .map(|path| fetch_services(path.into()))
+            .map(|path| fetch_services(path))
             .flat_map(|result| match result {
                 Ok(vec) => vec.into_iter().map(Ok).collect(),
                 Err(err) => vec![Err(err)],
@@ -85,7 +74,7 @@ impl Horust {
 fn load_service<P>(path: P) -> Result<Service>
 where
     P: AsRef<Path> + Sized + AsRef<OsStr> + Debug,
-    std::path::PathBuf: std::convert::From<P>,
+    PathBuf: From<P>,
 {
     let res = Service::from_file(&path);
     let path = PathBuf::from(path);
@@ -116,26 +105,30 @@ fn is_toml_file(path: &Path) -> bool {
 
 // TODO: option to decide to not start if the deserialization of any service failed.
 /// Search for *.toml files in path, and deserialize them into Service.
-fn fetch_services(path: PathBuf) -> Result<Vec<Service>> {
-    debug!("Fetching services from : {:?}", path);
-    let error_no_services_found = format!("Horust: No services found in: {:?}", path.display());
+fn fetch_services(path: &Path) -> Result<Vec<Service>> {
+    debug!("Fetching services from: {}", path.display());
 
     let paths = if path.is_file() {
-        vec![path]
+        vec![path.to_path_buf()]
     } else {
         fs::read_dir(&path)?
+            .inspect(|p| {
+                if let Err(err) = p {
+                    error!("Error loading entry: {}", err);
+                }
+            })
             .filter_map(Result::ok)
             .map(|direntry| direntry.path())
             .collect()
     };
     let services = paths
         .into_iter()
-        .filter(|p| is_toml_file(p.as_ref()))
+        .filter(|p| is_toml_file(p))
         .map(load_service)
         .filter_map(Result::ok)
         .collect::<Vec<Service>>();
     if services.is_empty() {
-        error!("{}", error_no_services_found);
+        error!("Horust: No (valid) services found in: {}", path.display());
     }
     Ok(services)
 }
@@ -155,9 +148,9 @@ mod test {
     const SECOND_SERVICE_FILENAME: &str = "my-second-service.toml";
 
     /// List files in path, filtering out directories
-    fn list_files<P: AsRef<Path>>(path: P) -> std::io::Result<Vec<PathBuf>> {
+    fn list_files<P: AsRef<Path>>(path: P) -> io::Result<Vec<PathBuf>> {
         fs::read_dir(path)?
-            .filter_map(|entry| entry.ok())
+            .filter_map(Result::ok)
             .try_fold(vec![], |mut ret, entry| {
                 entry.file_type().map(|ftype| {
                     if ftype.is_file() {
@@ -183,32 +176,26 @@ mod test {
     fn test_fetch_services() -> io::Result<()> {
         let tempdir = TempDir::new("horust").unwrap();
         // Empty service directory will print a log but it's not an error.
-        assert_eq!(
-            fetch_services(tempdir.path().to_path_buf()).unwrap().len(),
-            0
-        );
+        assert_eq!(fetch_services(tempdir.path()).unwrap().len(), 0);
         let not_toml_file = tempdir.path().join("not_a_toml.toml");
         std::fs::write(not_toml_file.clone(), "not really a toml.")?;
 
         // Today Horust filters out invalid toml files.
-        assert_eq!(
-            fetch_services(tempdir.path().to_path_buf()).unwrap().len(),
-            0
-        );
+        assert_eq!(fetch_services(tempdir.path()).unwrap().len(), 0);
 
         // This is not a directory
-        assert_eq!(fetch_services(not_toml_file).unwrap().len(), 0);
+        assert_eq!(fetch_services(&not_toml_file).unwrap().len(), 0);
 
         let tempdir = create_test_dir()?;
-        std::fs::write(tempdir.path().join("not-a-service"), "Hello world")?;
-        let res = fetch_services(tempdir.path().to_path_buf()).unwrap();
+        fs::write(tempdir.path().join("not-a-service"), "Hello world")?;
+        let res = fetch_services(tempdir.path()).unwrap();
         assert_eq!(res.len(), 2,);
         let mut names: Vec<String> = res.into_iter().map(|serv| serv.name).collect();
         names.sort();
         assert_eq!(vec!["a", "b"], names);
 
         // Load a service from a single file instead of a directory
-        let res = fetch_services(tempdir.path().join(FIRST_SERVICE_FILENAME)).unwrap();
+        let res = fetch_services(&tempdir.path().join(FIRST_SERVICE_FILENAME)).unwrap();
         assert_eq!(res.len(), 1,);
 
         Ok(())

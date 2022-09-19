@@ -13,7 +13,7 @@ fn handle_requests(listener: TcpListener, stop: Receiver<()>) -> std::io::Result
         match stream {
             Ok(mut stream) => {
                 let mut buffer = [0; 512];
-                stream.read(&mut buffer).unwrap();
+                stream.read(&mut buffer)?;
                 let response = b"HTTP/1.1 200 OK\r\n\r\n";
                 stream.write_all(response).expect("Stream write");
             }

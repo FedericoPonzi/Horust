@@ -2,14 +2,13 @@ use std::path::Path;
 
 use anyhow::Result;
 use serde::{Deserialize, Serialize};
-use structopt::StructOpt;
 
 // TODO: this should be an optional
 // otherwise we wouldn't know if it was set to false on the commandline. Maybe. Because it's a flag.
 
-#[derive(Debug, StructOpt, Serialize, Deserialize, Default)]
+#[derive(Debug, clap::Parser, Serialize, Deserialize, Default)]
 pub struct HorustConfig {
-    #[structopt(long)]
+    #[clap(long)]
     /// Exits with an unsuccessful exit code if any process is in FinishedFailed state
     pub unsuccessful_exit_finished_failed: bool,
 }

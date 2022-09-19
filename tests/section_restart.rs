@@ -42,7 +42,7 @@ attempts = {}
         Some(service.as_str()),
         None,
     );
-    let mut cmd = cmd.args(vec!["--unsuccessful-exit-finished-failed"]);
+    let cmd = cmd.args(vec!["--unsuccessful-exit-finished-failed"]);
     let recv = run_async(cmd, should_contain);
     recv.recv_or_kill(Duration::from_secs(15));
 }
@@ -79,7 +79,7 @@ strategy = "on-failure"
         Some(service.as_str()),
         None,
     );
-    let mut cmd = cmd.args(vec!["--unsuccessful-exit-finished-failed"]);
+    let cmd = cmd.args(vec!["--unsuccessful-exit-finished-failed"]);
     let recv = run_async(cmd, true);
     recv.recv_or_kill(Duration::from_secs(15));
 }
