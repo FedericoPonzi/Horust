@@ -27,7 +27,7 @@ struct Opts {
     /// Path to service file or a directory containing services to run. You can provide more than one argument to load multiple directories / services.
     services_paths: Vec<PathBuf>,
 
-    #[clap(required = false, multiple = true, min_values = 0, last = true)]
+    #[clap(required = false, last = true)]
     /// Specify a command to run instead of load services path. Useful if you just want to use the reaping capability. Prefix your command with --
     command: Vec<String>,
 }
