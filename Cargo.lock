@@ -395,7 +395,6 @@ dependencies = [
  "crossbeam",
  "env_logger",
  "humantime-serde",
- "itertools",
  "libc",
  "log",
  "maplit",

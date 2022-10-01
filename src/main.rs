@@ -5,7 +5,6 @@ use clap::Parser;
 use horust::horust::ExitStatus;
 use horust::horust::HorustConfig;
 use horust::Horust;
-use itertools::Itertools;
 use log::{error, info};
 
 #[derive(clap::Parser, Debug)]
@@ -56,7 +55,7 @@ fn main() -> Result<()> {
 
     let mut horust = if !opts.command.is_empty() {
         info!("Running command: {:?}", opts.command);
-        Horust::from_command(opts.command.into_iter().join(" "))
+        Horust::from_command(opts.command.join(" "))
     } else {
         info!(
             "Loading services from {}",
@@ -84,7 +83,10 @@ fn display_directories(dirs: &[PathBuf]) -> String {
         1 => format!("directory: {}", dirs.first().unwrap().display()),
         _ => format!(
             "directories:\n{}",
-            dirs.iter().map(|d| format!("* {}", d.display())).join("\n")
+            dirs.iter()
+                .map(|d| format!("* {}", d.display()))
+                .collect::<Vec<String>>()
+                .join("\n"),
         ),
     }
 }

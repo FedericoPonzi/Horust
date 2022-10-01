@@ -10,7 +10,7 @@ use crate::horust::Event;
 
 use super::{LifecycleStatus, ShuttingDown};
 
-#[derive(Clone, Debug, Eq, PartialEq)]
+#[derive(Clone, Debug, Eq, PartialEq, Default)]
 pub(crate) struct ServiceHandler {
     service: Service,
     /// Status of this service.
@@ -29,16 +29,21 @@ impl From<Service> for ServiceHandler {
     fn from(service: Service) -> Self {
         ServiceHandler {
             service,
-            status: ServiceStatus::Initial,
-            pid: None,
-            shutting_down_start: None,
-            restart_attempts: 0,
-            healthiness_checks_failed: None,
+            ..Default::default()
         }
     }
 }
 
 impl ServiceHandler {
+    fn is_alive_state(&self) -> bool {
+        const ALIVE_STATES: [ServiceStatus; 3] = [
+            ServiceStatus::Running,
+            ServiceStatus::Started,
+            ServiceStatus::Starting,
+        ];
+        ALIVE_STATES.contains(&self.status)
+    }
+
     pub fn start_after(&self) -> &Vec<String> {
         self.service.start_after.as_ref()
     }
@@ -69,15 +74,8 @@ impl ServiceHandler {
     pub fn change_status(&self, new_status: ServiceStatus) -> (ServiceHandler, ServiceStatus) {
         handle_status_change(self, new_status)
     }
-    fn is_alive_state(&self) -> bool {
-        const ALIVE_STATES: [ServiceStatus; 3] = [
-            ServiceStatus::Running,
-            ServiceStatus::Started,
-            ServiceStatus::Starting,
-        ];
-        ALIVE_STATES.contains(&self.status)
-    }
 
+    /// Restart attempts are over if the attempts field is zero or we already retried enough times.
     pub fn restart_attempts_are_over(&self) -> bool {
         self.service.restart.attempts == 0 || self.restart_attempts > self.service.restart.attempts
     }
@@ -286,7 +284,7 @@ fn handle_status_change(
             }
         }
     } else {
-        debug!(
+        error!(
             "Tried to make an illegal transition: (current) {} ⇾ {} (received) for service: {}",
             service_handler.status,
             next_status,

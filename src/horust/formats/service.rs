@@ -367,7 +367,7 @@ impl User {
     }
 }
 
-#[derive(Serialize, Clone, Deserialize, Debug, Eq, PartialEq, Hash)]
+#[derive(Serialize, Clone, Deserialize, Debug, Eq, PartialEq, Hash, Default)]
 pub enum ServiceStatus {
     /// The service will be started asap
     Starting,
@@ -387,6 +387,7 @@ pub enum ServiceStatus {
     Failed,
     /// This is the initial state: A service in Initial state is marked to be runnable:
     /// it will be run as soon as possible.
+    #[default]
     Initial,
 }
 

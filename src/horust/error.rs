@@ -1,5 +1,3 @@
-use itertools::Itertools;
-
 #[derive(Debug, thiserror::Error)]
 #[error("Found following errors during validation phase: {}", validation_errors(.0))]
 pub struct ValidationErrors(Vec<ValidationError>);
@@ -11,7 +9,11 @@ impl ValidationErrors {
 }
 
 fn validation_errors(errors: &[ValidationError]) -> String {
-    errors.iter().map(|s| format!("* {}", s)).join("\n")
+    errors
+        .iter()
+        .map(|s| format!("* {}", s))
+        .collect::<Vec<String>>()
+        .join("\n")
 }
 
 #[derive(Debug, thiserror::Error)]
