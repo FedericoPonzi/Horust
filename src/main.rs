@@ -9,25 +9,25 @@ use itertools::Itertools;
 use log::{error, info};
 
 #[derive(clap::Parser, Debug)]
-#[structopt(author, about)]
+#[clap(author, about)]
 /// Horust is a complete supervisor and init system, designed for running in containers.
 struct Opts {
-    #[structopt(long, default_value = "/etc/horust/horust.toml")]
+    #[clap(long, default_value = "/etc/horust/horust.toml")]
     /// Horust's path to config.
     config_path: PathBuf,
 
-    #[structopt(flatten)]
+    #[clap(flatten)]
     horust_config: HorustConfig,
 
-    #[structopt(long)]
+    #[clap(long)]
     /// Print a sample service file with all the possible options
     sample_service: bool,
 
-    #[structopt(long = "services-path", default_value = "/etc/horust/services")]
+    #[clap(long = "services-path", default_value = "/etc/horust/services")]
     /// Path to service file or a directory containing services to run. You can provide more than one argument to load multiple directories / services.
     services_paths: Vec<PathBuf>,
 
-    #[structopt(required = false, multiple = true, min_values = 0, last = true)]
+    #[clap(required = false, last = true)]
     /// Specify a command to run instead of load services path. Useful if you just want to use the reaping capability. Prefix your command with --
     command: Vec<String>,
 }
