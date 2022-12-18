@@ -10,7 +10,7 @@ homepage = "https://github.com/FedericoPonzi/horust"
 readme = "README.md"
 keywords = ["init", "container", "supervisor"]
 categories = ["command-line-utilities"]
-include = ["src/**/*", "Cargo.*", "LICENSE.txt", "README.md", ]
+include = ["src/**/*", "Cargo.*", "LICENSE.txt", "README.md", "/example_services/**/*"]
 
 [dependencies]
 clap = { version = "~4.0", features = ["derive"] }
@@ -41,3 +41,4 @@ rand = "~0.8"
 
 [profile.release]
 strip = "symbols"
+
