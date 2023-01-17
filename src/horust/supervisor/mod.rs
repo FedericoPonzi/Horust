@@ -31,10 +31,7 @@ const MAX_PROCESS_REAPS_ITERS: u32 = 20;
 const INIT_PID: unistd::Pid = unistd::Pid::from_raw(1);
 
 // Spawns and runs this component in a new thread.
-pub fn spawn(
-    bus: BusConnector<Event>,
-    services: Vec<Service>,
-) -> std::thread::JoinHandle<ExitStatus> {
+pub fn spawn(bus: BusConnector<Event>, services: Vec<Service>) -> thread::JoinHandle<ExitStatus> {
     thread::spawn(move || Supervisor::new(bus, services).run())
 }
 
@@ -78,11 +75,10 @@ impl Supervisor {
 
                 // If it has failed too quickly, increase service_handler's restart attempts
                 // and check if it has more attempts left.
-                if service_handler.has_some_failed_healthchecks()
-                    && service_handler.is_early_state()
-                {
-                    service_handler.restart_attempts += 1;
-                }
+                service_handler.restart_attempts += u32::from(
+                    service_handler.has_some_failed_healthchecks()
+                        && service_handler.is_early_state(),
+                );
 
                 let new_status = if has_failed
                     || (service_handler.status == ServiceStatus::Running
@@ -125,13 +121,13 @@ impl Supervisor {
                         service_handler.name()
                     );
                     service_handler.status = ServiceStatus::FinishedFailed;
-                    self.status = LifecycleStatus::ShuttingDown(ShuttingDown::Gracefuly);
+                    self.status = LifecycleStatus::ShuttingDown(ShuttingDown::Gracefully);
                     return vec![
                         Event::StatusUpdate(
                             service_handler.name().clone(),
                             ServiceStatus::FinishedFailed,
                         ),
-                        Event::ShuttingDownInitiated(ShuttingDown::Gracefuly),
+                        Event::ShuttingDownInitiated(ShuttingDown::Gracefully),
                     ];
                 }
                 let backoff = service_handler
@@ -200,10 +196,10 @@ impl Supervisor {
             }
             Event::ShuttingDownInitiated(shutting_down) => {
                 match shutting_down {
-                    ShuttingDown::Gracefuly => {
+                    ShuttingDown::Gracefully => {
                         warn!("Gracefully stopping...");
                     }
-                    ShuttingDown::Forcefuly => {
+                    ShuttingDown::Forcefully => {
                         warn!("Terminating all services...");
                     }
                 }
@@ -245,12 +241,12 @@ impl Supervisor {
                 (LifecycleStatus::Running, true) => {
                     warn!("1. SIGTERM received");
                     self.repo
-                        .send_ev(Event::ShuttingDownInitiated(ShuttingDown::Gracefuly));
+                        .send_ev(Event::ShuttingDownInitiated(ShuttingDown::Gracefully));
                 }
-                (LifecycleStatus::ShuttingDown(ShuttingDown::Gracefuly), true) => {
+                (LifecycleStatus::ShuttingDown(ShuttingDown::Gracefully), true) => {
                     warn!("2. SIGTERM received");
                     self.repo
-                        .send_ev(Event::ShuttingDownInitiated(ShuttingDown::Forcefuly));
+                        .send_ev(Event::ShuttingDownInitiated(ShuttingDown::Forcefully));
                 }
                 _ => {}
             }
@@ -277,7 +273,7 @@ impl Supervisor {
                 .chain(next_evs)
                 .for_each(|ev| self.repo.send_ev(ev));
 
-            std::thread::sleep(Duration::from_millis(300));
+            thread::sleep(Duration::from_millis(300));
         }
 
         debug!("All services have finished");
@@ -291,7 +287,7 @@ impl Supervisor {
         }
 
         self.repo
-            .send_ev(Event::ShuttingDownInitiated(ShuttingDown::Gracefuly));
+            .send_ev(Event::ShuttingDownInitiated(ShuttingDown::Gracefully));
         if self.repo.any_finished_failed() {
             ExitStatus::SomeServiceFailed
         } else {

@@ -8,11 +8,11 @@ mod service;
 
 #[derive(Clone, Debug, Copy, PartialEq, Eq)]
 pub enum ShuttingDown {
-    Gracefuly,
-    Forcefuly,
+    Gracefully,
+    Forcefully,
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Event {
     PidChanged(ServiceName, Pid),
     ServiceStarted(ServiceName),
@@ -49,13 +49,13 @@ impl Event {
     }
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ExitStatus {
     Successful,
     SomeServiceFailed,
 }
 
-#[derive(PartialEq, Clone, Debug)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum HealthinessStatus {
     Healthy,
     Unhealthy,

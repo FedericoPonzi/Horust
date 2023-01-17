@@ -55,7 +55,7 @@ impl Worker {
 // * Tunable healthchecks timing in horust's config
 // * If there are no checks to run, just exit the thread. or go sleep until an "service created" event is received.
 pub fn spawn(bus: BusConnector<Event>, services: Vec<Service>) {
-    std::thread::spawn(move || {
+    thread::spawn(move || {
         run(bus, services);
     });
 }
