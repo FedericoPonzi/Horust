@@ -57,6 +57,17 @@ impl Horust {
     /// Blocking call, will setup the event loop and the threads and run all the available services.
     pub fn run(&mut self) -> ExitStatus {
         unsafe {
+            // A subreaper fulfills the role of init(1) for its
+            // descendant processes.  When a process becomes orphaned
+            // (i.e., its immediate parent terminates), then that process
+            // will be reparented to the nearest still living ancestor
+            // subreaper.  Subsequently, calls to getppid(2) in the
+            // orphaned process will now return the PID of the subreaper
+            // process, and when the orphan terminates, it is the
+            // subreaper process that will receive a SIGCHLD signal and
+            // will be able to wait(2) on the process to discover its
+            // termination status.
+            // https://man7.org/linux/man-pages/man2/prctl.2.html
             prctl(PR_SET_CHILD_SUBREAPER, 1, 0, 0, 0);
         }
         supervisor::init();
