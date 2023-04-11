@@ -23,8 +23,8 @@ exit 1
     store_service(temp_dir.path(), failing_script, None, None);
     let recv = run_async(&mut cmd, true);
     recv.recv_or_kill(Duration::from_secs(15));
-    let mut cmd = cmd.args(vec!["--unsuccessful-exit-finished-failed"]);
-    let recv = run_async(&mut cmd, false);
+    let cmd = cmd.args(vec!["--unsuccessful-exit-finished-failed"]);
+    let recv = run_async(cmd, false);
     recv.recv_or_kill(Duration::from_secs(15));
 }
 
@@ -47,8 +47,8 @@ fn test_command_not_found() {
     // Error spawning process: NixError: ENOENT: No such file or directory
     // It's fine
     recv.recv_or_kill(Duration::from_secs(15));
-    let mut cmd = cmd.args(vec!["--unsuccessful-exit-finished-failed"]);
-    let recv = run_async(&mut cmd, false);
+    let cmd = cmd.args(vec!["--unsuccessful-exit-finished-failed"]);
+    let recv = run_async(cmd, false);
     recv.recv_or_kill(Duration::from_secs(15));
 }
 

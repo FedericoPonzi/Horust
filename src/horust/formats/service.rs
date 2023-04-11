@@ -36,7 +36,7 @@ pub struct Service {
     pub stderr: LogOutput,
     #[serde(default, with = "humantime_serde")]
     pub start_delay: Duration,
-    #[serde(default = "Vec::new")]
+    #[serde(default)]
     pub start_after: Vec<ServiceName>,
     #[serde()]
     pub signal_rewrite: Option<String>,
@@ -126,9 +126,10 @@ impl FromStr for Service {
     }
 }
 
-#[derive(Clone, Debug, Eq, PartialEq)]
+#[derive(Clone, Debug, Eq, PartialEq, Default)]
 pub enum LogOutput {
     Stderr,
+    #[default]
     Stdout,
     Path(PathBuf),
 }
@@ -157,7 +158,7 @@ struct LogOutputVisitor;
 impl<'de> Visitor<'de> for LogOutputVisitor {
     type Value = LogOutput;
 
-    fn expecting(&self, formatter: &mut std::fmt::Formatter) -> std::fmt::Result {
+    fn expecting(&self, formatter: &mut Formatter) -> std::fmt::Result {
         formatter.write_str("a string with 'STDOUT', 'STDERR', or a full path. All as `String`s ")
     }
     fn visit_str<E>(self, value: &str) -> Result<Self::Value, E>
@@ -165,12 +166,6 @@ impl<'de> Visitor<'de> for LogOutputVisitor {
         E: de::Error,
     {
         Ok(LogOutput::from(value))
-    }
-}
-
-impl Default for LogOutput {
-    fn default() -> Self {
-        Self::Stdout
     }
 }
 
@@ -233,11 +228,10 @@ impl Environment {
     /// Create the environment K=V variables, used for exec into the new process.
     /// User defined environment variables overwrite the predefined variables.
     pub(crate) fn get_environment(&self, user_name: String, user_home: String) -> Vec<String> {
-        let mut initial = if self.keep_env {
-            std::env::vars().collect()
-        } else {
-            HashMap::new()
-        };
+        let mut initial: HashMap<String, String> = self
+            .keep_env
+            .then(|| std::env::vars().collect())
+            .unwrap_or_default();
 
         let mut additional = self.additional.clone();
 

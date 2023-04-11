@@ -57,6 +57,17 @@ impl Horust {
     /// Blocking call, will setup the event loop and the threads and run all the available services.
     pub fn run(&mut self) -> ExitStatus {
         unsafe {
+            // A subreaper fulfills the role of init(1) for its
+            // descendant processes.  When a process becomes orphaned
+            // (i.e., its immediate parent terminates), then that process
+            // will be reparented to the nearest still living ancestor
+            // subreaper.  Subsequently, calls to getppid(2) in the
+            // orphaned process will now return the PID of the subreaper
+            // process, and when the orphan terminates, it is the
+            // subreaper process that will receive a SIGCHLD signal and
+            // will be able to wait(2) on the process to discover its
+            // termination status.
+            // https://man7.org/linux/man-pages/man2/prctl.2.html
             prctl(PR_SET_CHILD_SUBREAPER, 1, 0, 0, 0);
         }
         supervisor::init();
@@ -111,7 +122,7 @@ fn fetch_services(path: &Path) -> Result<Vec<Service>> {
     let paths = if path.is_file() {
         vec![path.to_path_buf()]
     } else {
-        fs::read_dir(&path)?
+        fs::read_dir(path)?
             .inspect(|p| {
                 if let Err(err) = p {
                     error!("Error loading entry: {}", err);
@@ -167,8 +178,8 @@ mod test {
         let b = Service::start_after("b", vec!["a"]);
         let a_str = toml::to_string(&a).unwrap();
         let b_str = toml::to_string(&b).unwrap();
-        std::fs::write(ret.path().join(FIRST_SERVICE_FILENAME), a_str)?;
-        std::fs::write(ret.path().join(SECOND_SERVICE_FILENAME), b_str)?;
+        fs::write(ret.path().join(FIRST_SERVICE_FILENAME), a_str)?;
+        fs::write(ret.path().join(SECOND_SERVICE_FILENAME), b_str)?;
         Ok(ret)
     }
 
@@ -178,7 +189,7 @@ mod test {
         // Empty service directory will print a log but it's not an error.
         assert_eq!(fetch_services(tempdir.path()).unwrap().len(), 0);
         let not_toml_file = tempdir.path().join("not_a_toml.toml");
-        std::fs::write(not_toml_file.clone(), "not really a toml.")?;
+        fs::write(not_toml_file.clone(), "not really a toml.")?;
 
         // Today Horust filters out invalid toml files.
         assert_eq!(fetch_services(tempdir.path()).unwrap().len(), 0);
@@ -208,11 +219,11 @@ mod test {
         let files: Vec<PathBuf> = files.into_iter().map(|f| tempdir.path().join(f)).collect();
 
         for f in &files {
-            std::fs::write(f, "Hello world")?;
+            fs::write(f, "Hello world")?;
         }
         let dirs = vec!["1", "2", "3"];
         for d in dirs {
-            std::fs::create_dir(tempdir.path().join(d))?;
+            fs::create_dir(tempdir.path().join(d))?;
         }
         let mut res = list_files(tempdir.path())?;
         res.sort();

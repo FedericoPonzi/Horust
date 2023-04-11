@@ -179,15 +179,15 @@ fn exec(
     program_name: CString,
     arg_cptr: Vec<&CStr>,
     env_cptr: Vec<&CStr>,
-    uid: unistd::Uid,
+    uid: Uid,
     cwd: PathBuf,
 ) -> std::result::Result<(), Errno> {
     // Changes the current working directory to the specified path.
-    nix::unistd::chdir(&cwd)?;
+    unistd::chdir(&cwd)?;
     // Create new session and set process group id
-    nix::unistd::setsid()?;
+    unistd::setsid()?;
     // Set the user ID
-    nix::unistd::setuid(uid)?;
-    nix::unistd::execvpe(program_name.as_ref(), arg_cptr.as_ref(), env_cptr.as_ref())?;
+    unistd::setuid(uid)?;
+    unistd::execvpe(program_name.as_ref(), arg_cptr.as_ref(), env_cptr.as_ref())?;
     Ok(())
 }

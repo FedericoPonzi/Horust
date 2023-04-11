@@ -224,7 +224,7 @@ mod test {
     // tests get_events function both blocking and non-blocking
     fn test_get_events() {
         let (a, b, receiver_a) = init_bus();
-        let ev = Event::new_status_changed(&"sample".to_string(), ServiceStatus::Initial);
+        let ev = Event::new_status_changed("sample", ServiceStatus::Initial);
         let (sender, receiver_b) = channel::bounded(48);
 
         let _handle = thread::spawn(move || {
@@ -255,7 +255,7 @@ mod test {
     #[test]
     fn test_bus_simple() {
         let (a, b, receiver) = init_bus();
-        let ev = Event::new_status_changed(&"sample".to_string(), ServiceStatus::Initial);
+        let ev = Event::new_status_changed("sample", ServiceStatus::Initial);
         a.send_event(ev.clone());
         assert_eq!(a.receiver.recv().unwrap().into_payload(), ev);
         assert_eq!(b.receiver.recv().unwrap().into_payload(), ev);
@@ -271,7 +271,7 @@ mod test {
         let (a, b, receiver) = init_bus();
         let c = a.join_bus();
 
-        let ev = Event::new_status_changed(&"sample".to_string(), ServiceStatus::Initial);
+        let ev = Event::new_status_changed("sample", ServiceStatus::Initial);
         a.send_event(ev.clone());
         assert_eq!(a.receiver.recv().unwrap().into_payload(), ev);
         assert_eq!(b.receiver.recv().unwrap().into_payload(), ev);
@@ -299,8 +299,8 @@ mod test {
                 .send(())
                 .expect("test didn't terminate in time, so chan is closed!");
         });
-        let ev = Event::new_status_changed(&"sample".to_string(), ServiceStatus::Initial);
-        let exit_ev = Event::ShuttingDownInitiated(ShuttingDown::Gracefuly);
+        let ev = Event::new_status_changed("sample", ServiceStatus::Initial);
+        let exit_ev = Event::ShuttingDownInitiated(ShuttingDown::Gracefully);
 
         for _i in 0..100 {
             last.send_event(ev.clone());
@@ -313,7 +313,7 @@ mod test {
                 assert_eq!(recv.receiver.recv().unwrap().into_payload(), exit_ev);
             }
         }
-        last.send_event(Event::ShuttingDownInitiated(ShuttingDown::Gracefuly));
+        last.send_event(Event::ShuttingDownInitiated(ShuttingDown::Gracefully));
         drop(connectors);
         drop(last);
         receiver

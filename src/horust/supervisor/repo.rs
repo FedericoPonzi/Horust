@@ -64,7 +64,7 @@ impl Repo {
         self.services.get(service_name).unwrap()
     }
 
-    /// Get all the services that have specifed "start-after = [`service_name`]" in their config
+    /// Get all the services that have specified "start-after = [`service_name`]" in their config
     pub(crate) fn get_dependents(&self, service_name: &str) -> Vec<ServiceName> {
         self.services
             .iter()

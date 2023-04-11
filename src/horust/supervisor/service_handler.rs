@@ -81,11 +81,8 @@ impl ServiceHandler {
     }
     pub fn add_healthcheck_event(&mut self, check: HealthinessStatus) {
         let previous_hc = self.healthiness_checks_failed.unwrap_or(0);
-        let new_hc = if self.is_alive_state() && !matches!(check, HealthinessStatus::Healthy) {
-            1
-        } else {
-            0
-        };
+        let new_hc =
+            i32::from(self.is_alive_state() && !matches!(check, HealthinessStatus::Healthy));
         self.healthiness_checks_failed = Some(previous_hc + new_hc);
     }
 
@@ -300,7 +297,7 @@ fn handle_restart_strategy(service_handler: &ServiceHandler, is_failed: bool) ->
     let new_status = match service_handler.service.restart.strategy {
         RestartStrategy::Never if is_failed => {
             debug!(
-                "restart attemps: {}, are over: {}, max: {}",
+                "restart attempts: {}, are over: {}, max: {}",
                 service_handler.restart_attempts,
                 service_handler.restart_attempts_are_over(),
                 service_handler.service.restart.attempts
@@ -322,7 +319,7 @@ fn handle_restart_strategy(service_handler: &ServiceHandler, is_failed: bool) ->
 /// This is applied to both failed and FinishedFailed services.
 fn handle_failed_service(deps: Vec<ServiceName>, failed_sh: &Service) -> Vec<Event> {
     match failed_sh.failure.strategy {
-        FailureStrategy::Shutdown => vec![Event::ShuttingDownInitiated(ShuttingDown::Gracefuly)],
+        FailureStrategy::Shutdown => vec![Event::ShuttingDownInitiated(ShuttingDown::Gracefully)],
         FailureStrategy::KillDependents => {
             debug!("Failed service has kill-dependents strategy, going to mark them all..");
             deps.iter()
@@ -348,7 +345,7 @@ fn should_force_kill(
         // Let's give it the time to start and exit.
         return false;
     }
-    if let Some(ShuttingDown::Forcefuly) = shutting_down.into() {
+    if let Some(ShuttingDown::Forcefully) = shutting_down.into() {
         debug!("{}, should force kill.", service_handler.name());
         return true;
     }
@@ -452,7 +449,7 @@ wait = "10s"
 
         service.failure.strategy = FailureStrategy::Shutdown;
         let evs = handle_failed_service(vec!["a".into()], &service);
-        let exp = vec![Event::ShuttingDownInitiated(ShuttingDown::Gracefuly)];
+        let exp = vec![Event::ShuttingDownInitiated(ShuttingDown::Gracefully)];
         assert_eq!(evs, exp);
     }
 }

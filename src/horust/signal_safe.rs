@@ -5,8 +5,8 @@
 //! only [async-signal-safe] functions like `pause`
 //! and `_exit` may be called by the child (the parent isn't restricted).
 
-use libc::{_exit, STDERR_FILENO};
 use nix::errno::Errno;
+use nix::libc::{_exit, STDERR_FILENO};
 use nix::unistd::write;
 
 /// Async-signal-safe panic. Prints s to stderr, and exit with status as code.
@@ -54,7 +54,7 @@ fn exit_ssafe(status: i32) {
 ///
 fn i32_to_str_bytes(num: i32) -> ([u8; 11], usize) {
     // need i64 because the limits are : [2147483647, -2147483648].
-    // when I do num *= -1, the i32::MIN cannot be rappresented anymore (because is larger than MAX)
+    // when I do num *= -1, the i32::MIN cannot be represented anymore (because is larger than MAX)
     // and fails with `attempt to multiply with overflow.`
     let mut num = num as i64;
     let mut digits = 0;
