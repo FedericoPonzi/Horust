@@ -13,7 +13,7 @@ categories = ["command-line-utilities"]
 include = ["src/**/*", "Cargo.*", "LICENSE.txt", "README.md", "/example_services/**/*"]
 
 [dependencies]
-clap = { version = "4.1.6", features = ["derive"] }
+clap = { version = "4.3.0", features = ["derive"] }
 crossbeam = "~0.8"
 env_logger = "0.10.0"
 humantime-serde = "~1.1"
