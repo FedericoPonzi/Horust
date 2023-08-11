@@ -70,24 +70,24 @@ fn i32_to_str_bytes(num: i32) -> ([u8; 11], usize) {
     }
 
     if num == 0 {
-        let index = (I32_STR_LEN - 1 - digits) as usize;
+        let index = I32_STR_LEN - 1 - digits;
         ret[index] = BASE_ASCII;
         digits += 1;
     }
 
     while num != 0 {
         let n = (num % 10) as i32 as u8;
-        let index = (I32_STR_LEN - 1 - digits) as usize;
+        let index = I32_STR_LEN - 1 - digits;
         ret[index] = n + BASE_ASCII;
         num = (num - n as i64) / 10;
         digits += 1;
     }
     if is_negative {
-        let index = (I32_STR_LEN - 1 - digits) as usize;
+        let index = I32_STR_LEN - 1 - digits;
         ret[index] = MINUS_SIGN;
         digits += 1;
     }
-    (ret, (I32_STR_LEN - digits) as usize)
+    (ret, I32_STR_LEN - digits)
 }
 
 #[cfg(test)]

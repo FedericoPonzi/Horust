@@ -426,18 +426,13 @@ impl Default for Restart {
     }
 }
 
-#[derive(Serialize, Clone, Deserialize, Debug, Eq, PartialEq)]
+#[derive(Serialize, Clone, Deserialize, Default, Debug, Eq, PartialEq)]
 #[serde(rename_all = "kebab-case", deny_unknown_fields)]
 pub enum RestartStrategy {
     Always,
     OnFailure,
+    #[default]
     Never,
-}
-
-impl Default for RestartStrategy {
-    fn default() -> Self {
-        RestartStrategy::Never
-    }
 }
 
 impl From<String> for RestartStrategy {
@@ -535,7 +530,7 @@ impl Default for Termination {
     }
 }
 
-#[derive(Serialize, Copy, Clone, Deserialize, Debug, Eq, PartialEq)]
+#[derive(Serialize, Copy, Clone, Default, Deserialize, Debug, Eq, PartialEq)]
 #[allow(clippy::upper_case_acronyms)]
 pub enum TerminationSignal {
     HUP,
@@ -551,6 +546,7 @@ pub enum TerminationSignal {
     USR2,
     PIPE,
     ALRM,
+    #[default]
     TERM,
     STKFLT,
     CHLD,
@@ -605,12 +601,6 @@ impl From<TerminationSignal> for Signal {
             TerminationSignal::PWR => SIGPWR,
             TerminationSignal::SYS => SIGSYS,
         }
-    }
-}
-
-impl Default for TerminationSignal {
-    fn default() -> Self {
-        TerminationSignal::TERM
     }
 }
 
