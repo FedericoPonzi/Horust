@@ -1,7 +1,7 @@
 [package]
 name = "horust"
 version = "0.1.7"
-authors = ["Federico Ponzi <federico.ponzi92@gmail.com>"]
+authors = ["Federico Ponzi <me@fponzi.me>"]
 description = "A complete supervisor and init system, designed for running in containers."
 edition = "2021"
 license = "MIT"
@@ -13,7 +13,7 @@ categories = ["command-line-utilities"]
 include = ["src/**/*", "Cargo.*", "LICENSE.txt", "README.md", "/example_services/**/*"]
 
 [dependencies]
-clap = { version = "4.1.6", features = ["derive"] }
+clap = { version = "~4.3", features = ["derive"] }
 crossbeam = "~0.8"
 env_logger = "0.10.0"
 humantime-serde = "~1.1"
