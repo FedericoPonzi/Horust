@@ -64,7 +64,8 @@ jobs:
         uses: actions-rs/cargo@v1
         with:
           command: build
-          args: ${{ matrix.features }}
+          args: --all
+
       - name: Create /var/run/horust directory
         run: sudo mkdir -p /var/run/horust && sudo chmod 777 /var/run/horust
       - name: Test
@@ -72,13 +73,6 @@ jobs:
         with:
           command: test
           args: ${{ matrix.features }}
-
-      - name: Test all benches
-        if: matrix.benches
-        uses: actions-rs/cargo@v1
-        with:
-          command: test
-          args: --benches ${{ matrix.features }}
 
   # Publish latest and releases (e.g. tags with semver) on dockerhub.
   docker-push-release-latest:
@@ -132,7 +126,7 @@ jobs:
         with:
           use-cross: true
           command: build
-          args: --release --target ${{ matrix.target }}
+          args: --release --all --target ${{ matrix.target }}
 
       - name: Package
         shell: bash
