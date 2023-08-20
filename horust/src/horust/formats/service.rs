@@ -15,7 +15,7 @@ use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use crate::horust::error::{ValidationError, ValidationErrors};
 
 pub fn get_sample_service() -> &'static str {
-    include_str!("../../../example_services/sample_service.toml")
+    include_str!("../../../../example_services/sample_service.toml")
 }
 
 pub type ServiceName = String;

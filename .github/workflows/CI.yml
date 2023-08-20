@@ -125,7 +125,7 @@ jobs:
         with:
           use-cross: true
           command: build
-          args: --release --target ${{ matrix.target }}
+          args: --release  --package horust --bin horust --target ${{ matrix.target }}
 
       - name: Package
         shell: bash
