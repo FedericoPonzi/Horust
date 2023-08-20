@@ -13,7 +13,7 @@ categories = ["command-line-utilities"]
 include = ["src/**/*", "Cargo.*", "LICENSE.txt", "README.md", "/example_services/**/*"]
 
 [dependencies]
-clap = { version = "4.3.21", features = ["derive"] }
+clap = { version = "~4.3", features = ["derive"] }
 crossbeam = "~0.8"
 env_logger = "0.10.0"
 humantime-serde = "~1.1"
@@ -28,6 +28,7 @@ maplit = "~1.0"
 shellexpand = "~3.1"
 anyhow = "~1.0"
 thiserror = "~1.0"
+horust-commands-lib = {path = "../commands"}
 
 [features]
 default = ["http-healthcheck"]

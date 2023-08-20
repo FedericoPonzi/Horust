@@ -1,9 +1,7 @@
 use nix::unistd::Pid;
 
-pub use horust_config::HorustConfig;
 pub use service::*;
 
-mod horust_config;
 mod service;
 
 #[derive(Clone, Debug, Copy, PartialEq, Eq)]

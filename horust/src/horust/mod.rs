@@ -12,9 +12,10 @@ pub use formats::Event;
 use crate::horust::bus::Bus;
 use crate::horust::formats::{validate, Service};
 
-pub use self::formats::{get_sample_service, ExitStatus, HorustConfig};
+pub use self::formats::{get_sample_service, ExitStatus};
 
 mod bus;
+mod commands_handler;
 mod error;
 mod formats;
 mod healthcheck;
@@ -25,35 +26,38 @@ mod uds_messages;
 #[derive(Debug)]
 pub struct Horust {
     services: Vec<Service>,
+    uds_folder_path: PathBuf,
 }
 
 impl Horust {
-    fn new(services: Vec<Service>) -> Self {
-        Horust { services }
+    fn new(services: Vec<Service>, uds_folder_path: PathBuf) -> Self {
+        Horust {
+            services,
+            uds_folder_path,
+        }
     }
 
-    pub fn get_services(&self) -> &[Service] {
-        &self.services
-    }
     /// Creates a new Horust instance from a command.
     /// The command will be wrapped in a service and run with sane defaults
-    pub fn from_command(command: String) -> Self {
-        Self::new(vec![Service::from_command(command)])
+    pub fn from_command(command: String, uds_folder_path: PathBuf) -> Self {
+        Self::new(vec![Service::from_command(command)], uds_folder_path)
     }
 
-    /// Create a new horust instance from multiple paths of services.
-    pub fn from_services_dirs(paths: &[PathBuf]) -> Result<Self> {
-        let services = paths
+    fn load_services_from_folders(paths: &[PathBuf]) -> Result<Vec<Service>> {
+        paths
             .iter()
             .map(|path| fetch_services(path))
             .flat_map(|result| match result {
                 Ok(vec) => vec.into_iter().map(Ok).collect(),
                 Err(err) => vec![Err(err)],
             })
-            .collect::<Result<Vec<_>>>()?;
-
+            .collect::<Result<Vec<_>>>()
+    }
+    /// Create a new horust instance from multiple paths of services.
+    pub fn from_services_dirs(paths: &[PathBuf], uds_folder_path: PathBuf) -> Result<Self> {
+        let services = Self::load_services_from_folders(paths)?;
         let services = validate(services)?;
-        Ok(Horust::new(services))
+        Ok(Horust::new(services, uds_folder_path))
     }
 
     /// Blocking call, will setup the event loop and the threads and run all the available services.
@@ -79,6 +83,11 @@ impl Horust {
         debug!("Services: {:?}", self.services);
         // Spawn helper threads:
         healthcheck::spawn(dispatcher.join_bus(), self.services.clone());
+        commands_handler::spawn(
+            self.uds_folder_path.clone(),
+            dispatcher.join_bus(),
+            self.services.clone(),
+        );
         let handle = supervisor::spawn(dispatcher.join_bus(), self.services.clone());
         dispatcher.run();
         handle.join().unwrap()
@@ -153,6 +162,7 @@ mod test {
     use std::io;
     use std::path::{Path, PathBuf};
 
+    use crate::Horust;
     use tempdir::TempDir;
 
     use crate::horust::fetch_services;
@@ -233,5 +243,15 @@ mod test {
         assert_eq!(res, files);
 
         Ok(())
+    }
+
+    #[test]
+    fn test_should_deserialize() {
+        let base = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+        let services_path = base.join("../example_services/");
+        let services = list_files(&services_path).unwrap().len();
+        let horust =
+            Horust::from_services_dirs(&[services_path], "/tmp/horust-test-uds".into()).unwrap();
+        assert_eq!(horust.services.len(), services);
     }
 }
