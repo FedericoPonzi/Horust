@@ -10,3 +10,5 @@ log = "~0.4"
 env_logger = "0.10.0"
 crossbeam = "~0.8"
 clap = {version = "~4.3", features = ["derive"]}
+horust-commands-lib = {path = "../commands"}
+

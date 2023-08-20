@@ -1,10 +1,12 @@
 use anyhow::{bail, Result};
 use clap::{Args, Parser, Subcommand};
 use env_logger::Env;
+use horust_commands_lib::{ClientHandler, UdsConnectionHandler};
 use log::{debug, error};
 use std::env;
 use std::fs::{read, read_dir};
 use std::io::Write;
+use std::os::linux::raw::stat;
 use std::os::unix::net::UnixStream;
 use std::path::{Path, PathBuf};
 
@@ -12,12 +14,16 @@ use std::path::{Path, PathBuf};
 #[derive(Parser, Debug)]
 #[command(author, version, about, long_about = None)]
 struct HourstctlArgs {
-    /// Optional if only one horust is running in the system.
+    /// The pid of the horust process you want to query. Optional if only one horust is running in the system.
     #[arg(short, long)]
     pid: Option<u32>,
 
     #[arg(short, long, default_value = "/var/run/horust/")]
     sockets_folder_path: PathBuf,
+
+    // Specify the full path of the socket. It takes precedence other over arguments.
+    #[arg(long)]
+    socket_path: Option<PathBuf>,
 
     #[command(subcommand)]
     commands: Commands,
@@ -38,11 +44,20 @@ fn main() -> Result<()> {
     let args = HourstctlArgs::parse();
     debug!("args: {args:?}");
 
-    let uds_path = get_uds_path(args.pid, args.sockets_folder_path)?;
+    let uds_path = args.socket_path.unwrap_or_else(|| {
+        get_uds_path(args.pid, args.sockets_folder_path).expect("Failed to get uds_path.")
+    });
+    let mut uds_handler = ClientHandler::new_client(&uds_path)?;
     match &args.commands {
         Commands::Status(status_args) => {
             debug!("Status command received: {status_args:?}");
-            debug!("uds path : {uds_path:?}")
+            debug!("uds path : {uds_path:?}");
+            let (service_name, service_status) =
+                uds_handler.send_status_request(status_args.service_name.clone().unwrap())?;
+            println!(
+                "Current status for '{service_name}' is: '{}'.",
+                service_status.as_str_name()
+            );
         }
     }
     Ok(())

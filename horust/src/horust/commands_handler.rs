@@ -1,31 +1,64 @@
 use crate::horust::bus::BusConnector;
+use crate::horust::formats::{ServiceName, ServiceStatus};
 use crate::horust::Event;
 use horust_commands_lib::{CommandsHandlerTrait, HorustMsgServiceStatus};
+use std::collections::HashMap;
 use std::os::unix::net::UnixListener;
 use std::path::PathBuf;
-use std::thread;
 use std::thread::JoinHandle;
+use std::time::Duration;
+use std::{fs, thread};
 
-pub fn spawn(bus: BusConnector<Event>, uds_folder_path: PathBuf) -> JoinHandle<()> {
+pub fn spawn(
+    bus: BusConnector<Event>,
+    uds_path: PathBuf,
+    services: Vec<ServiceName>,
+) -> JoinHandle<()> {
     thread::spawn(move || {
-        run(bus, uds_folder_path);
+        let mut commands_handler = CommandsHandler::new(bus, uds_path, services);
+        commands_handler.run();
     })
-}
-
-fn run(bus: BusConnector<Event>, uds_folder_path: PathBuf) {
-    let mut commands_handler = CommandsHandler::new(bus, uds_folder_path);
-    commands_handler.start();
 }
 
 struct CommandsHandler {
     bus: BusConnector<Event>,
+    services: HashMap<ServiceName, ServiceStatus>,
     uds_listener: UnixListener,
+    uds_path: PathBuf,
 }
+
 impl CommandsHandler {
-    fn new(bus: BusConnector<Event>, uds_folder_path: PathBuf) -> Self {
+    fn new(bus: BusConnector<Event>, uds_path: PathBuf, services: Vec<ServiceName>) -> Self {
+        let mut uds_listener = UnixListener::bind(&uds_path).unwrap();
+        uds_listener.set_nonblocking(true).unwrap();
         Self {
             bus,
-            uds_listener: UnixListener::bind(uds_folder_path).unwrap(),
+            uds_path,
+            uds_listener,
+            services: services
+                .into_iter()
+                .map(|s| (s, ServiceStatus::Initial))
+                .collect(),
+        }
+    }
+    fn run(&mut self) {
+        loop {
+            let evs = self.bus.try_get_events();
+            for ev in evs {
+                match ev {
+                    Event::StatusChanged(name, status) => {
+                        let k = self.services.get_mut(&name).unwrap();
+                        *k = status;
+                    }
+                    Event::ShuttingDownInitiated(_) => {
+                        fs::remove_file(&self.uds_path).unwrap();
+                        return;
+                    }
+                    _ => {}
+                }
+            }
+            self.accept().unwrap();
+            thread::sleep(Duration::from_millis(300));
         }
     }
 }

@@ -10,7 +10,7 @@ use crate::proto::messages::{
 use anyhow::{anyhow, Context, Result};
 use log::{error, info};
 use prost::Message;
-use std::io::{Read, Write};
+use std::io::{ErrorKind, Read, Write};
 use std::net::Shutdown;
 use std::os::unix::net::{UnixListener, UnixStream};
 use std::path::{Path, PathBuf};
@@ -33,7 +33,10 @@ pub trait CommandsHandlerTrait {
                 }
             }
             Err(e) => {
-                error!("Error accepting connction: {e} - you might need to restart Horust.");
+                let kind = e.kind();
+                if !matches!(ErrorKind::WouldBlock, kind) {
+                    error!("Error accepting connction: {e} - you might need to restart Horust.");
+                }
             }
         };
         Ok(())
@@ -79,12 +82,40 @@ pub struct ClientHandler {
     uds_connection_handler: UdsConnectionHandler,
 }
 impl ClientHandler {
-    pub fn new_client(socket_path: PathBuf) -> Result<Self> {
+    pub fn new_client(socket_path: &Path) -> Result<Self> {
         Ok(Self {
             uds_connection_handler: UdsConnectionHandler::new(
                 UnixStream::connect(socket_path).context("Could not create stream")?,
             ),
         })
+    }
+    pub fn send_status_request(
+        &mut self,
+        service_name: String,
+    ) -> Result<(String, HorustMsgServiceStatus)> {
+        let status = HorustMsgMessage {
+            request_type: Some(RequestType::StatusRequest(HorustMsgServiceStatusRequest {
+                service_name,
+            })),
+        };
+        self.uds_connection_handler.send_message(status)?;
+        // server is waiting for EOF.
+        self.uds_connection_handler
+            .socket
+            .shutdown(Shutdown::Write)?;
+        //Reads all bytes until EOF in this source, appending them to buf.
+        let received = self.uds_connection_handler.receive_message()?;
+        info!("Client: received: {received:?}");
+        match received
+            .request_type
+            .ok_or(anyhow!("Error receiving message"))?
+        {
+            RequestType::StatusResponse(resp) => Ok((
+                resp.service_name,
+                HorustMsgServiceStatus::from_i32(resp.service_status).unwrap(),
+            )),
+            _ => unreachable!(),
+        }
     }
 
     pub fn client(mut self, service_name: String) -> Result<()> {
@@ -105,14 +136,16 @@ impl ClientHandler {
     }
 }
 
+/// socket_name should be the pid of the horust process.
+pub fn get_path(socket_folder: &Path, socket_name: i32) -> PathBuf {
+    socket_folder.join(format!("hourst-{socket_name}.sock"))
+}
+
 pub struct UdsConnectionHandler {
     socket: UnixStream,
 }
 impl UdsConnectionHandler {
-    fn get_path(socket_folder: &Path, socket_name: u32) -> PathBuf {
-        socket_folder.join(format!("hourst-{socket_name}.sock"))
-    }
-    fn new(socket: UnixStream) -> Self {
+    pub fn new(socket: UnixStream) -> Self {
         Self { socket }
     }
     pub fn send_message(&mut self, message: HorustMsgMessage) -> Result<()> {

@@ -570,6 +570,7 @@ dependencies = [
  "clap",
  "crossbeam",
  "env_logger",
+ "horust-commands-lib",
  "log",
 ]
 

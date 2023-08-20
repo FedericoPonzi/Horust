@@ -26,6 +26,7 @@ impl CommandsHandlerTrait for MockCommandsHandler {
     fn get_service_status(&self, service_name: String) -> HorustMsgServiceStatus {
         match service_name.as_str() {
             "Running" => HorustMsgServiceStatus::Running,
+            "Started" => HorustMsgServiceStatus::Started,
             _ => unimplemented!(),
         }
     }
@@ -50,12 +51,16 @@ fn test_simple() -> Result<()> {
         info!("uds created");
         barrier_server.wait();
         uds.accept().unwrap();
+        uds.accept().unwrap();
     });
 
     let c_handle = thread::spawn(move || {
         barrier_client.wait();
-        let client = ClientHandler::new_client(socket_path).unwrap();
+        let client = ClientHandler::new_client(&socket_path).unwrap();
         client.client("Running".into()).unwrap();
+
+        let client = ClientHandler::new_client(&socket_path).unwrap();
+        client.client("Started".into()).unwrap();
     });
     s_handle.join().unwrap();
     c_handle.join().unwrap();
