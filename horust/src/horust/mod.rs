@@ -25,21 +25,18 @@ mod supervisor;
 #[derive(Debug)]
 pub struct Horust {
     services: Vec<Service>,
-    uds_folder_path: PathBuf,
+    uds_path: PathBuf,
 }
 
 impl Horust {
-    fn new(services: Vec<Service>, uds_folder_path: PathBuf) -> Self {
-        Horust {
-            services,
-            uds_folder_path,
-        }
+    fn new(services: Vec<Service>, uds_path: PathBuf) -> Self {
+        Horust { services, uds_path }
     }
 
     /// Creates a new Horust instance from a command.
     /// The command will be wrapped in a service and run with sane defaults
-    pub fn from_command(command: String, uds_folder_path: PathBuf) -> Self {
-        Self::new(vec![Service::from_command(command)], uds_folder_path)
+    pub fn from_command(command: String, uds_path: PathBuf) -> Self {
+        Self::new(vec![Service::from_command(command)], uds_path)
     }
 
     fn load_services_from_folders(paths: &[PathBuf]) -> Result<Vec<Service>> {
@@ -53,10 +50,10 @@ impl Horust {
             .collect::<Result<Vec<_>>>()
     }
     /// Create a new horust instance from multiple paths of services.
-    pub fn from_services_dirs(paths: &[PathBuf], uds_folder_path: PathBuf) -> Result<Self> {
+    pub fn from_services_dirs(paths: &[PathBuf], uds_path: PathBuf) -> Result<Self> {
         let services = Self::load_services_from_folders(paths)?;
         let services = validate(services)?;
-        Ok(Horust::new(services, uds_folder_path))
+        Ok(Horust::new(services, uds_path))
     }
 
     /// Blocking call, will setup the event loop and the threads and run all the available services.
@@ -83,9 +80,9 @@ impl Horust {
         // Spawn helper threads:
         healthcheck::spawn(dispatcher.join_bus(), self.services.clone());
         commands_handler::spawn(
-            self.uds_folder_path.clone(),
             dispatcher.join_bus(),
-            self.services.clone(),
+            self.uds_path.clone(),
+            self.services.iter().map(|s| s.name.clone()).collect(),
         );
         let handle = supervisor::spawn(dispatcher.join_bus(), self.services.clone());
         dispatcher.run();

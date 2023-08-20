@@ -5,6 +5,7 @@ use clap::Parser;
 use horust::horust::{ExitStatus, HorustConfig};
 use horust::Horust;
 use log::{error, info};
+use nix::unistd::getpid;
 
 #[derive(clap::Parser, Debug)]
 #[clap(author, about)]
@@ -65,12 +66,14 @@ fn main() -> Result<()> {
             opts.uds_folder_path
         );
     }
+    let uds_path = horust_commands_lib::get_path(&opts.uds_folder_path, getpid().into());
+
     let mut horust = if opts.command.is_empty() {
         info!(
             "Loading services from {}",
             display_directories(&opts.services_paths)
         );
-        Horust::from_services_dirs(&opts.services_paths).with_context(|| {
+        Horust::from_services_dirs(&opts.services_paths, uds_path).with_context(|| {
             format!(
                 "Failed loading services from {}",
                 display_directories(&opts.services_paths)
@@ -78,9 +81,8 @@ fn main() -> Result<()> {
         })?
     } else {
         info!("Running command: {:?}", opts.command);
-        Horust::from_command(opts.command.join(" "))
+        Horust::from_command(opts.command.join(" "), uds_path)
     };
-    horust.set_uds_folder_path();
 
     if let ExitStatus::SomeServiceFailed = horust.run() {
         if config.unsuccessful_exit_finished_failed {
