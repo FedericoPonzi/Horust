@@ -33,12 +33,12 @@ jobs:
 
   test:
     name: Test
-    needs: [style]
+    needs: [ style ]
     runs-on: ubuntu-latest
 
     strategy:
       matrix:
-        build: [stable, beta, nightly]
+        build: [ stable, beta, nightly ]
         include:
           - build: beta
             rust: beta
@@ -57,12 +57,16 @@ jobs:
           profile: minimal
           override: true
 
+      - name: Install protoc
+        run: sudo apt-get install -y protobuf-compiler
+
       - name: Build debug
         uses: actions-rs/cargo@v1
         with:
           command: build
           args: ${{ matrix.features }}
-
+      - name: Create /var/run/horust directory
+        run: sudo mkdir -p /var/run/horust && sudo chmod 777 /var/run/horust
       - name: Test
         uses: actions-rs/cargo@v1
         with:
@@ -78,7 +82,7 @@ jobs:
 
   # Publish latest and releases (e.g. tags with semver) on dockerhub.
   docker-push-release-latest:
-    needs: [test]
+    needs: [ test ]
     runs-on: ubuntu-latest
     if: startsWith(github.ref, 'refs/tags/') || github.ref == 'refs/heads/master'
     steps:
@@ -94,7 +98,7 @@ jobs:
   ## This will create a new release in github/releases page. It will run only for tags with semver format.
   create-release:
     name: deploy
-    needs: [test]
+    needs: [ test ]
     if: startsWith(github.ref, 'refs/tags/')
     runs-on: ubuntu-latest
     strategy:
@@ -119,6 +123,9 @@ jobs:
           profile: minimal
           override: true
           target: ${{ matrix.target }}
+
+      - name: Install protoc
+        run: sudo apt-get install -y protobuf-compiler
 
       - name: Build target
         uses: actions-rs/cargo@v1
