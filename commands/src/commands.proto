@@ -2,14 +2,26 @@ syntax = "proto3";
 package messages;
 
 message HorustMsgMessage {
-  oneof request_type {
-    HorustMsgServiceStatusRequest status_request = 1;
-    HorustMsgServiceStatusResponse status_response = 2;
-    HorustMsgServiceChangeRequest change_request = 3;
+  oneof message_type {
+    HorustMsgRequest request = 1;
+    HorustMsgResponse response = 2;
   }
 }
-message HorustMsgError {
+message HorustMsgRequest {
+  oneof request {
+    HorustMsgServiceStatusRequest status_request = 1;
+    HorustMsgServiceChangeRequest change_request = 2;
+  }
+}
+message HorustMsgResponse {
+  oneof response {
+    HorustMsgError error = 1;
+    HorustMsgServiceStatusResponse status_response = 2;
+  }
+}
 
+message HorustMsgError {
+    string error_string = 1;
 }
 
 message HorustMsgServiceStatusRequest {
@@ -33,9 +45,13 @@ message HorustMsgServiceChangeResponse {
 }
 
 enum HorustMsgServiceStatus {
-  STOPPED = 0;
+  STARTING = 0;
   STARTED = 1;
-  KILLED = 2;
-  SHUTTING_DOWN = 3;
-  RUNNING = 4;
+  RUNNING = 2;
+  INKILLING = 3;
+  SUCCESS = 4;
+  FINISHED = 5;
+  FINISHEDFAILED = 6;
+  FAILED = 7;
+  INITIAL = 8;
 }

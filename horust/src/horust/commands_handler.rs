@@ -68,7 +68,17 @@ impl CommandsHandlerTrait for CommandsHandler {
         &mut self.uds_listener
     }
 
-    fn get_service_status(&self, service_name: String) -> HorustMsgServiceStatus {
-        todo!()
+    fn get_service_status(&self, service_name: String) -> Option<HorustMsgServiceStatus> {
+        self.services.get(&service_name).map(|status| match status {
+            ServiceStatus::Starting => HorustMsgServiceStatus::Starting,
+            ServiceStatus::Started => HorustMsgServiceStatus::Started,
+            ServiceStatus::Running => HorustMsgServiceStatus::Running,
+            ServiceStatus::InKilling => HorustMsgServiceStatus::Inkilling,
+            ServiceStatus::Success => HorustMsgServiceStatus::Success,
+            ServiceStatus::Finished => HorustMsgServiceStatus::Finished,
+            ServiceStatus::FinishedFailed => HorustMsgServiceStatus::Finishedfailed,
+            ServiceStatus::Failed => HorustMsgServiceStatus::Failed,
+            ServiceStatus::Initial => HorustMsgServiceStatus::Initial,
+        })
     }
 }
