@@ -23,7 +23,6 @@ jobs:
           components: rustfmt
           profile: minimal
           override: true
-
       - name: cargo fmt -- --check
         uses: actions-rs/cargo@v1
         with:
@@ -38,13 +37,10 @@ jobs:
 
     strategy:
       matrix:
-        build: [stable, beta, nightly]
+        build: [stable, beta]
         include:
           - build: beta
             rust: beta
-          - build: nightly
-            rust: nightly
-            benches: true
 
     steps:
       - name: Checkout
@@ -57,12 +53,16 @@ jobs:
           profile: minimal
           override: true
 
+      - name: Install protoc
+        run: sudo apt-get install -y protobuf-compiler
+
       - name: Build debug
         uses: actions-rs/cargo@v1
         with:
           command: build
           args: ${{ matrix.features }}
-
+      - name: Create /var/run/horust directory
+        run: sudo mkdir -p /var/run/horust && sudo chmod 777 /var/run/horust
       - name: Test
         uses: actions-rs/cargo@v1
         with:
@@ -119,6 +119,9 @@ jobs:
           profile: minimal
           override: true
           target: ${{ matrix.target }}
+
+      - name: Install protoc
+        run: sudo apt-get install -y protobuf-compiler
 
       - name: Build target
         uses: actions-rs/cargo@v1
