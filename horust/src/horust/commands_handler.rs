@@ -1,6 +1,7 @@
 use crate::horust::bus::BusConnector;
 use crate::horust::formats::{ServiceName, ServiceStatus};
 use crate::horust::Event;
+use anyhow::{anyhow, bail, Result};
 use horust_commands_lib::{CommandsHandlerTrait, HorustMsgServiceStatus};
 use std::collections::HashMap;
 use std::os::unix::net::UnixListener;
@@ -29,7 +30,7 @@ struct CommandsHandler {
 
 impl CommandsHandler {
     fn new(bus: BusConnector<Event>, uds_path: PathBuf, services: Vec<ServiceName>) -> Self {
-        let mut uds_listener = UnixListener::bind(&uds_path).unwrap();
+        let uds_listener = UnixListener::bind(&uds_path).unwrap();
         uds_listener.set_nonblocking(true).unwrap();
         Self {
             bus,
@@ -68,17 +69,38 @@ impl CommandsHandlerTrait for CommandsHandler {
         &mut self.uds_listener
     }
 
-    fn get_service_status(&self, service_name: String) -> Option<HorustMsgServiceStatus> {
-        self.services.get(&service_name).map(|status| match status {
-            ServiceStatus::Starting => HorustMsgServiceStatus::Starting,
-            ServiceStatus::Started => HorustMsgServiceStatus::Started,
-            ServiceStatus::Running => HorustMsgServiceStatus::Running,
-            ServiceStatus::InKilling => HorustMsgServiceStatus::Inkilling,
-            ServiceStatus::Success => HorustMsgServiceStatus::Success,
-            ServiceStatus::Finished => HorustMsgServiceStatus::Finished,
-            ServiceStatus::FinishedFailed => HorustMsgServiceStatus::Finishedfailed,
-            ServiceStatus::Failed => HorustMsgServiceStatus::Failed,
-            ServiceStatus::Initial => HorustMsgServiceStatus::Initial,
-        })
+    fn get_service_status(&self, service_name: &str) -> anyhow::Result<HorustMsgServiceStatus> {
+        self.services
+            .get(service_name)
+            .map(from_service_status)
+            .ok_or_else(|| anyhow!("Error: service {service_name} not found."))
+    }
+    fn update_service_status(
+        &self,
+        service_name: &str,
+        new_status: HorustMsgServiceStatus,
+    ) -> Result<()> {
+        match self.services.get(&service_name) {
+            None => bail!("Service {service_name} not found."),
+            Some(service_status) if from_service_status(service_status) != new_status => {
+                //self.bus.send_event(Event::Kill())
+            }
+            _ => Ok(()),
+        }
+        todo!();
+    }
+}
+
+fn from_service_status(status: &ServiceStatus) -> HorustMsgServiceStatus {
+    match status {
+        ServiceStatus::Starting => HorustMsgServiceStatus::Starting,
+        ServiceStatus::Started => HorustMsgServiceStatus::Started,
+        ServiceStatus::Running => HorustMsgServiceStatus::Running,
+        ServiceStatus::InKilling => HorustMsgServiceStatus::Inkilling,
+        ServiceStatus::Success => HorustMsgServiceStatus::Success,
+        ServiceStatus::Finished => HorustMsgServiceStatus::Finished,
+        ServiceStatus::FinishedFailed => HorustMsgServiceStatus::Finishedfailed,
+        ServiceStatus::Failed => HorustMsgServiceStatus::Failed,
+        ServiceStatus::Initial => HorustMsgServiceStatus::Initial,
     }
 }

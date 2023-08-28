@@ -23,8 +23,8 @@ impl CommandsHandlerTrait for MockCommandsHandler {
         &mut self.unix_listener
     }
 
-    fn get_service_status(&self, service_name: String) -> Option<HorustMsgServiceStatus> {
-        Some(match service_name.as_str() {
+    fn get_service_status(&self, service_name: &str) -> Result<HorustMsgServiceStatus> {
+        Ok(match service_name {
             "Running" => HorustMsgServiceStatus::Running,
             "Started" => HorustMsgServiceStatus::Started,
             _ => unimplemented!(),

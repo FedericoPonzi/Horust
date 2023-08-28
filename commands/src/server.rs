@@ -22,6 +22,7 @@ pub trait CommandsHandlerTrait {
             Ok((stream, _addr)) => {
                 let conn_handler = UdsConnectionHandler::new(stream);
                 if let Err(err) = self.handle_connection(conn_handler) {
+                    //todo: send response back.
                     error!("Error handling connection: {}", err);
                 }
             }
@@ -39,39 +40,61 @@ pub trait CommandsHandlerTrait {
             .receive_message()?
             .message_type
             .ok_or(anyhow!("No request found in message sent from client."))?;
+
         if let Request(HorustMsgRequest {
             request: Some(request),
         }) = received
         {
-            match request {
+            let response = match request {
                 horust_msg_request::Request::StatusRequest(status_request) => {
                     info!("Requested status for {}", status_request.service_name);
-                    let service_name = status_request.service_name.clone();
 
-                    let service_status =
-                        self.get_service_status(status_request.service_name.clone());
-                    let response = service_status
+                    let service_status = self.get_service_status(&status_request.service_name);
+                    service_status
                         .map(|status| {
                             new_horust_msg_service_status_response(
                                 status_request.service_name,
                                 status,
                             )
                         })
-                        .unwrap_or_else(|| {
+                        .unwrap_or_else(|err| {
                             new_horust_msg_error_response(format!(
-                                "Service {} not found.",
-                                service_name
+                                "Error from status handler: {err}",
                             ))
-                        });
-                    uds_conn_handler.send_message(response)?;
+                        })
                 }
-                horust_msg_request::Request::ChangeRequest(_) => {}
+                horust_msg_request::Request::ChangeRequest(change_request) => {
+                    info!(
+                        "Requested service update for {} to {}",
+                        change_request.service_name, change_request.service_status
+                    );
+                    self.update_service_status(
+                        &change_request.service_name,
+                        HorustMsgServiceStatus::from_i32(change_request.service_status).unwrap(),
+                    )
+                    .map(|new_status| {
+                        // TODO:
+                        new_horust_msg_service_status_response(
+                            change_request.service_name,
+                            new_status,
+                        )
+                    })
+                    .unwrap_or_else(|err| {
+                        new_horust_msg_error_response(format!("Error from change handler: {err}"))
+                    })
+                }
             };
+            uds_conn_handler.send_message(response)?;
         }
         Ok(())
     }
 
-    fn get_service_status(&self, service_name: String) -> Option<HorustMsgServiceStatus>;
+    fn get_service_status(&self, service_name: &str) -> Result<HorustMsgServiceStatus>;
+    fn update_service_status(
+        &self,
+        service_name: &str,
+        new_status: HorustMsgServiceStatus,
+    ) -> Result<()>;
 }
 
 pub fn new_horust_msg_error_response(error: String) -> HorustMsgMessage {

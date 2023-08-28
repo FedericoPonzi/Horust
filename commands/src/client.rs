@@ -6,7 +6,7 @@ use crate::proto::messages::{
 use crate::{HorustMsgServiceStatus, UdsConnectionHandler};
 use anyhow::{anyhow, Context};
 use anyhow::{bail, Result};
-use log::info;
+use log::{debug, info};
 use std::net::Shutdown;
 use std::os::unix::net::UnixStream;
 use std::path::Path;
@@ -59,13 +59,13 @@ impl ClientHandler {
             .shutdown(Shutdown::Write)?;
         //Reads all bytes until EOF in this source, appending them to buf.
         let received = self.uds_connection_handler.receive_message()?;
-        info!("Client: received: {received:?}");
+        debug!("Client: received: {received:?}");
         let response = unwrap_response(received).unwrap()?;
         if let horust_msg_response::Response::StatusResponse(resp) = response {
-            return Ok((
+            Ok((
                 resp.service_name,
                 HorustMsgServiceStatus::from_i32(resp.service_status).unwrap(),
-            ));
+            ))
         } else {
             bail!("Invalid response received: {:?}", response);
         }

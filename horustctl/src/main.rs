@@ -3,10 +3,7 @@ use clap::{Args, Parser, Subcommand};
 use env_logger::Env;
 use horust_commands_lib::{get_path, ClientHandler};
 use log::debug;
-use std::env;
 use std::fs::read_dir;
-use std::io::Write;
-use std::os::unix::net::UnixStream;
 use std::path::PathBuf;
 
 /// Simple program to greet a person
