@@ -16,7 +16,7 @@ use std::path::{Path, PathBuf};
 
 /// socket_name should be the pid of the horust process.
 pub fn get_path(socket_folder_path: &Path, horust_pid: i32) -> PathBuf {
-    socket_folder_path.join(format!("hourst-{horust_pid}.sock"))
+    socket_folder_path.join(format!("horust-{horust_pid}.sock"))
 }
 
 pub struct UdsConnectionHandler {

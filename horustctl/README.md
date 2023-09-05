@@ -1,4 +1,4 @@
-## Hourstctl
+## Horustctl
 A command line interface to interact with an horust process. It works using Unix Domain Sockets. 
 Each horust process will create a new uds socket inside /var/run/horust/horust-<pid>.sock folder (can be configured).
 

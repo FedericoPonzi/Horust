@@ -32,10 +32,11 @@ pub fn store_service(dir: &Path, service: &str, service_name: Option<&str>) -> S
 /// Creates script and service file, and stores them in dir.
 /// It will append a `command` at the top of the service, with a reference to script.
 /// Returns the service name.
-pub fn store_service_script(
+/// if service_name is None a random name will be used.
+pub fn store_service(
     dir: &Path,
     script: &str,
-    service: Option<&str>,
+    service_content: Option<&str>,
     service_name: Option<&str>,
 ) -> String {
     let rnd_name = create_random_name();
@@ -47,7 +48,7 @@ pub fn store_service_script(
         r#"command = "/usr/bin/env bash {}"
 {}"#,
         script_path.display(),
-        service.unwrap_or("")
+        service_content.unwrap_or("")
     );
     store_service(dir, &service, Some(&service_name))
 }

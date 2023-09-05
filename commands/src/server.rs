@@ -68,7 +68,8 @@ pub trait CommandsHandlerTrait {
                         "Requested service update for {} to {}",
                         change_request.service_name, change_request.service_status
                     );
-                    self.update_service_status(
+                    new_horust_msg_error_response(format!("Unimplemented!"))
+                    /*self.update_service_status(
                         &change_request.service_name,
                         HorustMsgServiceStatus::from_i32(change_request.service_status).unwrap(),
                     )
@@ -81,7 +82,7 @@ pub trait CommandsHandlerTrait {
                     })
                     .unwrap_or_else(|err| {
                         new_horust_msg_error_response(format!("Error from change handler: {err}"))
-                    })
+                    })*/
                 }
             };
             uds_conn_handler.send_message(response)?;

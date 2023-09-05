@@ -80,13 +80,13 @@ impl CommandsHandlerTrait for CommandsHandler {
         service_name: &str,
         new_status: HorustMsgServiceStatus,
     ) -> Result<()> {
-        match self.services.get(&service_name) {
+        /*        match self.services.get(&service_name) {
             None => bail!("Service {service_name} not found."),
             Some(service_status) if from_service_status(service_status) != new_status => {
                 //self.bus.send_event(Event::Kill())
             }
             _ => Ok(()),
-        }
+        }*/
         todo!();
     }
 }
