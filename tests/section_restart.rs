@@ -2,8 +2,12 @@ use std::time::Duration;
 
 use assert_cmd::cmd::Command;
 use libc::{
-    c_int, SIGABRT, SIGBUS, SIGFPE, SIGHUP, SIGILL, SIGINT, SIGKILL, SIGPIPE, SIGPOLL, SIGPROF,
+    c_int, SIGABRT, SIGBUS, SIGFPE, SIGHUP, SIGILL, SIGINT, SIGKILL, SIGPIPE, SIGPROF,
     SIGQUIT, SIGSEGV, SIGSYS, SIGTERM, SIGTRAP, SIGUSR1, SIGUSR2, SIGVTALRM, SIGXCPU, SIGXFSZ,
+};
+#[cfg(target_os = "linux")]
+use libc::{
+    SIGPOLL
 };
 use predicates::prelude::predicate;
 use utils::*;
@@ -119,8 +123,14 @@ strategy = "always"
 
 #[test]
 fn test_restart_always_killed_by_signals() -> Result<(), std::io::Error> {
+    #[cfg(target_os = "linux")]
     const DEFAULT_TERMINATE: [c_int; 20] = [
         SIGABRT, SIGBUS, SIGFPE, SIGHUP, SIGILL, SIGINT, SIGKILL, SIGPIPE, SIGPOLL, SIGPROF,
+        SIGQUIT, SIGSEGV, SIGSYS, SIGTERM, SIGTRAP, SIGUSR1, SIGUSR2, SIGVTALRM, SIGXCPU, SIGXFSZ,
+    ];
+    #[cfg(not(target_os = "linux"))]
+    const DEFAULT_TERMINATE: [c_int; 19] = [
+        SIGABRT, SIGBUS, SIGFPE, SIGHUP, SIGILL, SIGINT, SIGKILL, SIGPIPE, SIGPROF,
         SIGQUIT, SIGSEGV, SIGSYS, SIGTERM, SIGTRAP, SIGUSR1, SIGUSR2, SIGVTALRM, SIGXCPU, SIGXFSZ,
     ];
     for sig in DEFAULT_TERMINATE {

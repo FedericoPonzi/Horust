@@ -19,6 +19,7 @@
 
 ## Status
 At this point, this should be considered Alpha software. As in, you can (and should) use it, but under your own discretion.
+Horust can be used on macOS in development situations.  Due to limitations in the macOS API, subprocesses of supervised processes may not correctly be reaped when their parent process exits.
 
 ## Usage
 Assume you'd like to create a website health monitoring system. You can create one using Horust and a small python script.

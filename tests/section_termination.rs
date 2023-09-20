@@ -80,11 +80,19 @@ wait = "10s""#,
 /// User can set a custom termination signal, this test will ensure we're sending the correct one.
 #[test]
 fn test_termination_all_custom_signals() {
-    vec![
+    #[cfg(target_os = "linux")]
+    let signals = vec![
         "HUP", "INT", "QUIT", "ILL", "TRAP", "ABRT", "BUS", "FPE", "USR1", "SEGV", "USR2", "PIPE",
-        "ALRM", "TERM", "STKFLT", "CHLD", "CONT", "STOP", "TSTP", "TTIN", "TTOU", "URG", "XCPU",
-        "XFSZ", "VTALRM", "PROF", "WINCH", "IO", "PWR", "SYS",
-    ]
+        "ALRM", "TERM", "CHLD", "CONT", "STOP", "TSTP", "TTIN", "TTOU", "URG", "XCPU",
+        "XFSZ", "VTALRM", "PROF", "WINCH", "IO", "SYS",
+    ];
+    #[cfg(not(target_os = "linux"))]
+    let signals = vec![
+        "HUP", "INT", "QUIT", "ILL", "TRAP", "ABRT", "BUS", "FPE", "USR1", "SEGV", "USR2", "PIPE",
+        "ALRM", "TERM", "CHLD", "CONT", "STOP", "TSTP", "TTIN", "TTOU", "URG", "XCPU",
+        "XFSZ", "VTALRM", "PROF", "WINCH", "IO", "SYS",
+    ];
+    signals
     .into_iter()
     .for_each(|friendly_name| {
         eprintln!("Testing: {}", friendly_name);

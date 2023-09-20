@@ -548,6 +548,7 @@ pub enum TerminationSignal {
     ALRM,
     #[default]
     TERM,
+    #[cfg(target_os = "linux")]
     STKFLT,
     CHLD,
     CONT,
@@ -562,6 +563,7 @@ pub enum TerminationSignal {
     PROF,
     WINCH,
     IO,
+    #[cfg(target_os = "linux")]
     PWR,
     SYS,
 }
@@ -584,6 +586,7 @@ impl From<TerminationSignal> for Signal {
             TerminationSignal::PIPE => SIGPIPE,
             TerminationSignal::ALRM => SIGALRM,
             TerminationSignal::TERM => SIGTERM,
+            #[cfg(target_os = "linux")]
             TerminationSignal::STKFLT => SIGSTKFLT,
             TerminationSignal::CHLD => SIGCHLD,
             TerminationSignal::CONT => SIGCONT,
@@ -598,6 +601,7 @@ impl From<TerminationSignal> for Signal {
             TerminationSignal::PROF => SIGPROF,
             TerminationSignal::WINCH => SIGWINCH,
             TerminationSignal::IO => SIGIO,
+            #[cfg(target_os = "linux")]
             TerminationSignal::PWR => SIGPWR,
             TerminationSignal::SYS => SIGSYS,
         }
