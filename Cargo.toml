@@ -19,7 +19,7 @@ env_logger = "0.10.0"
 humantime-serde = "~1.1"
 libc = "0.2.148"
 log = "~0.4"
-nix = "~0.26"
+nix = "~0.27"
 reqwest = { version = "0.11.20", features = ["blocking", "json"], optional = true, default-features = false }
 serde = { version = "~1.0", features = ["derive"] }
 shlex = "~1.1"
