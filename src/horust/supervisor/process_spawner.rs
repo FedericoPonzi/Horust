@@ -8,6 +8,7 @@ use std::time::Duration;
 use anyhow::{Context, Result};
 use crossbeam::channel::{after, tick};
 use nix::errno::Errno;
+use nix::errno::Errno::ENOENT;
 use nix::fcntl;
 use nix::unistd;
 use nix::unistd::{fork, ForkResult, Pid, Uid};
@@ -58,10 +59,10 @@ pub(crate) fn spawn_fork_exec_handler(
 
 /// Produces the execvpe arguments out of a `Service`
 #[inline]
-fn exec_args(service: &Service) -> Result<(CString, Vec<CString>, Vec<CString>)> {
+fn exec_args(service: &Service) -> Result<(String, Vec<CString>, Vec<CString>)> {
     let chunks: Vec<String> =
         shlex::split(&service.command).context(format!("Invalid command: {}", service.command,))?;
-    let program_name = CString::new(chunks.get(0).unwrap().as_str())?;
+    let program_name = String::from(chunks.get(0).unwrap());
     let to_cstring = |s: Vec<String>| {
         s.into_iter()
             .map(|arg| CString::new(arg).map_err(Into::into))
@@ -77,7 +78,7 @@ fn exec_args(service: &Service) -> Result<(CString, Vec<CString>, Vec<CString>)>
 #[inline]
 fn child_process_main(
     service: &Service,
-    program_name: CString,
+    program_name: String,
     cwd: PathBuf,
     uid: Uid,
     arg_cptr: Vec<&CStr>,
@@ -99,7 +100,7 @@ fn child_process_main(
             102,
         );
     }
-    if let Err(errno) = exec(program_name, arg_cptr, env_cptr, uid, cwd) {
+    if let Err(errno) = exec(&program_name, arg_cptr, env_cptr, uid, cwd) {
         panic_ssafe(
             "child_process_main: Failed to exec the new process.",
             Some(&service.name),
@@ -169,6 +170,18 @@ fn redirect_output(
     Ok(())
 }
 
+/// Find program on PATH.
+///
+fn find_program_path(program_name: &String) -> std::result::Result<String, Errno> {
+    for dir in std::env::var("PATH").unwrap().split(":") {
+        let path = format!("{}/{}", dir, program_name);
+        if std::path::Path::new(&path).exists() {
+            return Ok(path);
+        }
+    }
+    Err(ENOENT)
+}
+
 /// Exec wrapper.
 ///
 /// # Safety
@@ -176,7 +189,7 @@ fn redirect_output(
 /// Use only async-signal-safe, otherwise it might lock.
 #[inline]
 fn exec(
-    program_name: CString,
+    program_name: &String,
     arg_cptr: Vec<&CStr>,
     env_cptr: Vec<&CStr>,
     uid: Uid,
@@ -188,9 +201,15 @@ fn exec(
     unistd::setsid()?;
     // Set the user ID
     unistd::setuid(uid)?;
-    #[cfg(target_os = "linux")]
-    unistd::execvpe(program_name.as_ref(), arg_cptr.as_ref(), env_cptr.as_ref())?;
-    #[cfg(not(target_os = "linux"))]
-    unistd::execve(program_name.as_ref(), arg_cptr.as_ref(), env_cptr.as_ref())?;
+    let path = if program_name.contains("/") {
+        program_name.to_string()
+    } else {
+        find_program_path(&program_name)?
+    };
+    unistd::execve(
+        CString::new(path).unwrap().as_ref(),
+        arg_cptr.as_ref(),
+        env_cptr.as_ref(),
+    )?;
     Ok(())
 }
