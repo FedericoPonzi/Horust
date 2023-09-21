@@ -188,6 +188,9 @@ fn exec(
     unistd::setsid()?;
     // Set the user ID
     unistd::setuid(uid)?;
+    #[cfg(target_os = "linux")]
     unistd::execvpe(program_name.as_ref(), arg_cptr.as_ref(), env_cptr.as_ref())?;
+    #[cfg(not(target_os = "linux"))]
+    unistd::execve(program_name.as_ref(), arg_cptr.as_ref(), env_cptr.as_ref())?;
     Ok(())
 }

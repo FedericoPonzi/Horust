@@ -4,6 +4,7 @@ use std::fs;
 use std::path::{Path, PathBuf};
 
 use anyhow::Result;
+#[cfg(target_os = "linux")]
 use libc::{prctl, PR_SET_CHILD_SUBREAPER};
 
 pub use formats::Event;
@@ -56,6 +57,7 @@ impl Horust {
 
     /// Blocking call, will setup the event loop and the threads and run all the available services.
     pub fn run(&mut self) -> ExitStatus {
+        #[cfg(target_os = "linux")]
         unsafe {
             // A subreaper fulfills the role of init(1) for its
             // descendant processes.  When a process becomes orphaned
