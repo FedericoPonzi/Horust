@@ -69,6 +69,17 @@ pwd"#;
 }
 
 #[test]
+fn test_cwd_default() {
+    let (mut cmd, temp_dir) = get_cli();
+    let script = r#"#!/usr/bin/env bash
+pwd"#;
+    store_service(temp_dir.path(), script, None, None);
+    cmd.assert()
+        .success()
+        .stdout(contains(&temp_dir.path().display().to_string()));
+}
+
+#[test]
 fn test_start_after() {
     let (mut cmd, temp_dir) = get_cli();
     let script_first = r#"#!/usr/bin/env bash
