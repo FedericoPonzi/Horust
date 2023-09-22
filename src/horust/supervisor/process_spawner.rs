@@ -8,7 +8,6 @@ use std::time::Duration;
 use anyhow::{Context, Result};
 use crossbeam::channel::{after, tick};
 use nix::errno::Errno;
-use nix::errno::Errno::ENOENT;
 use nix::fcntl;
 use nix::unistd;
 use nix::unistd::{fork, ForkResult, Pid, Uid};
@@ -59,7 +58,7 @@ pub(crate) fn spawn_fork_exec_handler(
 
 /// Produces the execvpe arguments out of a `Service`
 #[inline]
-fn exec_args(service: &Service) -> Result<(String, Vec<CString>, Vec<CString>)> {
+fn exec_args(service: &Service) -> Result<(CString, Vec<CString>, Vec<CString>)> {
     let chunks: Vec<String> =
         shlex::split(&service.command).context(format!("Invalid command: {}", service.command,))?;
     let program_name = String::from(chunks.get(0).unwrap());
@@ -71,14 +70,18 @@ fn exec_args(service: &Service) -> Result<(String, Vec<CString>, Vec<CString>)> 
     let arg_cstrings = to_cstring(chunks)?;
     let environment = service.get_environment()?;
     let env_cstrings = to_cstring(environment)?;
-
-    Ok((program_name, arg_cstrings, env_cstrings))
+    let path = if program_name.contains("/") {
+        program_name.to_string()
+    } else {
+        find_program(&program_name)?
+    };
+    Ok((CString::new(path)?, arg_cstrings, env_cstrings))
 }
 
 #[inline]
 fn child_process_main(
     service: &Service,
-    program_name: String,
+    path: CString,
     cwd: PathBuf,
     uid: Uid,
     arg_cptr: Vec<&CStr>,
@@ -100,7 +103,7 @@ fn child_process_main(
             102,
         );
     }
-    if let Err(errno) = exec(&program_name, arg_cptr, env_cptr, uid, cwd) {
+    if let Err(errno) = exec(path, arg_cptr, env_cptr, uid, cwd) {
         panic_ssafe(
             "child_process_main: Failed to exec the new process.",
             Some(&service.name),
@@ -113,14 +116,14 @@ fn child_process_main(
 /// Fork the process
 fn spawn_process(service: &Service) -> Result<Pid> {
     debug!("Spawning process for service: {}", service.name);
-    let (program_name, arg_cstrings, env_cstrings) = exec_args(service)?;
+    let (path, arg_cstrings, env_cstrings) = exec_args(service)?;
     let uid = service.user.get_uid()?;
     let cwd = service.working_directory.clone();
     let arg_cptr: Vec<&CStr> = arg_cstrings.iter().map(|c| c.as_c_str()).collect();
     let env_cptr: Vec<&CStr> = env_cstrings.iter().map(|c| c.as_c_str()).collect();
     match unsafe { fork() } {
         Ok(ForkResult::Child) => {
-            child_process_main(service, program_name, cwd, uid, arg_cptr, env_cptr);
+            child_process_main(service, path, cwd, uid, arg_cptr, env_cptr);
             unreachable!();
         }
         Ok(ForkResult::Parent { child, .. }) => {
@@ -172,14 +175,57 @@ fn redirect_output(
 
 /// Find program on PATH.
 ///
-fn find_program_path(program_name: &String) -> std::result::Result<String, Errno> {
-    for dir in std::env::var("PATH").unwrap().split(":") {
-        let path = format!("{}/{}", dir, program_name);
-        if std::path::Path::new(&path).exists() {
-            return Ok(path);
+#[derive(Debug)]
+enum PathSearchError {
+    NotFound,
+    InvalidPath,
+    MissingPath,
+}
+
+impl std::error::Error for PathSearchError {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        // Implement the source method to return the underlying error, if any.
+        None
+    }
+}
+
+impl std::fmt::Display for PathSearchError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            PathSearchError::NotFound => {
+                write!(f, "Program not found in any of the PATH directories")
+            }
+            PathSearchError::InvalidPath => write!(f, "Invalid path for program"),
+            PathSearchError::MissingPath => write!(f, "PATH environment variable is not set"),
         }
     }
-    Err(ENOENT)
+}
+
+fn find_program(program_name: &String) -> Result<String, PathSearchError> {
+    // Get the PATH environment variable
+    let path_var = match std::env::var_os("PATH") {
+        Some(val) => val,
+        None => return Err(PathSearchError::MissingPath),
+    };
+
+    // Split the PATH variable into individual paths
+    let paths: Vec<PathBuf> = std::env::split_paths(&path_var).collect();
+
+    // Iterate through each directory in PATH and check if the program exists
+    for path in paths {
+        let program_path = path.join(program_name);
+
+        // Check if the program file exists at this path
+        if program_path.is_file() {
+            if let Some(path_str) = program_path.to_str() {
+                return Ok(path_str.to_string());
+            } else {
+                return Err(PathSearchError::InvalidPath);
+            }
+        }
+    }
+
+    Err(PathSearchError::NotFound)
 }
 
 /// Exec wrapper.
@@ -189,7 +235,7 @@ fn find_program_path(program_name: &String) -> std::result::Result<String, Errno
 /// Use only async-signal-safe, otherwise it might lock.
 #[inline]
 fn exec(
-    program_name: &String,
+    path: CString,
     arg_cptr: Vec<&CStr>,
     env_cptr: Vec<&CStr>,
     uid: Uid,
@@ -201,15 +247,6 @@ fn exec(
     unistd::setsid()?;
     // Set the user ID
     unistd::setuid(uid)?;
-    let path = if program_name.contains("/") {
-        program_name.to_string()
-    } else {
-        find_program_path(&program_name)?
-    };
-    unistd::execve(
-        CString::new(path).unwrap().as_ref(),
-        arg_cptr.as_ref(),
-        env_cptr.as_ref(),
-    )?;
+    unistd::execve(path.as_ref(), arg_cptr.as_ref(), env_cptr.as_ref())?;
     Ok(())
 }

@@ -25,7 +25,7 @@ printf "{}" {}"#,
         pattern, redir
     );
     let service = format!(r#"{}="{}""#, stream, to);
-    store_service(
+    store_service_script(
         temp_dir.path(),
         script.as_str(),
         Some(service.as_str()),
@@ -57,6 +57,22 @@ fn test_output_redirection() {
 }
 
 #[test]
+fn test_search_path_not_found() {
+    let (mut cmd, temp_dir) = get_cli();
+    store_service(temp_dir.path(), "command = \"non-existent-command\"", None);
+    cmd.assert()
+        .success()
+        .stderr(contains("Program not found in any of the PATH directories"));
+}
+
+#[test]
+fn test_search_path_found() {
+    let (mut cmd, temp_dir) = get_cli();
+    store_service(temp_dir.path(), "command = \"echo kilroy was here\"", None);
+    cmd.assert().success().stdout(contains("kilroy was here"));
+}
+
+#[test]
 fn test_cwd() {
     let (mut cmd, temp_dir) = get_cli();
     let another_dir = TempDir::new("another").unwrap();
@@ -64,7 +80,7 @@ fn test_cwd() {
     let service = format!(r#"working-directory = "{}""#, displ);
     let script = r#"#!/usr/bin/env bash
 pwd"#;
-    store_service(temp_dir.path(), script, Some(service.as_str()), None);
+    store_service_script(temp_dir.path(), script, Some(service.as_str()), None);
     cmd.assert().success().stdout(contains(displ.as_str()));
 }
 
@@ -73,14 +89,14 @@ fn test_start_after() {
     let (mut cmd, temp_dir) = get_cli();
     let script_first = r#"#!/usr/bin/env bash
 echo "a""#;
-    store_service(temp_dir.path(), script_first, None, Some("a"));
+    store_service_script(temp_dir.path(), script_first, None, Some("a"));
 
     let service_second = r#"start-delay = "500millis" 
     start-after = ["a.toml"]
     "#;
     let script_second = r#"#!/usr/bin/env bash
 echo "b""#;
-    store_service(
+    store_service_script(
         temp_dir.path(),
         script_second,
         Some(service_second),
@@ -91,7 +107,7 @@ echo "b""#;
     start-after = ["b.toml"]"#;
     let script_c = r#"#!/usr/bin/env bash
 echo "c""#;
-    store_service(temp_dir.path(), script_c, Some(service_c), None);
+    store_service_script(temp_dir.path(), script_c, Some(service_c), None);
 
     cmd.assert().success().stdout(contains("a\nb\nc"));
 }
@@ -105,8 +121,8 @@ fn test_user() {
     let service = r#"user = "games""#;
     let script = r#"#!/usr/bin/env bash
 whoami"#;
-    store_service(temp_dir.path(), script, Some(service), None);
-    store_service(temp_dir.path(), script, None, None);
+    store_service_script(temp_dir.path(), script, Some(service), None);
+    store_service_script(temp_dir.path(), script, None, None);
     cmd.assert().success().stdout(contains("games"));
 }
 
@@ -122,7 +138,7 @@ done
     let service = r#"
 start-delay = "10s"
 "#;
-    store_service(temp_dir.path(), script, Some(service), None);
+    store_service_script(temp_dir.path(), script, Some(service), None);
     let recv = run_async(&mut cmd, true);
     sleep(Duration::from_secs(1));
     kill(recv.pid, Signal::SIGINT).expect("kill");

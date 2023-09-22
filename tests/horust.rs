@@ -20,7 +20,7 @@ fn test_config_unsuccessful_exit_finished_failed() {
     let failing_script = r#"#!/usr/bin/env bash
 exit 1
 "#;
-    store_service(temp_dir.path(), failing_script, None, None);
+    store_service_script(temp_dir.path(), failing_script, None, None);
     let recv = run_async(&mut cmd, true);
     recv.recv_or_kill(Duration::from_secs(15));
     let cmd = cmd.args(vec!["--unsuccessful-exit-finished-failed"]);
@@ -82,14 +82,14 @@ fn test_multiple() {
         } else {
             temp_dir_2.path()
         };
-        store_service(
+        store_service_script(
             t_dir,
             script,
             Some(service.as_str()),
             Some(i.to_string().as_str()),
         );
     }
-    store_service(temp_dir.path(), script, None, Some("0"));
+    store_service_script(temp_dir.path(), script, None, Some("0"));
     let recv = run_async(&mut cmd, true);
     recv.recv_or_kill(Duration::from_secs(max * 2));
 }
@@ -104,14 +104,14 @@ fn test_stress_test_chained_services() {
 
     for i in 1..max {
         let service = format!(r#"start-after = ["{}.toml"]"#, i - 1);
-        store_service(
+        store_service_script(
             temp_dir.path(),
             script,
             Some(service.as_str()),
             Some(i.to_string().as_str()),
         );
     }
-    store_service(temp_dir.path(), script, None, Some("0"));
+    store_service_script(temp_dir.path(), script, None, Some("0"));
     let recv = run_async(&mut cmd, true);
     recv.recv_or_kill(Duration::from_secs(max * 2));
 }

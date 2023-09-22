@@ -29,7 +29,7 @@ done
 "#;
     let service = r#"[termination]
 wait = "1s""#;
-    store_service(temp_dir.path(), script, Some(service), None);
+    store_service_script(temp_dir.path(), script, Some(service), None);
 
     let recv = run_async(&mut cmd, true);
     kill(recv.pid, Signal::SIGINT).expect("kill");
@@ -66,7 +66,7 @@ wait = "10s""#,
         friendly_name
     ); // wait is higher than the test duration.
 
-    store_service(
+    store_service_script(
         temp_dir.path(),
         script.as_str(),
         Some(service.as_str()),
@@ -110,12 +110,12 @@ done
 wait = "0s"
 die-if-failed = ["a.toml"]"#;
 
-    store_service(temp_dir.path(), script, Some(service), None);
+    store_service_script(temp_dir.path(), script, Some(service), None);
     let script = r#"#!/usr/bin/env bash
 sleep 1
 exit 1
 "#;
-    store_service(temp_dir.path(), script, None, Some("a"));
+    store_service_script(temp_dir.path(), script, None, Some("a"));
     let recv = run_async(&mut cmd, true);
     recv.recv_or_kill(Duration::from_secs(10));
 }

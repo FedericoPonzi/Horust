@@ -10,20 +10,35 @@ use std::thread;
 use std::time::Duration;
 use tempdir::TempDir;
 
+/// Create a random name
+pub fn create_random_name() -> String {
+    thread_rng()
+        .sample_iter(&Alphanumeric)
+        .take(5)
+        .map(|x| x as char)
+        .collect::<String>()
+}
+
+/// Stores a service
+pub fn store_service(dir: &Path, service: &str, service_name: Option<&str>) -> String {
+    let service_name = match service_name {
+        Some(name) => name.to_string(),
+        None => format!("{}.toml", create_random_name()),
+    };
+    std::fs::write(dir.join(&service_name), service).unwrap();
+    service_name
+}
+
 /// Creates script and service file, and stores them in dir.
 /// It will append a `command` at the top of the service, with a reference to script.
 /// Returns the service name.
-pub fn store_service(
+pub fn store_service_script(
     dir: &Path,
     script: &str,
     service: Option<&str>,
     service_name: Option<&str>,
 ) -> String {
-    let rnd_name = thread_rng()
-        .sample_iter(&Alphanumeric)
-        .take(5)
-        .map(|x| x as char)
-        .collect::<String>();
+    let rnd_name = create_random_name();
     let service_name = format!("{}.toml", service_name.unwrap_or(rnd_name.as_str()));
     let script_name = format!("{}.sh", rnd_name);
     let script_path = dir.join(script_name);
@@ -34,8 +49,7 @@ pub fn store_service(
         script_path.display(),
         service.unwrap_or("")
     );
-    std::fs::write(dir.join(&service_name), service).unwrap();
-    service_name
+    store_service(dir, &service, Some(&service_name))
 }
 
 #[allow(dead_code)]

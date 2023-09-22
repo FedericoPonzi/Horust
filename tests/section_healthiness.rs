@@ -50,7 +50,7 @@ http-endpoint = "{}""#,
     let script = r#"#!/usr/bin/env bash
     sleep 2
     "#;
-    store_service(tempdir.path(), script, Some(service.as_str()), None);
+    store_service_script(tempdir.path(), script, Some(service.as_str()), None);
     let (sender, receiver) = mpsc::sync_channel(0);
     let (stop_listener, sl_receiver) = mpsc::sync_channel(1);
 

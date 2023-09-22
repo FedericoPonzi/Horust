@@ -4,7 +4,7 @@ use predicates::str::contains;
 
 #[allow(dead_code)]
 mod utils;
-use utils::{get_cli, store_service};
+use utils::{get_cli, store_service_script};
 
 static ENVIRONMENT_SCRIPT: &str = r#"#!/usr/bin/env bash
 printenv"#;
@@ -14,7 +14,7 @@ printenv"#;
 fn test_environment_additional() {
     let (mut cmd, temp_dir) = get_cli();
 
-    store_service(temp_dir.path(), ENVIRONMENT_SCRIPT, None, None);
+    store_service_script(temp_dir.path(), ENVIRONMENT_SCRIPT, None, None);
     cmd.assert().success().stdout(contains("bar").not());
 
     let service = r#"[environment]
@@ -23,7 +23,7 @@ re-export = [ "TERM" ]
 additional = { TERM = "bar" }
 "#;
     // Additional should overwrite TERM
-    store_service(temp_dir.path(), ENVIRONMENT_SCRIPT, Some(service), None);
+    store_service_script(temp_dir.path(), ENVIRONMENT_SCRIPT, Some(service), None);
     cmd.assert().success().stdout(contains("bar"));
 }
 
@@ -34,7 +34,7 @@ fn test_environment_keep_env() {
     let service = r#"[environment]
 keep-env = true
 "#;
-    store_service(temp_dir.path(), ENVIRONMENT_SCRIPT, Some(service), None);
+    store_service_script(temp_dir.path(), ENVIRONMENT_SCRIPT, Some(service), None);
     cmd.env("DB_PASS", "MyPassword")
         .assert()
         .success()
@@ -49,7 +49,7 @@ fn test_environment_re_export() {
 keep-env = false
 re-export = [ "DB_PASS" ]
 "#;
-    store_service(temp_dir.path(), ENVIRONMENT_SCRIPT, Some(service), None);
+    store_service_script(temp_dir.path(), ENVIRONMENT_SCRIPT, Some(service), None);
     cmd.env("DB_PASS", "MyPassword")
         .assert()
         .success()
