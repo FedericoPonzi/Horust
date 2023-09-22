@@ -1,4 +1,5 @@
 use std::collections::HashMap;
+use std::env;
 use std::ffi::OsStr;
 use std::fmt::{Debug, Formatter};
 use std::path::{Path, PathBuf};
@@ -54,7 +55,7 @@ pub struct Service {
 
 impl Service {
     fn default_working_directory() -> PathBuf {
-        PathBuf::from("/")
+        env::current_dir().unwrap()
     }
 
     fn default_stdout_log() -> LogOutput {
@@ -101,7 +102,7 @@ impl Default for Service {
         Self {
             name: "".to_owned(),
             start_after: Default::default(),
-            working_directory: "/".into(),
+            working_directory: env::current_dir().unwrap(),
             stdout: Default::default(),
             stderr: Default::default(),
             user: Default::default(),

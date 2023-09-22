@@ -49,7 +49,7 @@ If `b` goes in a `FinishedFailed` state (finished in an unsuccessful manner), `a
 * **`stdout` = `STDOUT|STDERR|file-path`**: Redirect stdout of this service. STDOUT and STDERR are special strings, pointing to stdout and stderr respectively. Otherwise, a file path is assumed.
 * **`stderr` = `STDOUT|STDERR|file-path`**: Redirect stderr of this service. Read `stdout` above for a complete reference.
 * **`user` = `uid|username`**: Will run this service as this user. Either an uid or a username (check it in /etc/passwd)
-* **`working-directory` = `string`**: Will run this command in this directory.
+* **`working-directory` = `string`**: Will run this command in this directory.  Defaults to the working directory of the horust process.
 
 #### Restart section
 ```toml
