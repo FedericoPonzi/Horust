@@ -5,7 +5,7 @@ use std::os::unix::io::AsRawFd;
 use std::path::PathBuf;
 use std::time::Duration;
 
-use anyhow::{Context, Result};
+use anyhow::{anyhow, Context, Result};
 use crossbeam::channel::{after, tick};
 use nix::errno::Errno;
 use nix::fcntl;
@@ -175,57 +175,27 @@ fn redirect_output(
 
 /// Find program on PATH.
 ///
-#[derive(Debug)]
-enum PathSearchError {
-    NotFound,
-    InvalidPath,
-    MissingPath,
-}
-
-impl std::error::Error for PathSearchError {
-    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
-        // Implement the source method to return the underlying error, if any.
-        None
-    }
-}
-
-impl std::fmt::Display for PathSearchError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            PathSearchError::NotFound => {
-                write!(f, "Program not found in any of the PATH directories")
-            }
-            PathSearchError::InvalidPath => write!(f, "Invalid path for program"),
-            PathSearchError::MissingPath => write!(f, "PATH environment variable is not set"),
-        }
-    }
-}
-
-fn find_program(program_name: &String) -> Result<String, PathSearchError> {
-    // Get the PATH environment variable
+fn find_program(program_name: &String) -> Result<String> {
     let path_var = match std::env::var_os("PATH") {
         Some(val) => val,
-        None => return Err(PathSearchError::MissingPath),
+        None => return Err(anyhow!("PATH environment variable is not set")),
     };
 
-    // Split the PATH variable into individual paths
     let paths: Vec<PathBuf> = std::env::split_paths(&path_var).collect();
 
-    // Iterate through each directory in PATH and check if the program exists
     for path in paths {
         let program_path = path.join(program_name);
 
         // Check if the program file exists at this path
         if program_path.is_file() {
-            if let Some(path_str) = program_path.to_str() {
-                return Ok(path_str.to_string());
-            } else {
-                return Err(PathSearchError::InvalidPath);
-            }
+            return Ok(program_path.into_os_string().into_string().unwrap());
         }
     }
 
-    Err(PathSearchError::NotFound)
+    Err(anyhow!(
+        "Program {:?} not found in any of the PATH directories",
+        program_name
+    ))
 }
 
 /// Exec wrapper.

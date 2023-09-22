@@ -60,9 +60,9 @@ fn test_output_redirection() {
 fn test_search_path_not_found() {
     let (mut cmd, temp_dir) = get_cli();
     store_service(temp_dir.path(), "command = \"non-existent-command\"", None);
-    cmd.assert()
-        .success()
-        .stderr(contains("Program not found in any of the PATH directories"));
+    cmd.assert().success().stderr(contains(
+        "Program \"non-existent-command\" not found in any of the PATH directories",
+    ));
 }
 
 #[test]
