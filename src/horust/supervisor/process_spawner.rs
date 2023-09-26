@@ -5,7 +5,7 @@ use std::os::unix::io::AsRawFd;
 use std::path::PathBuf;
 use std::time::Duration;
 
-use anyhow::{Context, Result};
+use anyhow::{anyhow, Context, Result};
 use crossbeam::channel::{after, tick};
 use nix::errno::Errno;
 use nix::fcntl;
@@ -61,7 +61,7 @@ pub(crate) fn spawn_fork_exec_handler(
 fn exec_args(service: &Service) -> Result<(CString, Vec<CString>, Vec<CString>)> {
     let chunks: Vec<String> =
         shlex::split(&service.command).context(format!("Invalid command: {}", service.command,))?;
-    let program_name = CString::new(chunks.get(0).unwrap().as_str())?;
+    let program_name = String::from(chunks.get(0).unwrap());
     let to_cstring = |s: Vec<String>| {
         s.into_iter()
             .map(|arg| CString::new(arg).map_err(Into::into))
@@ -70,14 +70,18 @@ fn exec_args(service: &Service) -> Result<(CString, Vec<CString>, Vec<CString>)>
     let arg_cstrings = to_cstring(chunks)?;
     let environment = service.get_environment()?;
     let env_cstrings = to_cstring(environment)?;
-
-    Ok((program_name, arg_cstrings, env_cstrings))
+    let path = if program_name.contains("/") {
+        program_name.to_string()
+    } else {
+        find_program(&program_name)?
+    };
+    Ok((CString::new(path)?, arg_cstrings, env_cstrings))
 }
 
 #[inline]
 fn child_process_main(
     service: &Service,
-    program_name: CString,
+    path: CString,
     cwd: PathBuf,
     uid: Uid,
     arg_cptr: Vec<&CStr>,
@@ -99,7 +103,7 @@ fn child_process_main(
             102,
         );
     }
-    if let Err(errno) = exec(program_name, arg_cptr, env_cptr, uid, cwd) {
+    if let Err(errno) = exec(path, arg_cptr, env_cptr, uid, cwd) {
         panic_ssafe(
             "child_process_main: Failed to exec the new process.",
             Some(&service.name),
@@ -112,14 +116,14 @@ fn child_process_main(
 /// Fork the process
 fn spawn_process(service: &Service) -> Result<Pid> {
     debug!("Spawning process for service: {}", service.name);
-    let (program_name, arg_cstrings, env_cstrings) = exec_args(service)?;
+    let (path, arg_cstrings, env_cstrings) = exec_args(service)?;
     let uid = service.user.get_uid()?;
     let cwd = service.working_directory.clone();
     let arg_cptr: Vec<&CStr> = arg_cstrings.iter().map(|c| c.as_c_str()).collect();
     let env_cptr: Vec<&CStr> = env_cstrings.iter().map(|c| c.as_c_str()).collect();
     match unsafe { fork() } {
         Ok(ForkResult::Child) => {
-            child_process_main(service, program_name, cwd, uid, arg_cptr, env_cptr);
+            child_process_main(service, path, cwd, uid, arg_cptr, env_cptr);
             unreachable!();
         }
         Ok(ForkResult::Parent { child, .. }) => {
@@ -169,6 +173,31 @@ fn redirect_output(
     Ok(())
 }
 
+/// Find program on PATH.
+///
+fn find_program(program_name: &String) -> Result<String> {
+    let path_var = match std::env::var_os("PATH") {
+        Some(val) => val,
+        None => return Err(anyhow!("PATH environment variable is not set")),
+    };
+
+    let paths: Vec<PathBuf> = std::env::split_paths(&path_var).collect();
+
+    for path in paths {
+        let program_path = path.join(program_name);
+
+        // Check if the program file exists at this path
+        if program_path.is_file() {
+            return Ok(program_path.into_os_string().into_string().unwrap());
+        }
+    }
+
+    Err(anyhow!(
+        "Program {:?} not found in any of the PATH directories",
+        program_name
+    ))
+}
+
 /// Exec wrapper.
 ///
 /// # Safety
@@ -176,7 +205,7 @@ fn redirect_output(
 /// Use only async-signal-safe, otherwise it might lock.
 #[inline]
 fn exec(
-    program_name: CString,
+    path: CString,
     arg_cptr: Vec<&CStr>,
     env_cptr: Vec<&CStr>,
     uid: Uid,
@@ -188,9 +217,6 @@ fn exec(
     unistd::setsid()?;
     // Set the user ID
     unistd::setuid(uid)?;
-    #[cfg(target_os = "linux")]
-    unistd::execvpe(program_name.as_ref(), arg_cptr.as_ref(), env_cptr.as_ref())?;
-    #[cfg(not(target_os = "linux"))]
-    unistd::execve(program_name.as_ref(), arg_cptr.as_ref(), env_cptr.as_ref())?;
+    unistd::execve(path.as_ref(), arg_cptr.as_ref(), env_cptr.as_ref())?;
     Ok(())
 }

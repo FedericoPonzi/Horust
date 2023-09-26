@@ -38,7 +38,7 @@ attempts = {}
             .display(),
         attempts
     );
-    store_service(
+    store_service_script(
         temp_dir.path(),
         failing_once_script.as_str(),
         Some(service.as_str()),
@@ -75,7 +75,7 @@ attempts = 0
 strategy = "on-failure"
 "#
     .to_string();
-    store_service(
+    store_service_script(
         temp_dir.path(),
         failing_once_script.as_str(),
         Some(service.as_str()),
@@ -103,7 +103,7 @@ kill -{} $$
 [restart]
 strategy = "always"
 "#;
-    store_service(
+    store_service_script(
         temp_dir.path(),
         suicide_script.as_str(),
         Some(service),
@@ -150,7 +150,7 @@ sleep 0.5
 [restart]
 strategy = "always"
 "#;
-    store_service(temp_dir.path(), suicide_script, Some(service), None);
+    store_service_script(temp_dir.path(), suicide_script, Some(service), None);
     cmd.timeout(Duration::from_millis(2000))
         .assert()
         .failure()

@@ -17,7 +17,7 @@ strategy = "{}"
 # Let's give horust some time to spinup the other service as well.
 sleep 1
 exit 1"#;
-    store_service(
+    store_service_script(
         temp_dir.path(),
         failing_script,
         Some(failing_service.as_str()),
@@ -32,7 +32,7 @@ wait = "500millis"
 sleep 30"#;
 
     //store_service(temp_dir.path(), sleep_script, None, None);
-    store_service(temp_dir.path(), sleep_script, Some(sleep_service), None);
+    store_service_script(temp_dir.path(), sleep_script, Some(sleep_service), None);
     let recv = run_async(&mut cmd, true);
     recv.recv_or_kill(Duration::from_secs(15));
 }
