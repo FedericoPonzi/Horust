@@ -89,7 +89,7 @@ fn test_cwd_default() {
     let (mut cmd, temp_dir) = get_cli();
     let script = r#"#!/usr/bin/env bash
 pwd"#;
-    store_service(temp_dir.path(), script, None, None);
+    store_service_script(temp_dir.path(), script, None, Some("a"));
     cmd.assert()
         .success()
         .stdout(contains(&temp_dir.path().display().to_string()));
