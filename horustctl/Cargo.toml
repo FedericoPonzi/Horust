@@ -1,0 +1,20 @@
+[package]
+name = "horustctl"
+version = "0.1.0"
+edition = "2021"
+authors = ["Federico Ponzi <me@fponzi.me>"]
+
+[dependencies]
+anyhow = "~1.0"
+log = "~0.4"
+env_logger = "0.10.0"
+crossbeam = "~0.8"
+clap = {version = "~4.4", features = ["derive"]}
+horust-commands-lib = {path = "../commands"}
+
+
+[dev-dependencies]
+assert_cmd = "2.0.12"
+predicates = "~3.0"
+tempdir = "~0.3"
+rand = "~0.8"

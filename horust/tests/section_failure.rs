@@ -31,7 +31,7 @@ wait = "500millis"
     let sleep_script = r#"#!/usr/bin/env bash
 sleep 30"#;
 
-    //store_service(temp_dir.path(), sleep_script, None, None);
+    //store_service_script(temp_dir.path(), sleep_script, None, None);
     store_service_script(temp_dir.path(), sleep_script, Some(sleep_service), None);
     let recv = run_async(&mut cmd, true);
     recv.recv_or_kill(Duration::from_secs(15));

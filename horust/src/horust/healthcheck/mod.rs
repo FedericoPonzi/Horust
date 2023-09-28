@@ -1,6 +1,8 @@
 //! If a service has defined an healthchecker, this module will spawn a worker to making sure that
 //! the service is working as supposed to.
 
+use std::net::{SocketAddrV4, TcpListener};
+use std::sync::mpsc;
 use std::thread;
 use std::thread::JoinHandle;
 use std::time::Duration;
@@ -141,10 +143,6 @@ mod test {
     use crate::horust::formats::{Healthiness, HealthinessStatus};
     use crate::horust::healthcheck::check_health;
 
-    fn check_health_w(healthiness: &Healthiness) -> bool {
-        check_health(healthiness) == HealthinessStatus::Healthy
-    }
-
     #[test]
     fn test_healthiness_check_file() -> Result<()> {
         let tempdir = TempDir::new("health")?;
@@ -154,11 +152,11 @@ mod test {
             http_endpoint: None,
             ..Default::default()
         };
-        assert!(!check_health_w(&healthiness));
+        assert_ne!(check_health(&healthiness), HealthinessStatus::Healthy);
         std::fs::write(file_path, "Hello world!")?;
-        assert!(check_health_w(&healthiness));
+        assert_eq!(check_health(&healthiness), HealthinessStatus::Healthy);
         let healthiness: Healthiness = Default::default();
-        assert!(check_health_w(&healthiness));
+        assert_eq!(check_health(&healthiness), HealthinessStatus::Healthy);
         Ok(())
     }
 
@@ -182,7 +180,7 @@ mod test {
             http_endpoint: Some("http://localhost:123/".into()),
             ..Default::default()
         };
-        assert!(!check_health_w(&healthiness));
+        assert_ne!(check_health(&healthiness), HealthinessStatus::Healthy);
         let loopback = Ipv4Addr::new(127, 0, 0, 1);
         let socket = SocketAddrV4::new(loopback, 0);
         let listener = TcpListener::bind(socket)?;
@@ -198,11 +196,11 @@ mod test {
             handle_request(listener).unwrap();
             sender.send(()).expect("Chan closed");
         });
-        assert!(check_health_w(&healthiness));
+        assert_eq!(check_health(&healthiness), HealthinessStatus::Healthy);
         receiver
             .recv_timeout(Duration::from_millis(2000))
             .expect("Failed to received response from handle_request");
-        assert!(!check_health_w(&healthiness));
+        assert_ne!(check_health(&healthiness), HealthinessStatus::Healthy);
         Ok(())
     }
 }
