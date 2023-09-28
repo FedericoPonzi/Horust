@@ -30,6 +30,14 @@ impl CommandsHandlerTrait for MockCommandsHandler {
             _ => unimplemented!(),
         })
     }
+
+    fn update_service_status(
+        &self,
+        service_name: &str,
+        new_status: HorustMsgServiceStatus,
+    ) -> Result<()> {
+        todo!()
+    }
 }
 fn init() {
     let _ = env_logger::builder().is_test(true).try_init();

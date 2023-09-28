@@ -12,7 +12,7 @@ use tempdir::TempDir;
 /// It will append a `command` at the top of the service, with a reference to script.
 /// Returns the service name.
 /// if service_name is None a random name will be used.
-pub fn store_service(
+pub fn store_service_script(
     dir: &Path,
     script: &str,
     service_content: Option<&str>,
@@ -58,7 +58,7 @@ fn test_cli_status() {
         temp_dir.path().display().to_string().as_str(),
     ]);
 
-    store_service(
+    store_service_script(
         temp_dir.path(),
         ENVIRONMENT_SCRIPT,
         None,
@@ -66,7 +66,7 @@ fn test_cli_status() {
     );
     horust_cmd.assert().success().stdout(contains("bar").not());
     // Exit after 5 seconds.
-    store_service(
+    store_service_script(
         temp_dir.path(),
         r#"#!/usr/bin/env bash
     trap 'quit=1' USR1

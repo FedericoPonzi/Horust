@@ -33,7 +33,7 @@ pub fn store_service(dir: &Path, service: &str, service_name: Option<&str>) -> S
 /// It will append a `command` at the top of the service, with a reference to script.
 /// Returns the service name.
 /// if service_name is None a random name will be used.
-pub fn store_service(
+pub fn store_service_script(
     dir: &Path,
     script: &str,
     service_content: Option<&str>,
@@ -50,7 +50,8 @@ pub fn store_service(
         script_path.display(),
         service_content.unwrap_or("")
     );
-    store_service(dir, &service, Some(&service_name))
+    std::fs::write(dir.join(&service_name), service).unwrap();
+    service_name
 }
 
 #[allow(dead_code)]
@@ -59,6 +60,8 @@ pub fn get_cli_multiple() -> (Command, TempDir, TempDir) {
     let temp_dir_2 = TempDir::new("horust_2").unwrap();
     let mut cmd = Command::cargo_bin("horust").unwrap();
     cmd.current_dir(&temp_dir).args(vec![
+        "--uds-folder-path",
+        temp_dir.path().display().to_string().as_str(),
         "--services-path",
         temp_dir.path().display().to_string().as_str(),
         "--services-path",
@@ -69,9 +72,11 @@ pub fn get_cli_multiple() -> (Command, TempDir, TempDir) {
 }
 
 pub fn get_cli() -> (Command, TempDir) {
-    let temp_dir = TempDir::new("horust").unwrap();
-    let mut cmd = Command::cargo_bin("horust").unwrap();
+    let temp_dir = TempDir::new("horust").expect("Tmp dir");
+    let mut cmd = Command::cargo_bin("horust").expect("Cargo bin");
     cmd.current_dir(&temp_dir).args(vec![
+        "--uds-folder-path",
+        temp_dir.path().display().to_string().as_str(),
         "--services-path",
         temp_dir.path().display().to_string().as_str(),
     ]);
