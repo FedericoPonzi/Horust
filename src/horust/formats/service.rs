@@ -75,8 +75,8 @@ impl Service {
         P: AsRef<Path> + ?Sized + AsRef<OsStr> + Debug,
     {
         let preconfig = std::fs::read_to_string(path)?;
-        let postconfig = shellexpand::full(&preconfig)?.to_string();
-        toml::from_str::<Service>(&postconfig).map_err(Error::from)
+        let postconfig = shellexpand::full(&preconfig)?;
+        Ok(toml::from_str::<Service>(&postconfig)?)
     }
     /// Creates the environment K=V variables, used for exec into the new process.
     /// User defined environment variables overwrite the predefined values.
@@ -203,7 +203,7 @@ impl From<&str> for LogOutput {
 #[derive(Serialize, Clone, Default, Deserialize, Debug, Eq, PartialEq)]
 #[serde(rename_all = "kebab-case")]
 pub struct Environment {
-    #[serde(default = "Environment::default_keep_env")]
+    #[serde(default)]
     pub keep_env: bool,
     #[serde(default)]
     pub re_export: Vec<String>,
@@ -212,10 +212,6 @@ pub struct Environment {
 }
 
 impl Environment {
-    fn default_keep_env() -> bool {
-        true
-    }
-
     fn get_hostname_val() -> String {
         let hostname_path = "/etc/hostname";
         let localhost = "localhost".to_string();
