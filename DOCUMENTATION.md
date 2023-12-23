@@ -121,8 +121,8 @@ keep-env = false
 re-export = [ "PATH", "DB_PASS"]
 additional = { key = "value"} 
 ```
-* **`keep-env` = `bool`**: default: true. Pass over all the environment variables.
-Regardless the value of keep-env, the following keys will be updated / defined:
+* **`keep-env` = `bool`**: default: false. Pass over all the environment variables.
+Regardless of the value of keep-env, the following keys will be updated / defined:
 * `USER`
 * `HOSTNAME`
 * `HOME`

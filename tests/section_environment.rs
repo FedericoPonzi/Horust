@@ -1,6 +1,7 @@
 use assert_cmd::prelude::*;
 use predicates::prelude::*;
 use predicates::str::contains;
+use std::env::temp_dir;
 
 #[allow(dead_code)]
 mod utils;
@@ -28,17 +29,38 @@ additional = { TERM = "bar" }
 }
 
 #[test]
-fn test_environment_keep_env() {
+fn test_environment_keep_env_absent() {
     let (mut cmd, temp_dir) = get_cli();
-    // keep-env should keep the env :D
+    // By default, keep-env is false
+    store_service_script(temp_dir.path(), ENVIRONMENT_SCRIPT, Some(""), None);
+    cmd.env("DB_PASS", "MyPassword")
+        .assert()
+        .success()
+        .stdout(contains("MyPassword").not());
+}
+#[test]
+fn test_environment_keep_env_true() {
+    let (mut cmd, temp_dir) = get_cli();
     let service = r#"[environment]
-keep-env = true
-"#;
+    keep-env = true
+    "#;
     store_service_script(temp_dir.path(), ENVIRONMENT_SCRIPT, Some(service), None);
     cmd.env("DB_PASS", "MyPassword")
         .assert()
         .success()
         .stdout(contains("MyPassword"));
+}
+#[test]
+fn test_environment_keep_env_false() {
+    let (mut cmd, temp_dir) = get_cli();
+    let service = r#"[environment]
+    keep-env = false
+    "#;
+    store_service_script(temp_dir.path(), ENVIRONMENT_SCRIPT, Some(service), None);
+    cmd.env("DB_PASS", "MyPassword")
+        .assert()
+        .success()
+        .stdout(contains("MyPassword").not());
 }
 
 #[test]
