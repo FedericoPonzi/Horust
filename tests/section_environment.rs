@@ -1,7 +1,6 @@
 use assert_cmd::prelude::*;
 use predicates::prelude::*;
 use predicates::str::contains;
-use std::env::temp_dir;
 
 #[allow(dead_code)]
 mod utils;

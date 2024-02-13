@@ -15,15 +15,15 @@ include = ["src/**/*", "Cargo.*", "LICENSE.txt", "README.md", "/example_services
 [dependencies]
 clap = { version = "4.4.4", features = ["derive"] }
 crossbeam = "~0.8"
-env_logger = "0.10.0"
+env_logger = "0.11.0"
 humantime-serde = "~1.1"
 libc = "0.2.148"
 log = "~0.4"
-nix = "~0.26"
+nix = { version = "~0.27", features = ["process", "user", "signal", "fs"] }
 reqwest = { version = "0.11.20", features = ["blocking", "json"], optional = true, default-features = false }
 serde = { version = "~1.0", features = ["derive"] }
-shlex = "~1.1"
-toml = "~0.7"
+shlex = "~1.3"
+toml = "~0.8"
 maplit = "~1.0"
 shellexpand = "~3.1"
 anyhow = "~1.0"
@@ -35,7 +35,7 @@ http-healthcheck = ["reqwest"]
 
 [dev-dependencies]
 assert_cmd = "2.0.12"
-predicates = "~3.0"
+predicates = "~3.1"
 tempdir = "~0.3"
 rand = "~0.8"
 
