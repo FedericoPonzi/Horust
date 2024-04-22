@@ -5,7 +5,7 @@ use std::thread;
 use std::thread::JoinHandle;
 use std::time::Duration;
 
-use crossbeam::channel::{unbounded, Receiver, RecvTimeoutError};
+use crossbeam::channel::{unbounded, Receiver, RecvTimeoutError, Sender};
 
 use checks::*;
 
@@ -62,12 +62,10 @@ pub fn spawn(bus: BusConnector<Event>, services: Vec<Service>) {
 
 /// Returns true if the service is healthy and all checks are passed.
 fn check_health(healthiness: &Healthiness) -> HealthinessStatus {
-    let failed_checks = get_checks()
+    get_checks()
         .into_iter()
-        .filter(|check| !check.run(healthiness))
-        .count();
-    let is_healthy = failed_checks == 0;
-    is_healthy.into()
+        .all(|check| check.run(healthiness))
+        .into()
 }
 
 fn run(bus: BusConnector<Event>, services: Vec<Service>) {
@@ -81,23 +79,25 @@ fn run(bus: BusConnector<Event>, services: Vec<Service>) {
             .collect::<Vec<Service>>()
             .remove(0)
     };
+
     for ev in bus.iter() {
         match ev {
             Event::StatusChanged(s_name, ServiceStatus::Started) => {
-                let (worker_notifier, work_done_rcv) = unbounded();
                 let service = get_service(&s_name);
-                let w = Worker::new(service, bus.join_bus(), work_done_rcv);
-                let handle = w.spawn_thread();
+                if !service.healthiness.has_any_check_defined() {
+                    bus.send_event(Event::HealthCheck(s_name, HealthinessStatus::Healthy));
+                    continue;
+                }
+                if let Some((sender, handler)) = workers.remove(&s_name) {
+                    stop_worker(sender, handler)
+                }
+                let (worker_notifier, work_done_rcv) = unbounded();
+                let handle = Worker::new(service, bus.join_bus(), work_done_rcv).spawn_thread();
                 workers.insert(s_name, (worker_notifier, handle));
             }
             Event::ServiceExited(s_name, _exit_code) => {
                 if let Some((sender, handler)) = workers.remove(&s_name) {
-                    if sender.send(()).is_err() {
-                        error!("Cannot send msg to sender - channel closed.");
-                    }
-                    if let Err(error) = handler.join() {
-                        error!("Error joining thread: {:?}", error);
-                    }
+                    stop_worker(sender, handler)
                 } else {
                     warn!("Worker thread for {} not found.", s_name);
                 }
@@ -119,10 +119,22 @@ fn run(bus: BusConnector<Event>, services: Vec<Service>) {
     }
 }
 
+fn stop_worker(sender: Sender<()>, handler: JoinHandle<()>) {
+    if let Err(error) = sender.send(()) {
+        error!(
+            "Cannot send msg to sender - channel might be closed. Error: {:?}",
+            error
+        );
+    }
+    if let Err(error) = handler.join() {
+        error!("Error joining thread: {:?}", error);
+    }
+}
+
 /// Setup require for the service, before running the healthchecks and starting the service
 pub fn prepare_service(healthiness: &Healthiness) -> Result<Vec<()>, std::io::Error> {
     get_checks()
-        .into_iter()
+        .iter()
         .map(|check| check.prepare(healthiness))
         .collect()
 }
@@ -163,14 +175,13 @@ mod test {
     }
 
     fn handle_request(listener: TcpListener) -> std::io::Result<()> {
-        for stream in listener.incoming() {
+        if let Some(stream) = listener.incoming().next() {
             info!("Received request");
             let mut buffer = [0; 512];
             let mut stream = stream?;
             stream.read(&mut buffer).unwrap();
             let response = b"HTTP/1.1 200 OK\r\n\r\n";
             stream.write(response).expect("Stream write");
-            break;
         }
         Ok(())
     }

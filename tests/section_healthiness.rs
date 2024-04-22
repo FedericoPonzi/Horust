@@ -3,11 +3,11 @@ use std::io::{Read, Write};
 use std::net::{Ipv4Addr, SocketAddrV4, TcpListener};
 use std::sync::mpsc;
 use std::sync::mpsc::{Receiver, TryRecvError};
-use std::thread;
 use std::time::Duration;
+use std::{io, thread};
 use utils::*;
 
-fn handle_requests(listener: TcpListener, stop: Receiver<()>) -> std::io::Result<()> {
+fn handle_requests(listener: TcpListener, stop: Receiver<()>) -> io::Result<()> {
     listener.set_nonblocking(true).unwrap();
     for stream in listener.incoming() {
         match stream {
@@ -30,7 +30,7 @@ fn handle_requests(listener: TcpListener, stop: Receiver<()>) -> std::io::Result
 }
 
 #[test]
-fn test_http_healthcheck() -> Result<(), std::io::Error> {
+fn test_healthcheck_http() -> io::Result<()> {
     let (mut cmd, tempdir) = get_cli();
     let loopback = Ipv4Addr::new(127, 0, 0, 1);
     let socket = SocketAddrV4::new(loopback, 0);
@@ -64,5 +64,29 @@ http-endpoint = "{}""#,
     receiver
         .recv_timeout(Duration::from_millis(3000))
         .expect("Failed to received response from handle_request");
+    Ok(())
+}
+
+#[test]
+fn test_healthcheck_file() -> io::Result<()> {
+    let (mut cmd, tempdir) = get_cli();
+    let service = format!(
+        r#"
+[termination]
+wait = "1s"
+[restart]
+strategy = "never"
+[healthiness]
+file-path = "{}""#,
+        tempdir.path().join("healthy").display()
+    );
+    let script = r#"#!/usr/bin/env bash
+    touch healthy;
+    sleep 2;
+    exit 0;
+    "#;
+    store_service_script(tempdir.path(), script, Some(service.as_str()), None);
+    let mut cmd = cmd.args(vec!["--unsuccessful-exit-finished-failed"]);
+    run_async(&mut cmd, true).recv_or_kill(Duration::from_secs(70));
     Ok(())
 }

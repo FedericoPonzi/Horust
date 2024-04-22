@@ -5,11 +5,12 @@ use reqwest::blocking::Client;
 
 use crate::horust::formats::Healthiness;
 
-static FILE_CHECK: FilePathCheck = FilePathCheck {};
-static HTTP_CHECK: HttpCheck = HttpCheck {};
+const FILE_CHECK: FilePathCheck = FilePathCheck {};
+const HTTP_CHECK: HttpCheck = HttpCheck {};
+const CHECKS: [&dyn Check; 2] = [&FILE_CHECK, &HTTP_CHECK];
 
-pub(crate) fn get_checks() -> Vec<&'static dyn Check> {
-    vec![&FILE_CHECK, &HTTP_CHECK]
+pub(crate) fn get_checks() -> [&'static dyn Check; 2] {
+    CHECKS
 }
 
 pub(crate) trait Check {
