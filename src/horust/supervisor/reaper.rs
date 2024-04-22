@@ -13,7 +13,7 @@ use crate::horust::Event;
 ///
 /// # Safety
 ///
-/// This function must run in isolation with respect to the fork processes in order to
+/// This function must run in isolation with respect to the fork processes to
 /// prevent pid reusage.
 pub(crate) fn run(repo: &Repo, max_iterations: u32) -> Vec<Event> {
     (0..max_iterations)

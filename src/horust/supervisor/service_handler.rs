@@ -143,7 +143,7 @@ fn next_events(repo: &Repo, service_handler: &ServiceHandler) -> Vec<Event> {
         ServiceStatus::Initial if repo.is_service_runnable(service_handler) => {
             vec![Event::Run(service_handler.name().clone())]
         }
-        // if enough time have passed, this will be considered running
+        // if enough time has passed, this will be considered running
         ServiceStatus::Started if !service_handler.has_some_failed_healthchecks() => {
             vev_status(ServiceStatus::Running)
         }
@@ -227,8 +227,7 @@ fn handle_status_change(
     //TODO: refactor + cleanup.
     // A -> [B,C] means that transition to A is allowed only if service is in state B or C.
     let allowed_transitions = hashmap! {
-        ServiceStatus::Initial        => vec![ServiceStatus::Success, ServiceStatus::Failed,
-                                              ServiceStatus::Started],
+        ServiceStatus::Initial        => vec![ServiceStatus::Success, ServiceStatus::Failed],
         ServiceStatus::Starting       => vec![ServiceStatus::Initial],
         ServiceStatus::Started        => vec![ServiceStatus::Starting],
         ServiceStatus::InKilling      => vec![ServiceStatus::Initial,

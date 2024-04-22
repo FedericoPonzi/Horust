@@ -1,4 +1,4 @@
-//! The supervisor is one of the biggest module. It is responsible for supervising the services, and
+//! The supervisor is one of the biggest modules. It is responsible for supervising the services, and
 //! keeping track of their current state.
 //! It will also reap the dead processes
 

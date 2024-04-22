@@ -290,12 +290,17 @@ pub struct Healthiness {
     pub http_endpoint: Option<String>,
     pub file_path: Option<PathBuf>,
     #[serde(default = "Healthiness::default_max_failed")]
+    // todo: use an u32
     pub max_failed: i32,
 }
 
 impl Healthiness {
     fn default_max_failed() -> i32 {
         3
+    }
+
+    pub(crate) fn has_any_check_defined(&self) -> bool {
+        self.http_endpoint.is_some() || self.file_path.is_some()
     }
 }
 
