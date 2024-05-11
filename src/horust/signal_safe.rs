@@ -8,6 +8,7 @@
 use nix::errno::Errno;
 use nix::libc::{_exit, STDERR_FILENO};
 use nix::unistd::write;
+use std::os::fd::{FromRawFd, OwnedFd};
 
 /// Async-signal-safe panic. Prints s to stderr, and exit with status as code.
 pub(crate) fn panic_ssafe(message: &str, service: Option<&str>, errno: Errno, status: i32) {
@@ -22,10 +23,13 @@ pub(crate) fn panic_ssafe(message: &str, service: Option<&str>, errno: Errno, st
 
 const NEW_LINE: &str = "\n";
 
+fn stderr() -> OwnedFd {
+    unsafe { OwnedFd::from_raw_fd(STDERR_FILENO) }
+}
 /// Async-signal-safe stderr print
 #[allow(unused_must_use)]
 pub(crate) fn eprint_ssafe(s: &str) {
-    write(STDERR_FILENO, s.as_bytes());
+    write(stderr(), s.as_bytes());
 }
 
 /// Async-signal-safe stderr print
@@ -34,7 +38,7 @@ pub(crate) fn eprint_ssafe_errno(s: Errno) {
     eprint_ssafe(NEW_LINE);
     eprint_ssafe("Errno: (");
     let (bytes, digits) = i32_to_str_bytes(s as i32);
-    write(STDERR_FILENO, &bytes[digits..]);
+    write(stderr(), &bytes[digits..]);
     eprint_ssafe(") ");
     eprint_ssafe(s.desc());
     eprint_ssafe(NEW_LINE);
