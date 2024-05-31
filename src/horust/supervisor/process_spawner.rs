@@ -61,7 +61,7 @@ pub(crate) fn spawn_fork_exec_handler(
 fn exec_args(service: &Service) -> Result<(CString, Vec<CString>, Vec<CString>)> {
     let chunks: Vec<String> =
         shlex::split(&service.command).context(format!("Invalid command: {}", service.command,))?;
-    let program_name = String::from(chunks.get(0).unwrap());
+    let program_name = String::from(chunks.first().unwrap());
     let to_cstring = |s: Vec<String>| {
         s.into_iter()
             .map(|arg| CString::new(arg).map_err(Into::into))
@@ -70,7 +70,7 @@ fn exec_args(service: &Service) -> Result<(CString, Vec<CString>, Vec<CString>)>
     let arg_cstrings = to_cstring(chunks)?;
     let environment = service.get_environment()?;
     let env_cstrings = to_cstring(environment)?;
-    let path = if program_name.contains("/") {
+    let path = if program_name.contains('/') {
         program_name.to_string()
     } else {
         find_program(&program_name)?
