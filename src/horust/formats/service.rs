@@ -1,10 +1,10 @@
 use std::collections::HashMap;
-use std::env;
 use std::ffi::OsStr;
 use std::fmt::{Debug, Formatter};
 use std::path::{Path, PathBuf};
 use std::str::FromStr;
 use std::time::Duration;
+use std::{env, os::fd::RawFd};
 
 use anyhow::{Context, Error, Result};
 use nix::sys::signal::Signal;
@@ -33,6 +33,8 @@ pub struct Service {
     pub working_directory: PathBuf,
     #[serde(default = "Service::default_stdout_log")]
     pub stdout: LogOutput,
+    #[serde(default, skip_serializing, deserialize_with = "str_to_bytes")]
+    pub stdout_rotate_size: u64,
     #[serde(default = "Service::default_stderr_log")]
     pub stderr: LogOutput,
     #[serde(default, with = "humantime_serde")]
@@ -104,6 +106,7 @@ impl Default for Service {
             start_after: Default::default(),
             working_directory: env::current_dir().unwrap(),
             stdout: Default::default(),
+            stdout_rotate_size: 0,
             stderr: Default::default(),
             user: Default::default(),
             restart: Default::default(),
@@ -133,6 +136,7 @@ pub enum LogOutput {
     #[default]
     Stdout,
     Path(PathBuf),
+    Pipe(RawFd),
 }
 
 impl Serialize for LogOutput {
@@ -186,6 +190,7 @@ impl From<LogOutput> for String {
                 let path = path.display();
                 path.to_string()
             }
+            Pipe(fd) => format!("{fd}"),
         }
     }
 }
@@ -643,6 +648,14 @@ pub fn validate(services: Vec<Service>) -> Result<Vec<Service>, ValidationErrors
     }
 }
 
+fn str_to_bytes<'de, D>(deserializer: D) -> Result<u64, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    let s = String::deserialize(deserializer)?;
+    bytefmt::parse(s).map_err(de::Error::custom)
+}
+
 #[cfg(test)]
 mod test {
     use std::str::FromStr;
@@ -683,8 +696,9 @@ mod test {
                     .collect(),
             },
             working_directory: "/tmp/".into(),
-            stdout: "STDOUT".into(),
-            stderr: "/var/logs/hello_world_svc/stderr.log".into(),
+            stdout: "/var/logs/hello_world_svc/stdout.log".into(),
+            stdout_rotate_size: 100_000_000,
+            stderr: "STDERR".into(),
             start_delay: Duration::from_secs(2),
             start_after: vec!["database".into(), "backend.toml".into()],
             restart: Restart {

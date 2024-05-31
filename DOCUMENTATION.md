@@ -47,6 +47,12 @@ If service `a` should start after service `b`, then `a` will be started as soon 
 If `b` goes in a `FinishedFailed` state (finished in an unsuccessful manner), `a` might not start at all. 
 * **`start-delay` = `time`**: Start this service with the specified delay. Check how to specify times [here](https://github.com/tailhook/humantime/blob/49f11fdc2a59746085d2457cb46bce204dec746a/src/duration.rs#L338) 
 * **`stdout` = `STDOUT|STDERR|file-path`**: Redirect stdout of this service. STDOUT and STDERR are special strings, pointing to stdout and stderr respectively. Otherwise, a file path is assumed.
+* **`stdout-rotate-size` = `string`**: Chunk size of the file specified in `stdout`.
+Once the file grows above the specified size it will be closed and a new file will be created with a suffix `.1`.
+Once the new file also grows above the specified size it will also be closed and a next one will be created with the next suffix `.2`.
+This allows adding external log rotation script, which can compress the old logs and maybe move them out to a different storage location.
+The size is parsed using `bytefmt` - for example `100 MB`, `200 KB`, `110 MIB` or `200 GIB`.
+If unset, the default value will be `100 MB`.
 * **`stderr` = `STDOUT|STDERR|file-path`**: Redirect stderr of this service. Read `stdout` above for a complete reference.
 * **`user` = `uid|username`**: Will run this service as this user. Either an uid or a username (check it in /etc/passwd)
 * **`working-directory` = `string`**: Will run this command in this directory.  Defaults to the working directory of the horust process.
