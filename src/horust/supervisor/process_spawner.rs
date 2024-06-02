@@ -1,9 +1,13 @@
 use std::ffi::{CStr, CString};
-use std::io;
-use std::ops::Add;
 use std::os::unix::io::AsRawFd;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::time::Duration;
+use std::{fs::File, io::BufReader};
+use std::{fs::OpenOptions, ops::Add};
+use std::{
+    io::{self, Read},
+    os::fd::OwnedFd,
+};
 
 use anyhow::{anyhow, Context, Result};
 use crossbeam::channel::{after, tick};
@@ -61,7 +65,7 @@ pub(crate) fn spawn_fork_exec_handler(
 fn exec_args(service: &Service) -> Result<(CString, Vec<CString>, Vec<CString>)> {
     let chunks: Vec<String> =
         shlex::split(&service.command).context(format!("Invalid command: {}", service.command,))?;
-    let program_name = String::from(chunks.get(0).unwrap());
+    let program_name = String::from(chunks.first().unwrap());
     let to_cstring = |s: Vec<String>| {
         s.into_iter()
             .map(|arg| CString::new(arg).map_err(Into::into))
@@ -70,7 +74,7 @@ fn exec_args(service: &Service) -> Result<(CString, Vec<CString>, Vec<CString>)>
     let arg_cstrings = to_cstring(chunks)?;
     let environment = service.get_environment()?;
     let env_cstrings = to_cstring(environment)?;
-    let path = if program_name.contains("/") {
+    let path = if program_name.contains('/') {
         program_name.to_string()
     } else {
         find_program(&program_name)?
@@ -121,12 +125,33 @@ fn spawn_process(service: &Service) -> Result<Pid> {
     let cwd = service.working_directory.clone();
     let arg_cptr: Vec<&CStr> = arg_cstrings.iter().map(|c| c.as_c_str()).collect();
     let env_cptr: Vec<&CStr> = env_cstrings.iter().map(|c| c.as_c_str()).collect();
+    let mut service_copy = service.clone();
+    let (pipe_read, pipe_write) = if service.stdout_rotate_size > 0 {
+        let (pipe_read, pipe_write) = unistd::pipe()?;
+        (Some(pipe_read), Some(pipe_write))
+    } else {
+        (None, None)
+    };
     match unsafe { fork() } {
         Ok(ForkResult::Child) => {
-            child_process_main(service, path, cwd, uid, arg_cptr, env_cptr);
+            if let Some(pipe_write) = &pipe_write {
+                drop(pipe_read.unwrap());
+                service_copy.stdout = LogOutput::Pipe(pipe_write.as_raw_fd());
+            }
+            child_process_main(&service_copy, path, cwd, uid, arg_cptr, env_cptr);
             unreachable!();
+            // Here the "pipe_write" would go out of scope and its descriptor would be closed.
+            // But because child_process_main() does an exec() and never returns, the raw
+            // descriptor inside the LogOutput::Pipe stays open.
         }
         Ok(ForkResult::Parent { child, .. }) => {
+            pipe_read.and_then(|pipe| {
+                drop(pipe_write.unwrap());
+                std::thread::spawn(move || {
+                    chunked_writer(pipe, service_copy).map_err(|e| error!("{e}"))
+                });
+                None::<()>
+            });
             debug!("Spawned child with PID {}.", child);
             Ok(child)
         }
@@ -151,6 +176,12 @@ fn redirect_output(
             // Redirect stdout to stderr
             unistd::dup2(stderr, stdout)?;
         }
+        (LogOutput::Pipe(pipe), LogOutput::Stderr) => {
+            unistd::dup2(*pipe, stderr)?;
+        }
+        (LogOutput::Pipe(pipe), LogOutput::Stdout) => {
+            unistd::dup2(*pipe, stdout)?;
+        }
         (LogOutput::Path(path), LogOutput::Stdout) => {
             let raw_fd = fcntl::open(
                 path,
@@ -170,6 +201,38 @@ fn redirect_output(
         // Should never happen.
         _ => (),
     };
+    Ok(())
+}
+
+fn open_next_chunk(base_path: &Path) -> io::Result<File> {
+    let mut count = 1;
+    let mut path = base_path;
+    let mut path_str;
+
+    while path.is_file() {
+        path_str = format!("{}.{count}", base_path.to_string_lossy());
+        path = Path::new(&path_str);
+        count += 1;
+    }
+    debug!("Opening next log output: {}", path.display());
+    OpenOptions::new().create(true).append(true).open(path)
+}
+
+fn chunked_writer(fd: OwnedFd, service: Service) -> Result<()> {
+    let source = File::from(fd);
+    let path = match &service.stdout {
+        LogOutput::Path(path) => path,
+        _ => return Err(anyhow!("Log output path is not set")),
+    };
+    loop {
+        let mut reader = BufReader::new(&source).take(service.stdout_rotate_size);
+        let mut output = open_next_chunk(path)?;
+        let copied = io::copy(&mut reader, &mut output)?;
+        if copied < service.stdout_rotate_size {
+            debug!("EOF reached");
+            break;
+        }
+    }
     Ok(())
 }
 

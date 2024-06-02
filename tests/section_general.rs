@@ -47,6 +47,7 @@ printf "{}" {}"#,
         assert_eq!(content, pattern);
     }
 }
+
 #[test]
 fn test_output_redirection() {
     let from = ["stdout", "stderr"];
@@ -54,6 +55,45 @@ fn test_output_redirection() {
     from.iter()
         .flat_map(|fr| to.iter().map(move |t| (fr, t)))
         .for_each(|(stream, to)| test_single_output_redirection(stream, to));
+}
+
+#[test]
+fn test_output_log_rotation() {
+    let pattern = "Hello";
+    let max_size = 50;
+    let num_logs = 4;
+    let (mut cmd, temp_dir) = get_cli();
+    let output = temp_dir.path().join("out.log").display().to_string();
+    let last_output = temp_dir
+        .path()
+        .join(format!("out.log.{}", num_logs - 2))
+        .display()
+        .to_string();
+    let script = format!(
+        r#"#!/usr/bin/env bash
+for i in {{1..{}}}; do echo {} ; done
+sync
+sleep 10
+exit 0
+"#,
+        // How many patterns do we need to repeat to reach required file size.
+        10 + (max_size * num_logs) / (pattern.len() + 1),
+        pattern,
+    );
+    let service = [
+        format!(r#"stdout="{}""#, output),
+        format!(r#"stdout-rotate-size="{}""#, max_size),
+    ]
+    .join("\n");
+    store_service_script(
+        temp_dir.path(),
+        script.as_str(),
+        Some(service.as_str()),
+        None,
+    );
+    cmd.assert().success().stdout(is_empty());
+    let content = std::fs::read_to_string(last_output).unwrap();
+    assert!(content.starts_with(pattern));
 }
 
 #[test]
