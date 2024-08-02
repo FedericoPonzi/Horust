@@ -59,6 +59,7 @@ fn test_output_redirection() {
 
 #[test]
 fn test_output_log_rotation() {
+    // todo: review this test
     let pattern = "Hello";
     let max_size = 50;
     let num_logs = 4;
@@ -77,7 +78,7 @@ sleep 10
 exit 0
 "#,
         // How many patterns do we need to repeat to reach required file size.
-        10 + (max_size * num_logs) / (pattern.len() + 1),
+        15 + (max_size * num_logs) / (pattern.len() + 1),
         pattern,
     );
     let service = [
@@ -92,8 +93,21 @@ exit 0
         None,
     );
     cmd.assert().success().stdout(is_empty());
+
+    // print the content of temp_dir directory:
+    let mut ls = std::process::Command::new("ls")
+        .arg("-l")
+        .arg(temp_dir.path())
+        .spawn()
+        .unwrap();
+    let output = ls.wait_with_output().unwrap();
+    println!("{}", String::from_utf8_lossy(&output.stdout));
+
     let content = std::fs::read_to_string(last_output).unwrap();
-    assert!(content.starts_with(pattern));
+    assert!(
+        content.starts_with(pattern),
+        "Expeccted '{content}' to start with '{pattern}'"
+    );
 }
 
 #[test]
