@@ -59,31 +59,29 @@ fn test_output_redirection() {
 
 #[test]
 fn test_output_log_rotation() {
-    // todo: review this test
-    let pattern = "Hello";
-    let max_size = 50;
-    let num_logs = 4;
+    // Used as arg for printf. Each number will have up to this number of leading zeros.
+    let pattern_len = 4 + "\n".len(); // + 1 for the new line.
+    let patterns_per_file = 10;
+
+    let max_log_size = patterns_per_file * pattern_len;
+    let num_logs = 10;
     let (mut cmd, temp_dir) = get_cli();
     let output = temp_dir.path().join("out.log").display().to_string();
-    let last_output = temp_dir
-        .path()
-        .join(format!("out.log.{}", num_logs - 2))
-        .display()
-        .to_string();
+
+    // How many patterns do we need to repeat to reach the required file size.
+    let total_iterations = (max_log_size * num_logs) / (pattern_len);
+
     let script = format!(
         r#"#!/usr/bin/env bash
-for i in {{1..{}}}; do echo {} ; done
+        set -x
+for i in {{1..{total_iterations}}}; do printf "%0{}d\n" "$i" ; done
 sync
-sleep 10
-exit 0
 "#,
-        // How many patterns do we need to repeat to reach required file size.
-        15 + (max_size * num_logs) / (pattern.len() + 1),
-        pattern,
+        pattern_len - 1 // - 1 is the new line.
     );
     let service = [
         format!(r#"stdout="{}""#, output),
-        format!(r#"stdout-rotate-size="{}""#, max_size),
+        format!(r#"stdout-rotate-size="{}""#, max_log_size),
     ]
     .join("\n");
     store_service_script(
@@ -93,7 +91,7 @@ exit 0
         None,
     );
     cmd.assert().success().stdout(is_empty());
-
+    let last_output = temp_dir.path().join(format!("out.log.{}", num_logs - 1));
     // print the content of temp_dir directory:
     let mut ls = std::process::Command::new("ls")
         .arg("-l")
@@ -101,13 +99,30 @@ exit 0
         .spawn()
         .unwrap();
     let output = ls.wait_with_output().unwrap();
-    println!("{}", String::from_utf8_lossy(&output.stdout));
-
-    let content = std::fs::read_to_string(last_output).unwrap();
-    assert!(
-        content.starts_with(pattern),
-        "Expeccted '{content}' to start with '{pattern}'"
+    println!(
+        "{:?}:\n{}",
+        temp_dir.path(),
+        String::from_utf8_lossy(&output.stdout)
     );
+    assert!(last_output.exists());
+
+    // it is effectively the last output
+    assert!(temp_dir
+        .path()
+        .join(format!("out.log.{}", num_logs))
+        .exists());
+
+    let content = std::fs::read_to_string(&last_output).unwrap();
+    let last_file_first_number = total_iterations - (patterns_per_file);
+    let mut expected_content = String::new();
+    // the last patterns_file number, say from (90, 100]
+    for i in last_file_first_number + 1..=total_iterations {
+        let mut number = i.to_string();
+        number = format!("{:0>4}", number);
+        expected_content.push_str(&number);
+        expected_content.push('\n');
+    }
+    assert_eq!(content, expected_content);
 }
 
 #[test]

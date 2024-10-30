@@ -1,20 +1,19 @@
-use std::ffi::{CStr, CString};
-use std::os::unix::io::AsRawFd;
-use std::path::{Path, PathBuf};
-use std::time::Duration;
-use std::{fs::File, io::BufReader};
-use std::{fs::OpenOptions, ops::Add};
-use std::{
-    io::{self, Read},
-    os::fd::OwnedFd,
-};
-
 use anyhow::{anyhow, Context, Result};
 use crossbeam::channel::{after, tick};
 use nix::errno::Errno;
 use nix::fcntl;
 use nix::unistd;
 use nix::unistd::{fork, ForkResult, Pid, Uid};
+use std::ffi::{CStr, CString};
+use std::os::unix::io::AsRawFd;
+use std::path::{Path, PathBuf};
+use std::time::{Duration, SystemTime, UNIX_EPOCH};
+use std::{fs::File, io::BufReader};
+use std::{fs::OpenOptions, ops::Add};
+use std::{
+    io::{self, Read},
+    os::fd::OwnedFd,
+};
 
 use crate::horust::bus::BusConnector;
 use crate::horust::formats::{Event, LogOutput, Service};
@@ -204,18 +203,26 @@ fn redirect_output(
     Ok(())
 }
 
-fn open_next_chunk(base_path: &Path) -> io::Result<File> {
-    let mut count = 1;
-    let mut path = base_path;
-    let mut path_str;
+fn open_next_chunk(
+    base_path: &Path,
+    timestamp: u64,
+    stdout_should_append_timestamp_to_filename: bool,
+    count: u32,
+) -> io::Result<File> {
+    let filename = match (stdout_should_append_timestamp_to_filename, count > 0) {
+        (true, true) => format!("{}.{timestamp}.{count}", base_path.to_string_lossy()),
+        (true, false) => format!("{}.{timestamp}", base_path.to_string_lossy()),
+        (false, true) => format!("{}.{count}", base_path.to_string_lossy()),
+        (false, false) => base_path.to_string_lossy().to_string(),
+    };
+    let path = PathBuf::from(&filename);
 
-    while path.is_file() {
-        path_str = format!("{}.{count}", base_path.to_string_lossy());
-        path = Path::new(&path_str);
-        count += 1;
-    }
     debug!("Opening next log output: {}", path.display());
-    OpenOptions::new().create(true).append(true).open(path)
+    OpenOptions::new()
+        .create(true)
+        .truncate(true)
+        .write(true)
+        .open(path)
 }
 
 fn chunked_writer(fd: OwnedFd, service: Service) -> Result<()> {
@@ -224,10 +231,23 @@ fn chunked_writer(fd: OwnedFd, service: Service) -> Result<()> {
         LogOutput::Path(path) => path,
         _ => return Err(anyhow!("Log output path is not set")),
     };
+    let mut chunk = 0;
+    let mut reader = BufReader::new(&source);
+    // Get the current Unix timestamp
+    let timestamp = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .expect("Time went backwards")
+        .as_secs();
     loop {
-        let mut reader = BufReader::new(&source).take(service.stdout_rotate_size);
-        let mut output = open_next_chunk(path)?;
-        let copied = io::copy(&mut reader, &mut output)?;
+        let mut capped = (&mut reader).take(service.stdout_rotate_size);
+        let mut output = open_next_chunk(
+            path,
+            timestamp,
+            service.stdout_should_append_timestamp_to_filename,
+            chunk,
+        )?;
+        chunk += 1;
+        let copied = io::copy(&mut capped, &mut output)?;
         if copied < service.stdout_rotate_size {
             debug!("EOF reached");
             break;
