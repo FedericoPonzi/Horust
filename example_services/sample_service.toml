@@ -4,6 +4,7 @@ start-delay = "2s"
 start-after = ["database", "backend.toml"]
 stdout = "/var/logs/hello_world_svc/stdout.log"
 stdout-rotate-size = "100 MB"
+stdout-should-append-timestamp-to-filename = false
 stderr = "STDERR"
 # Check also `templating.toml`
 user = "${USER}"

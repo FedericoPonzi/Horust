@@ -1,3 +1,8 @@
+use anyhow::{Context, Error, Result};
+use nix::sys::signal::Signal;
+use nix::unistd;
+use serde::de::{self, Visitor};
+use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use std::collections::HashMap;
 use std::ffi::OsStr;
 use std::fmt::{Debug, Formatter};
@@ -5,12 +10,6 @@ use std::path::{Path, PathBuf};
 use std::str::FromStr;
 use std::time::Duration;
 use std::{env, os::fd::RawFd};
-
-use anyhow::{Context, Error, Result};
-use nix::sys::signal::Signal;
-use nix::unistd;
-use serde::de::{self, Visitor};
-use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
 use crate::horust::error::{ValidationError, ValidationErrors};
 
@@ -33,8 +32,11 @@ pub struct Service {
     pub working_directory: PathBuf,
     #[serde(default = "Service::default_stdout_log")]
     pub stdout: LogOutput,
+    // todo: provide serialize_with
     #[serde(default, skip_serializing, deserialize_with = "str_to_bytes")]
     pub stdout_rotate_size: u64,
+    #[serde(default = "default_as_false")]
+    pub stdout_should_append_timestamp_to_filename: bool,
     #[serde(default = "Service::default_stderr_log")]
     pub stderr: LogOutput,
     #[serde(default, with = "humantime_serde")]
@@ -53,6 +55,10 @@ pub struct Service {
     pub environment: Environment,
     #[serde(default)]
     pub termination: Termination,
+}
+
+fn default_as_false() -> bool {
+    false
 }
 
 impl Service {
@@ -107,6 +113,7 @@ impl Default for Service {
             working_directory: env::current_dir().unwrap(),
             stdout: Default::default(),
             stdout_rotate_size: 0,
+            stdout_should_append_timestamp_to_filename: Default::default(),
             stderr: Default::default(),
             user: Default::default(),
             restart: Default::default(),
@@ -698,6 +705,7 @@ mod test {
             working_directory: "/tmp/".into(),
             stdout: "/var/logs/hello_world_svc/stdout.log".into(),
             stdout_rotate_size: 100_000_000,
+            stdout_should_append_timestamp_to_filename: false,
             stderr: "STDERR".into(),
             start_delay: Duration::from_secs(2),
             start_after: vec!["database".into(), "backend.toml".into()],
