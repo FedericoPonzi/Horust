@@ -92,18 +92,6 @@ sync
     );
     cmd.assert().success().stdout(is_empty());
     let last_output = temp_dir.path().join(format!("out.log.{}", num_logs - 1));
-    // print the content of temp_dir directory:
-    let mut ls = std::process::Command::new("ls")
-        .arg("-l")
-        .arg(temp_dir.path())
-        .spawn()
-        .unwrap();
-    let output = ls.wait_with_output().unwrap();
-    println!(
-        "{:?}:\n{}",
-        temp_dir.path(),
-        String::from_utf8_lossy(&output.stdout)
-    );
     assert!(last_output.exists());
 
     // it is effectively the last output
