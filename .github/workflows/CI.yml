@@ -126,7 +126,8 @@ jobs:
         with:
           use-cross: true
           command: build
-          args: --release --all --target ${{ matrix.target }}
+          # TODO:   There should be a step to build horustctl.
+          args: --release --package horust --bin horust --target ${{ matrix.target }}
 
       - name: Package
         shell: bash

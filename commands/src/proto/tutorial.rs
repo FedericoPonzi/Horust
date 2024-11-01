@@ -20,7 +20,17 @@ pub mod person {
         #[prost(enumeration = "PhoneType", tag = "2")]
         pub r#type: i32,
     }
-    #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, ::prost::Enumeration)]
+    #[derive(
+        Clone,
+        Copy,
+        Debug,
+        PartialEq,
+        Eq,
+        Hash,
+        PartialOrd,
+        Ord,
+        ::prost::Enumeration
+    )]
     #[repr(i32)]
     pub enum PhoneType {
         Mobile = 0,
