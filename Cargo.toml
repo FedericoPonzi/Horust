@@ -43,3 +43,5 @@ rand = "~0.8"
 [profile.release]
 strip = "symbols"
 
+[workspace]
+members = ["horustctl", "commands"]

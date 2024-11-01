@@ -20,6 +20,7 @@ mod formats;
 mod healthcheck;
 mod signal_safe;
 mod supervisor;
+mod uds_messages;
 
 #[derive(Debug)]
 pub struct Horust {
