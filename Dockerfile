@@ -5,6 +5,7 @@ ARG CARGO_PARAMS
 ARG GIT_COMMIT
 ARG GIT_BRANCH
 ARG IMAGE_NAME
+RUN apt-get update && apt-get install -y protobuf-compiler 
 
 RUN echo "Running cargo build with params: $CARGO_PARAMS" && cargo build --release $CARGO_PARAMS
 
