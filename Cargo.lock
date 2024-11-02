@@ -532,10 +532,15 @@ name = "horustctl"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "assert_cmd",
  "clap",
  "crossbeam",
  "env_logger",
+ "horust-commands-lib",
  "log",
+ "predicates",
+ "rand 0.8.5",
+ "tempdir",
 ]
 
 [[package]]
