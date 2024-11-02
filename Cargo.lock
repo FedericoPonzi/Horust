@@ -497,6 +497,7 @@ dependencies = [
  "clap",
  "crossbeam",
  "env_logger",
+ "horust-commands-lib",
  "humantime-serde",
  "libc",
  "log",

@@ -29,6 +29,7 @@ shellexpand = "~3.1"
 anyhow = "~1.0"
 thiserror = "~1.0"
 bytefmt = "0.1.7"
+horust-commands-lib = {path = "../commands"}
 
 [features]
 default = ["http-healthcheck"]
