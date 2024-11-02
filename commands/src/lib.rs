@@ -1,3 +1,4 @@
+#[rustfmt::skip]
 mod proto;
 
 use anyhow::{bail, Context, Result};

@@ -2,3 +2,4 @@
 **/*.rs.bk
 .idea
 **/target
+commands/src/proto/messages.rs
