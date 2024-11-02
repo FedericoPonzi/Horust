@@ -10,11 +10,10 @@ serde = { version = "~1.0", features = ["derive"] }
 serde_json = "~1.0"
 prost = "~0.13"
 anyhow = "~1.0"
-tokio = { version = "~1.41", features = ["full"] }
-tracing = "0.1"
+log = "~0.4"
 
 [dev-dependencies]
-tracing-test = { version = "0.2", features = ["no-env-filter"] }
+env_logger = "~0.11"
 
 [build-dependencies]
 prost-build = { version = "~0.13" }
