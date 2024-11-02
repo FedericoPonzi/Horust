@@ -26,7 +26,7 @@ struct Opts {
     /// Path to service file or a directory containing services to run. You can provide more than one argument to load multiple directories / services.
     services_paths: Vec<PathBuf>,
 
-    #[arg(required = false, default_value = "/var/run/horust")]
+    #[arg(required = false, long, default_value = "/var/run/horust")]
     /// Path to the folder that contains the Unix Domain Socket, used to communicate with horustctl
     uds_folder_path: PathBuf,
 
