@@ -1,3 +1,6 @@
 [workspace]
 members = ["commands", "horust", "horustctl"]
 resolver = "2"
+
+[profile.release]
+strip = "symbols"
