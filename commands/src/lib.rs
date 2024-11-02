@@ -1,7 +1,6 @@
 mod proto;
 
 use anyhow::{bail, Context, Result};
-use proto::tutorial::*;
 use std::path::{Path, PathBuf};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::{UnixListener, UnixStream};
