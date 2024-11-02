@@ -153,10 +153,10 @@ mod test {
     use std::io;
     use std::path::{Path, PathBuf};
 
-    use tempdir::TempDir;
-
     use crate::horust::fetch_services;
     use crate::horust::formats::Service;
+    use crate::Horust;
+    use tempdir::TempDir;
 
     const FIRST_SERVICE_FILENAME: &str = "my-first-service.toml";
     const SECOND_SERVICE_FILENAME: &str = "my-second-service.toml";
@@ -233,5 +233,14 @@ mod test {
         assert_eq!(res, files);
 
         Ok(())
+    }
+
+    #[test]
+    fn test_should_deserialize() {
+        let base = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+        let services_path = base.join("../example_services/");
+        let services = list_files(&services_path).unwrap().len();
+        let horust = Horust::from_services_dirs(&[services_path]).unwrap();
+        assert_eq!(horust.services.len(), services);
     }
 }

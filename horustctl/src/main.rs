@@ -1,12 +1,12 @@
 use anyhow::{bail, Result};
 use clap::{Args, Parser, Subcommand};
 use env_logger::Env;
-use log::{debug, error};
+use log::debug;
 use std::env;
-use std::fs::{read, read_dir};
+use std::fs::read_dir;
 use std::io::Write;
 use std::os::unix::net::UnixStream;
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 
 /// Simple program to greet a person
 #[derive(Parser, Debug)]
