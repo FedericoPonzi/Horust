@@ -6,7 +6,7 @@ use rand::{thread_rng, Rng};
 use std::path::Path;
 use std::thread;
 use std::time::Duration;
-use tempdir::TempDir;
+use tempfile::TempDir;
 
 /// Creates script and service file, and stores them in dir.
 /// It will append a `command` at the top of the service, with a reference to script.
@@ -48,7 +48,7 @@ printenv"#;
 
 #[test]
 fn test_cli_status() {
-    let temp_dir = TempDir::new("horustctl").unwrap();
+    let temp_dir = TempDir::with_prefix("horustctl").unwrap();
     let mut horust_cmd = Command::cargo_bin("horust").unwrap();
 
     horust_cmd.current_dir(&temp_dir).args(vec![

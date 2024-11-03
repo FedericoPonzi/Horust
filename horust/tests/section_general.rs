@@ -1,6 +1,6 @@
 use assert_cmd::prelude::*;
 use predicates::str::{contains, is_empty};
-use tempdir::TempDir;
+use tempfile::TempDir;
 
 mod utils;
 use nix::sys::signal::{kill, Signal};
@@ -132,7 +132,7 @@ fn test_search_path_found() {
 #[test]
 fn test_cwd() {
     let (mut cmd, temp_dir) = get_cli();
-    let another_dir = TempDir::new("another").unwrap();
+    let another_dir = TempDir::with_prefix("another").unwrap();
     let displ = another_dir.path().display().to_string();
     let service = format!(r#"working-directory = "{}""#, displ);
     let script = r#"#!/usr/bin/env bash

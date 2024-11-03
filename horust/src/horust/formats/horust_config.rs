@@ -36,11 +36,12 @@ impl HorustConfig {
 #[cfg(test)]
 mod test {
     use anyhow::Result;
+    use tempfile::TempDir;
 
     use crate::horust::HorustConfig;
     #[test]
     fn test_load_and_merge() -> Result<()> {
-        let tempdir = tempdir::TempDir::new("load-and-merge")?;
+        let tempdir = TempDir::with_prefix("load-and-merge")?;
         let config_path = tempdir.path().join("config.toml");
         std::fs::write(&config_path, "Not a toml file :( ")?;
         let config = HorustConfig {

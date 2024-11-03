@@ -159,7 +159,7 @@ mod test {
     use std::path::{Path, PathBuf};
 
     use crate::Horust;
-    use tempdir::TempDir;
+    use tempfile::TempDir;
 
     use crate::horust::fetch_services;
     use crate::horust::formats::Service;
@@ -182,7 +182,7 @@ mod test {
     }
 
     fn create_test_dir() -> io::Result<TempDir> {
-        let ret = TempDir::new("horust").unwrap();
+        let ret = TempDir::with_prefix("horust").unwrap();
         let a = Service::from_name("a");
         let b = Service::start_after("b", vec!["a"]);
         let a_str = toml::to_string(&a).unwrap();
@@ -194,7 +194,7 @@ mod test {
 
     #[test]
     fn test_fetch_services() -> io::Result<()> {
-        let tempdir = TempDir::new("horust").unwrap();
+        let tempdir = TempDir::with_prefix("horust").unwrap();
         // Empty service directory will print a log but it's not an error.
         assert_eq!(fetch_services(tempdir.path()).unwrap().len(), 0);
         let not_toml_file = tempdir.path().join("not_a_toml.toml");
@@ -223,7 +223,7 @@ mod test {
 
     #[test]
     fn test_list_files() -> io::Result<()> {
-        let tempdir = TempDir::new("horust").unwrap();
+        let tempdir = TempDir::with_prefix("horust").unwrap();
         let files = vec!["a", "b", "c"];
         let files: Vec<PathBuf> = files.into_iter().map(|f| tempdir.path().join(f)).collect();
 

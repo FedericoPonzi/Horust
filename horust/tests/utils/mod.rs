@@ -8,7 +8,7 @@ use std::process::Command;
 use std::sync::mpsc;
 use std::thread;
 use std::time::Duration;
-use tempdir::TempDir;
+use tempfile::TempDir;
 
 /// Create a random name
 pub fn create_random_name() -> String {
@@ -56,8 +56,8 @@ pub fn store_service_script(
 
 #[allow(dead_code)]
 pub fn get_cli_multiple() -> (Command, TempDir, TempDir) {
-    let temp_dir = TempDir::new("horust").unwrap();
-    let temp_dir_2 = TempDir::new("horust_2").unwrap();
+    let temp_dir = TempDir::with_prefix("horust").unwrap();
+    let temp_dir_2 = TempDir::with_prefix("horust_2").unwrap();
     let mut cmd = Command::cargo_bin("horust").unwrap();
     cmd.current_dir(&temp_dir).args(vec![
         "--uds-folder-path",
@@ -72,7 +72,7 @@ pub fn get_cli_multiple() -> (Command, TempDir, TempDir) {
 }
 
 pub fn get_cli() -> (Command, TempDir) {
-    let temp_dir = TempDir::new("horust").expect("Tmp dir");
+    let temp_dir = TempDir::with_prefix("horust").expect("Tmp dir");
     let mut cmd = Command::cargo_bin("horust").expect("Cargo bin");
     cmd.current_dir(&temp_dir).args(vec![
         "--uds-folder-path",

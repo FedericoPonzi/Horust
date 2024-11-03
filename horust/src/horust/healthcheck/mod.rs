@@ -148,14 +148,14 @@ mod test {
     use std::time::Duration;
 
     use anyhow::Result;
-    use tempdir::TempDir;
+    use tempfile::TempDir;
 
     use crate::horust::formats::{Healthiness, HealthinessStatus};
     use crate::horust::healthcheck::check_health;
 
     #[test]
     fn test_healthiness_check_file() -> Result<()> {
-        let tempdir = TempDir::new("health")?;
+        let tempdir = TempDir::with_prefix("health")?;
         let file_path = tempdir.path().join("file.txt");
         let healthiness = Healthiness {
             file_path: Some(file_path.clone()),

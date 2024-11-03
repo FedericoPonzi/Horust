@@ -29,7 +29,7 @@ shellexpand = "~3.1"
 anyhow = "~1.0"
 thiserror = "~1.0"
 bytefmt = "0.1.7"
-horust-commands-lib = {path = "../commands"}
+horust-commands-lib = { path = "../commands" }
 
 [features]
 default = ["http-healthcheck"]
@@ -38,5 +38,5 @@ http-healthcheck = ["reqwest"]
 [dev-dependencies]
 assert_cmd = "~2.0"
 predicates = "~3.1"
-tempdir = "~0.3"
+tempfile = "~3"
 rand = "~0.8"
