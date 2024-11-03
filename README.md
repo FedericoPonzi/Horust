@@ -1,10 +1,12 @@
 [<img src="https://github.com/FedericoPonzi/Horust/raw/master/res/horust-logo.png" width="300" align="center">](https://github.com/FedericoPonzi/Horust/raw/master/res/horust-logo.png)
 
-[![CI](https://github.com/FedericoPonzi/horust/workflows/CI/badge.svg?branch=master&event=push)](https://github.com/FedericoPonzi/Horust/actions?query=workflow%3ACI) [![MIT licensed](https://img.shields.io/badge/license-MIT-blue.svg)](./LICENSE) [![Gitter chat](https://badges.gitter.im/gitterHQ/gitter.png)](https://gitter.im/horust-init/community)
- 
-[Horust](https://github.com/FedericoPonzi/Horust) is a supervisor / init system written in rust and designed to be run inside containers.
+[![CI](https://github.com/FedericoPonzi/horust/workflows/CI/badge.svg?branch=master&event=push)](https://github.com/FedericoPonzi/Horust/actions?query=workflow%3ACI) [![MIT licensed](https://img.shields.io/badge/license-MIT-blue.svg)](./LICENSE)
+
+[Horust](https://github.com/FedericoPonzi/Horust) is a supervisor / init system written in rust and designed to be run
+inside containers.
 
 # Table of contents
+
 * [Goals](#goals)
 * [Status](#status)
 * [Usage](#usage)
@@ -12,99 +14,149 @@
 * [License](#license)
 
 ## Goals
-* **Supervision**: Be a fully-featured supervision system, designed to be run in containers (but not only).
-* **Easy to Grasp**: Have code that is easy to understand, modify _and remove_ when the situation calls for it.
-* **Completeness**: Be a drop-in replacement for your own `init` system.
-* **Rock Solid**: Be your favorite Egyptian God, to trust across all use cases.
+
+* **Supervision**: A fully-featured supervision system, designed to be run in containers (but not exclusively).
+* **Simplicity**: Clear, modifiable, and removable code as needed.
+* **Completeness**: A seamless drop-in for any `init` system.
+* **Reliability**: Stability and trustworthiness across all use cases.
 
 ## Status
-At this point, this should be considered Alpha software. As in, you can (and should) use it, but under your own discretion.
-Horust can be used on macOS in development situations.  Due to limitations in the macOS API, subprocesses of supervised processes may not correctly be reaped when their parent process exits.
+
+This should be considered Beta software. You can (and should) use it, but under your own
+discretion. Please report any issue you encounter, or also sharing your use cases would be very helpful.
+Horust can be used on macOS in development situations. Due to limitations in the macOS API, subprocesses of supervised
+processes may not correctly be reaped when their parent process exits.
 
 ## Usage
-Assume you'd like to create a website health monitoring system. You can create one using Horust and a small python script.
-    
-#### 1. Create a new directory: 
-That will contain our services: 
 
-```shell
-mkdir -p /etc/horust/services
+Being a supervision and init system, it can be used to start and manage a bunch of processes. You can use it to
+supervise a program and, for example, restart it in case it exists with an error. Or startup dependencies like start a
+webserver after starting a database.
+
+## Quick tutorial
+
+As a simple example, assume you'd like to host your rest api. This is the code:
+
+```
+from http.server import BaseHTTPRequestHandler, HTTPServer
+
+class Handler(BaseHTTPRequestHandler):
+    def do_GET(self):
+         if self.path == "/user":
+            raise Exception("Unsupported path: /user")  # Exception will kill the server
+        self.send_response(200)
+        self.send_header("Content-type", "text/plain")
+        self.end_headers()
+        self.wfile.write(b"Hello, World!")
+
+HTTPServer(('', 8000), Handler).serve_forever()
 ```
 
-#### 2. Create your first Horust service:
+you can run it using `python3 myapp.py`. If you go to localhost:8000/user, unfortunately, the server will fail. Now you
+need to manually restart it!
 
-> **Pro Tip:** You can also bootstrap the creation of a new service, by using `horust --sample-service > new_service.toml`.
+Let's see how we can use horust to supervise it and restart it in case of failure.
 
-Create a new configuration file for Horust under `/etc/horust/services/healthchecker.toml`:
+#### 1. Create your first Horust service:
+
+> [!TIP]
+> You can also bootstrap the creation of a new service, by using `horust --sample-service > new_service.toml`.
+
+We are now going to create a new config file for our service. They are defined
+in [TOML](https://github.com/toml-lang/toml) and the default path where horust will look for service is in
+`/etc/horust/services/`.
+
+> [!NOTE]
+> It's possible to run a one-shot instance just by doing `horust myprogram` without defining a service config file.
+
+Let's create a new service under `/etc/horust/services/healthchecker.toml`:
 
 ```toml
-command = "/tmp/healthcheck.py"
-start-delay = "10s"
+command = "/tmp/myapp.py"
 [restart]
-strategy = "never"
+strategy = "always"
 ``` 
 
-A couple of notes are due here:
-* This library uses [TOML](https://github.com/toml-lang/toml) for configuration, to go along nicely with Rust's chosen configuration language.
-* There are many [_supported_](https://github.com/FedericoPonzi/Horust/blob/master/DOCUMENTATION.md) properties for your service file, but only `command` is _required_.
+There are many [_supported_](https://github.com/FedericoPonzi/Horust/blob/master/DOCUMENTATION.md) properties for your
+service file, but only `command` is _required_.
 
-On startup, Horust will read this service file, and run the `command`. According to the restart strategy "`never`", as soon as the service has carried out its task it _will not restart_, and Horust will exit.
+On startup, Horust will read this service file, and run the `command` after waiting for 10 seconds. According to the
+restart strategy "`never`", as
+soon as the service has carried out its task it will restart.
 
-As you can see, it will run the `/tmp/healthcheck.py` Python script, which doesn't exist yet. Let's create it!
+As you can see, it will run the `/tmp/myapp.py` Python script, which doesn't exist yet. Let's create it!
 
-#### 3. Create your Python script:
+#### 2. Create your app:
 
-Create a new Python script under `/tmp/healthcheck.py`:
+Create a new file script under `/tmp/myapp.py`:
 
 ```python
 #!/usr/bin/env python3
-import urllib.request
-import sys
-req = urllib.request.Request("https://www.google.com", method="HEAD")
-resp = urllib.request.urlopen(req)
-if resp.status == 200:
-    sys.exit(0)
-else:
-    sys.exit(1)
+from http.server import BaseHTTPRequestHandler, HTTPServer
+
+class Handler(BaseHTTPRequestHandler):
+    def do_GET(self):
+        if self.path == "/user":
+            raise Exception("Unsupported path: /user")  # Exception will kill the server
+        self.send_response(200)
+        self.send_header("Content-type", "text/plain")
+        self.end_headers()
+        self.wfile.write(b"Hello, World!")
+
+HTTPServer(('', 8000), Handler).serve_forever()
 ```
 
-Don't forget to make it executable:
+And remember to make it executable:
 
 ```shell
-chmod +x /tmp/healthcheck.py
+chmod +x /tmp/api.py
 ```
 
-#### 4. Build Horust:
+#### 3. Get the latest release or build from source:
 
-This step is only required because we don't have a release yet, or if you like to live on the edge.
-
-For building Horust, you will need [Rust](https://www.rust-lang.org/learn/get-started). As soon as it's installed, you can build Horust with Rust's `cargo`: 
-
-```shell
-cargo build --release
-```
+You can grab the latest release from the [releases](https://github.com/FedericoPonzi/Horust/releases/) page. Or if you
+like to live on the edge, scroll down to the building section.
 
 #### 4. Run Horust:
 
 Now you can just:
 
 ```shell
-./horust
+./horust --uds-folder-path /tmp
 ```
 
-By default Horust searches for services inside the `/etc/horust/services` folder (which we have created in step 1).
+> [!TIP]
+> Horustctl is a program that allows you to interact with horust. They communicate using Unix Domain Socket (UDS),
+> and by default horust stores the sockets in `/var/run/horust`.
+> In this example, we have overridden the path by using the argument `--uds-folder-path`.
 
-Every 10 seconds from now on, Horust will send an HTTP `HEAD` request to https://google.it. If the response is different than `200`, then there is an issue!
+Try navigating to `http://localhost:8000/`. A page with Hello world
+should be greeting you.
 
-In this case, we're just exiting with a different exit code (i.e. a `1` instead of a `0`). But in real life, you could trigger other actions - maybe storing this information in a database for long-term analysis, or sending an e-mail to the website's owner.
+Now try navigating to `http://localhost:8000/user` - you should get a "the connection was reset" error page.
+Checking on your terminal, you will see that the program has raised the exception, as we expected. Now, try navigating
+again to `http://localhost:8000/` and the website is still up and running.
 
-#### 5. Finish up:
+Pretty nice uh? One last thing!
 
-Use <kbd>Ctrl</kbd>+<kbd>C</kbd> to stop Horust. Horust will send a `SIGTERM` signal to all the running services, and if it doesn't hear back for a while - it will terminate them by sending an additional  `SIGKILL` signal.
+If you downloaded a copy of horustctl, you can also do:
+
+```
+horustctl --uds-folder-path /tmp status myapp.toml
+```
+
+To check the status of your service. Currently, horustctl only support querying for the service status.
+
+### 5. Wrapping up
+
+Use <kbd>Ctrl</kbd>+<kbd>C</kbd> to stop Horust. Horust will send a `SIGTERM` signal to all the running services, and if
+it doesn't hear back for a while - it will terminate them by sending an additional  `SIGKILL` signal. Wait time and
+signals are configurable.
 
 ---
 
-Check out the [documentation](https://github.com/FedericoPonzi/Horust/blob/master/DOCUMENTATION.md) for a complete reference of the options available on the service config file. A general overview is available below as well:
+Check out the [documentation](https://github.com/FedericoPonzi/Horust/blob/master/DOCUMENTATION.md) for a complete
+reference of the options available on the service config file. A general overview is available below as well:
 
 ```toml
 command = "/bin/bash -c 'echo hello world'"
@@ -125,7 +177,7 @@ http-endpoint = "http://localhost:8080/healthcheck"
 file-path = "/var/myservice/up"
 
 [failure]
-successful-exit-code = [ 0, 1, 255]
+successful-exit-code = [0, 1, 255]
 strategy = "ignore"
 
 [termination]
@@ -135,12 +187,26 @@ die-if-failed = ["db.toml"]
 
 [environment]
 keep-env = false
-re-export = [ "PATH", "DB_PASS"]
-additional = { key = "value"} 
+re-export = ["PATH", "DB_PASS"]
+additional = { key = "value" } 
+```
+
+## Building
+
+For building Horust, you will need [Rust](https://www.rust-lang.org/learn/get-started) and `protoc` compiler. Protoc is
+used for interacting with horust through horustctl.
+As soon as both are installed, you can build Horust with:
+
+```shell
+cargo build --release
 ```
 
 ## Contributing
-Thanks for considering contributing to horust! To get started have a look on [CONTRIBUTING.md](https://github.com/FedericoPonzi/Horust/blob/master/CONTRIBUTING.md).
+
+Thanks for considering contributing to horust! To get started, have a look
+at [CONTRIBUTING.md](https://github.com/FedericoPonzi/Horust/blob/master/CONTRIBUTING.md).
 
 ## License
-Horust is provided under the MIT license. Please read the attached [license](https://github.com/FedericoPonzi/horust/blob/master/LICENSE) file.
+
+Horust is provided under the MIT license. Please read the
+attached [license](https://github.com/FedericoPonzi/horust/blob/master/LICENSE) file.

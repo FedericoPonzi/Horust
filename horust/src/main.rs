@@ -57,7 +57,12 @@ fn main() -> Result<()> {
             )
         })?;
     if !opts.uds_folder_path.exists() {
-        std::fs::create_dir_all(&opts.uds_folder_path)?;
+        std::fs::create_dir_all(&opts.uds_folder_path).with_context(|| {
+            format!(
+                "Failed to create uds folder path: {:?}.",
+                opts.uds_folder_path
+            )
+        })?;
     }
 
     if !opts.uds_folder_path.is_dir() {
