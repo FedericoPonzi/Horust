@@ -53,7 +53,7 @@ start-after = ["database", "backend.toml"]
 stdout = "STDOUT"
 stderr = "/var/logs/hello_world_svc/stderr.log"
 stdout-rotate-size = "100MB"
-stdout_should_append_timestamp_to_filename = false
+stdout-should-append-timestamp-to-filename = false
 user = "${USER}"
 working-directory = "/tmp/"
 ```
