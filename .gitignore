@@ -2,4 +2,4 @@
 **/*.rs.bk
 .idea
 **/target
-commands/src/proto/messages.rs
+# needed to be checked in because of how cargo publish works. commands/src/proto/messages.rs
