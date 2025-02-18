@@ -501,7 +501,7 @@ checksum = "2304e00983f87ffb38b55b444b5e3b60a884b5d30c0fca7d82fe33449bbe55ea"
 
 [[package]]
 name = "horust"
-version = "0.1.8"
+version = "0.1.9"
 dependencies = [
  "anyhow",
  "assert_cmd",
@@ -509,7 +509,7 @@ dependencies = [
  "clap",
  "crossbeam",
  "env_logger",
- "horust-commands-lib",
+ "horust-commands-lib 0.1.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "humantime-serde",
  "libc",
  "log",
@@ -540,6 +540,20 @@ dependencies = [
 ]
 
 [[package]]
+name = "horust-commands-lib"
+version = "0.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "62d6e909dddd78a58b14d303f8668b778584c9e026914cf2660feda1d070ccf5"
+dependencies = [
+ "anyhow",
+ "log",
+ "prost",
+ "prost-build",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
 name = "horustctl"
 version = "0.1.0"
 dependencies = [
@@ -548,7 +562,7 @@ dependencies = [
  "clap",
  "crossbeam",
  "env_logger",
- "horust-commands-lib",
+ "horust-commands-lib 0.1.0",
  "log",
  "predicates",
  "rand",
