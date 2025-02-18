@@ -10,7 +10,7 @@ homepage = "https://github.com/FedericoPonzi/horust"
 readme = "README.md"
 keywords = ["init", "container", "supervisor"]
 categories = ["command-line-utilities"]
-include = ["src/**/*", "Cargo.*", "../LICENSE.txt", "README.md", "/example_services/**/*"]
+include = ["src/**/*", "Cargo.*", "../LICENSE.txt", "README.md"]
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
