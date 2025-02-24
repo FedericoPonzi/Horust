@@ -35,7 +35,7 @@ impl Event {
     pub(crate) fn new_status_changed(service_name: &str, status: ServiceStatus) -> Self {
         Self::StatusChanged(service_name.to_string(), status)
     }
-    pub(crate) fn new_status_update(service_name: &str, status: ServiceStatus) -> Self {
+    pub fn new_status_update(service_name: &str, status: ServiceStatus) -> Self {
         Self::StatusUpdate(service_name.to_string(), status)
     }
     pub(crate) fn new_service_exited(service_name: ServiceName, exit_status: i32) -> Self {

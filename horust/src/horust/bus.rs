@@ -182,7 +182,7 @@ where
         self.receiver.try_iter().map(|m| m.into_payload()).collect()
     }
 
-    pub(crate) fn send_event(&self, ev: T) {
+    pub fn send_event(&self, ev: T) {
         self.state
             .sender
             .send(self.wrap(ev))
