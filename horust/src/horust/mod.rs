@@ -4,6 +4,7 @@ use std::fs;
 use std::path::{Path, PathBuf};
 
 use anyhow::Result;
+use bus::BusConnector;
 #[cfg(target_os = "linux")]
 use libc::{prctl, PR_SET_CHILD_SUBREAPER};
 
@@ -14,10 +15,10 @@ use crate::horust::formats::{validate, Service};
 
 pub use self::formats::{get_sample_service, ExitStatus, HorustConfig};
 
-mod bus;
+pub mod bus;
 mod commands_handler;
 mod error;
-mod formats;
+pub mod formats;
 mod healthcheck;
 mod signal_safe;
 mod supervisor;
@@ -26,11 +27,16 @@ mod supervisor;
 pub struct Horust {
     services: Vec<Service>,
     uds_path: PathBuf,
+    bus: Option<Bus<Event>>,
 }
 
 impl Horust {
     fn new(services: Vec<Service>, uds_path: PathBuf) -> Self {
-        Horust { services, uds_path }
+        Horust {
+            services,
+            uds_path,
+            bus: Some(Bus::new()),
+        }
     }
 
     /// Creates a new Horust instance from a command.
@@ -56,6 +62,20 @@ impl Horust {
         Ok(Horust::new(services, uds_path))
     }
 
+    /// Creates a new Horust instance from a Vec of `Service`s.
+    pub fn from_services(services: Vec<Service>, uds_path: PathBuf) -> Self {
+        Horust::new(services, uds_path)
+    }
+
+    /// Returns a BusConnector.
+    /// Panics if called when the `Horust::run()` has already been called.
+    pub fn join_bus(&self) -> BusConnector<Event> {
+        self.bus
+            .as_ref()
+            .expect("tried to join an already running Bus")
+            .join_bus()
+    }
+
     /// Blocking call, will setup the event loop and the threads and run all the available services.
     pub fn run(&mut self) -> ExitStatus {
         #[cfg(target_os = "linux")]
@@ -75,17 +95,20 @@ impl Horust {
         }
         supervisor::init();
 
-        let dispatcher = Bus::new();
         debug!("Services: {:?}", self.services);
         // Spawn helper threads:
-        healthcheck::spawn(dispatcher.join_bus(), self.services.clone());
+        healthcheck::spawn(self.join_bus(), self.services.clone());
         commands_handler::spawn(
-            dispatcher.join_bus(),
+            self.join_bus(),
             self.uds_path.clone(),
             self.services.iter().map(|s| s.name.clone()).collect(),
         );
-        let handle = supervisor::spawn(dispatcher.join_bus(), self.services.clone());
-        dispatcher.run();
+        let handle = supervisor::spawn(self.join_bus(), self.services.clone());
+        let bus = self
+            .bus
+            .take()
+            .expect("unable to take Bus, already running?");
+        bus.run();
         handle.join().unwrap()
     }
 }
