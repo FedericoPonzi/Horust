@@ -9,7 +9,7 @@ We should use [issues](https://github.com/FedericoPonzi/Horust/issues/new) to tr
 fix one or more issues.
 So even if you want to fix a TODO, please create an issue first.
 In this way, it's easier to keep track of whom's working on what. If you need any help on clarifying the acceptance
-criteria of an issue or work on the task, please do rech out.
+criteria of an issue or work on the task, please do reach out.
 
 ## Development environment
 

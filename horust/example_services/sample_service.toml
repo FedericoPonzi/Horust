@@ -26,13 +26,13 @@ file-path = "/var/myservice/up"
 max-failed = 3
 
 [failure]
-# by convention, zero conveys successful execution. Use this parameter to add more successfull exit codes.
+# by convention, zero conveys successful execution. Use this parameter to add more successful exit codes.
 successful-exit-code = [0, 1, 255]
 # Don't shut all the services down if this service fails.
 strategy = "ignore"
 
 [environment]
-# Regardless of this value, the programm will get `USER`, `HOSTNAME`, `HOME` and `PATH`.
+# Regardless of this value, the program will get `USER`, `HOSTNAME`, `HOME` and `PATH`.
 keep-env = false
 # Use for fine-grained re-exports.
 re-export = ["PATH", "DB_PASS"]

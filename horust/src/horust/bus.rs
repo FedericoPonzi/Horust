@@ -67,11 +67,11 @@ where
     }
 }
 
-impl<T> Bus<T>
+impl<T> Default for Bus<T>
 where
     T: Clone,
 {
-    pub fn new() -> Self {
+    fn default() -> Self {
         let (public_sender, receiver) = unbounded();
         Bus {
             state: SharedState {
@@ -80,6 +80,16 @@ where
             },
             receiver,
         }
+    }
+}
+
+impl<T> Bus<T>
+where
+    T: Clone,
+{
+    pub fn new() -> Self {
+        // use the default implementation since no arguments are provided
+        Self::default()
     }
 
     /// Blocking
