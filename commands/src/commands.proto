@@ -38,7 +38,7 @@ message HorustMsgServiceChangeRequest {
   HorustMsgServiceStatus service_status = 2;
 }
 
-// return the current status - similar to HorustServiceStatusReponse.
+// return the current status - similar to HorustServiceStatusResponse.
 message HorustMsgServiceChangeResponse {
   string service_name = 1;
   HorustMsgServiceStatus service_status = 2;

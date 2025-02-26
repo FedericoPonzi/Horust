@@ -21,7 +21,7 @@ pub(crate) trait Check {
 }
 
 /// HTTP based healthcheck: will send an head request with 1 second timeout, and the test will be
-/// considered failed if the repsonse is anything other than `200`.
+/// considered failed if the response is anything other than `200`.
 pub(crate) struct HttpCheck;
 
 static HTTP_REQUEST_TIMEOUT: u64 = 1;

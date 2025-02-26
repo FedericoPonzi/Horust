@@ -68,7 +68,7 @@ pub struct HorustMsgServiceChangeRequest {
     #[prost(enumeration = "HorustMsgServiceStatus", tag = "2")]
     pub service_status: i32,
 }
-/// return the current status - similar to HorustServiceStatusReponse.
+/// return the current status - similar to HorustServiceStatusResponse.
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct HorustMsgServiceChangeResponse {
     #[prost(string, tag = "1")]

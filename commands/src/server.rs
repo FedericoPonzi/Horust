@@ -29,7 +29,7 @@ pub trait CommandsHandlerTrait {
             Err(e) => {
                 let kind = e.kind();
                 if !matches!(kind, ErrorKind::WouldBlock) {
-                    error!("Error accepting connction: {e} - you might need to restart Horust.");
+                    error!("Error accepting connection: {e} - you might need to restart Horust.");
                 }
             }
         };

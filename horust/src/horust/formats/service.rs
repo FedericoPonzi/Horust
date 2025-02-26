@@ -167,7 +167,7 @@ impl<'de> Deserialize<'de> for LogOutput {
 
 struct LogOutputVisitor;
 
-impl<'de> Visitor<'de> for LogOutputVisitor {
+impl Visitor<'_> for LogOutputVisitor {
     type Value = LogOutput;
 
     fn expecting(&self, formatter: &mut Formatter) -> std::fmt::Result {
@@ -634,7 +634,7 @@ pub fn validate(services: Vec<Service>) -> Result<Vec<Service>, ValidationErrors
         }
         if !service.start_after.is_empty() {
             debug!(
-                "Checking if all depedencies of '{}' exists, deps: {:?}",
+                "Checking if all dependencies of '{}' exists, deps: {:?}",
                 service.name, service.start_after
             );
         }
