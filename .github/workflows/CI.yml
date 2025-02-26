@@ -14,21 +14,16 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
-        uses: actions/checkout@v1
+        uses: actions/checkout@v4
 
       - name: Install rust
-        uses: actions-rs/toolchain@v1
+        uses: dtolnay/rust-toolchain@stable
         with:
           toolchain: stable
           components: rustfmt
-          profile: minimal
-          override: true
 
-      - name: cargo fmt -- --check
-        uses: actions-rs/cargo@v1
-        with:
-          command: fmt
-          args: --all -- --check
+      - name: cargo fmt --check
+        run: cargo fmt --all --check
 
 
   test:
@@ -40,39 +35,29 @@ jobs:
       matrix:
         build: [ stable, beta, nightly ]
         include:
-          - build: beta
-            rust: beta
           - build: nightly
-            rust: nightly
             benches: true
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v1
+        uses: actions/checkout@v4
 
       - name: Install rust
-        uses: actions-rs/toolchain@v1
+        uses: dtolnay/rust-toolchain@stable
         with:
-          toolchain: ${{ matrix.rust || 'stable' }}
-          profile: minimal
-          override: true
+          toolchain: ${{ matrix.build }}
 
       - name: Install protoc
         run: sudo apt-get install -y protobuf-compiler
 
       - name: Build debug
-        uses: actions-rs/cargo@v1
-        with:
-          command: build
-          args: --all
+        run: cargo build --all
 
       - name: Create /var/run/horust directory
         run: sudo mkdir -p /var/run/horust && sudo chmod 777 /var/run/horust
+
       - name: Test
-        uses: actions-rs/cargo@v1
-        with:
-          command: test
-          args: ${{ matrix.features }}
+        run: cargo test
 
   # Publish latest and releases (e.g. tags with semver) on dockerhub.
   docker-push-release-latest:
@@ -109,25 +94,24 @@ jobs:
           - x86_64-apple-darwin
     steps:
       - name: Checkout
-        uses: actions/checkout@v1
+        uses: actions/checkout@v4
       - name: Install rust
-        uses: actions-rs/toolchain@v1
+        uses: dtolnay/rust-toolchain@stable
         with:
           toolchain: stable
-          profile: minimal
-          override: true
-          target: ${{ matrix.target }}
+          targets: ${{ matrix.target }}
 
       - name: Install protoc
         run: sudo apt-get install -y protobuf-compiler
 
-      - name: Build target
-        uses: actions-rs/cargo@v1
+      - name: Install cross
+        uses: taiki-e/install-action@v2
         with:
-          use-cross: true
-          command: build
-          # TODO:   There should be a step to build horustctl.
-          args: --release --package horust --bin horust --target ${{ matrix.target }}
+          tool: cross
+
+      - name: Build target
+        # TODO:   There should be a step to build horustctl.
+        run: cross build --release --package horust --bin horust --target ${{ matrix.target }}
 
       - name: Package
         shell: bash
@@ -138,7 +122,7 @@ jobs:
           cd -
 
       - name: Publish
-        uses: softprops/action-gh-release@v1
+        uses: softprops/action-gh-release@v2
         # TODO: if any of the build step fails, the release should be deleted.
         with:
           files: 'horust*'
