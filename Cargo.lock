@@ -535,8 +535,6 @@ dependencies = [
  "log",
  "prost",
  "prost-build",
- "serde",
- "serde_json",
 ]
 
 [[package]]
@@ -560,7 +558,6 @@ dependencies = [
  "anyhow",
  "assert_cmd",
  "clap",
- "crossbeam",
  "env_logger",
  "horust-commands-lib 0.1.0",
  "log",
