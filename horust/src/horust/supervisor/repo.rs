@@ -98,6 +98,10 @@ impl Repo {
         if !sh.is_initial() {
             return false;
         }
+        if !sh.service().autostart {
+            return false;
+        }
+
         let is_started = |service_name: &ServiceName| {
             let sh = self.services.get(service_name).unwrap();
             sh.is_running() || sh.is_finished()
