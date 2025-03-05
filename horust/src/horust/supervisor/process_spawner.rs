@@ -258,7 +258,7 @@ fn chunked_writer(fd: OwnedFd, service: Service) -> Result<()> {
 
 /// Find program on PATH.
 ///
-fn find_program(program_name: &String) -> Result<String> {
+pub(crate) fn find_program(program_name: &String) -> Result<String> {
     let path_var = match std::env::var_os("PATH") {
         Some(val) => val,
         None => return Err(anyhow!("PATH environment variable is not set")),

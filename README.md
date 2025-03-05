@@ -177,6 +177,7 @@ attempts = 0
 [healthiness]
 http-endpoint = "http://localhost:8080/healthcheck"
 file-path = "/var/myservice/up"
+command = "curl -s localhost:8080/healthcheck"
 
 [failure]
 successful-exit-code = [0, 1, 255]

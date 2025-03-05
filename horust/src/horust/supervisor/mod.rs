@@ -10,6 +10,7 @@ use std::time::{Duration, Instant};
 use nix::sys::signal;
 use nix::unistd;
 
+pub(crate) use process_spawner::find_program;
 use repo::Repo;
 use service_handler::ServiceHandler;
 pub(crate) use signal_handling::init;
