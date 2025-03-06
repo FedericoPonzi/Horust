@@ -301,6 +301,7 @@ impl Environment {
 pub struct Healthiness {
     pub http_endpoint: Option<String>,
     pub file_path: Option<PathBuf>,
+    pub command: Option<String>,
     #[serde(default = "Healthiness::default_max_failed")]
     // todo: use an u32
     pub max_failed: i32,
@@ -312,7 +313,7 @@ impl Healthiness {
     }
 
     pub(crate) fn has_any_check_defined(&self) -> bool {
-        self.http_endpoint.is_some() || self.file_path.is_some()
+        self.http_endpoint.is_some() || self.file_path.is_some() || self.command.is_some()
     }
 }
 
@@ -321,6 +322,7 @@ impl Default for Healthiness {
         Self {
             http_endpoint: None,
             file_path: None,
+            command: None,
             max_failed: 3,
         }
     }
@@ -717,6 +719,7 @@ mod test {
             healthiness: Healthiness {
                 http_endpoint: Some("http://localhost:8080/healthcheck".into()),
                 file_path: Some("/var/myservice/up".into()),
+                command: Some("curl -s http://localhost:8080/healthcheck".into()),
                 ..Default::default()
             },
             signal_rewrite: None,

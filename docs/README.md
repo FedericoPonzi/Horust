@@ -132,6 +132,7 @@ immediately pass to the running state.
 [healthiness]
 http-endpoint = "http://localhost:8080/healthcheck"
 file-path = "/var/myservice/up"
+command = "curl -s localhost:8080/healthcheck"
 max-failed = 3
 ```
 
@@ -140,6 +141,8 @@ max-failed = 3
   This requires horust to be built with the `http-healthcheck` feature (included by default).
 * **`file-path` = `/path/to/file`**: Before running the service, it will remove this file if it exists. Then, as soon as
   this file is created, the service will be considered running.
+* **`command` = `your_command arg1 arg2 ...`**: It will run this command. If the exit status is 0, the service is
+  considered healthy.
 * **`max-failed` = `i32`**: How many unhealthy health-checks in a row are allowed before considering the service failed.
 * You can check the healthiness of your system using a http endpoint or a flag file.
 * You can use the enforce dependency to kill every dependent system.

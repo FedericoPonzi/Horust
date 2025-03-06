@@ -151,7 +151,7 @@ mod test {
     use tempfile::TempDir;
 
     use crate::horust::formats::{Healthiness, HealthinessStatus};
-    use crate::horust::healthcheck::check_health;
+    use crate::horust::healthcheck::{check_health, prepare_service};
 
     #[test]
     fn test_healthiness_check_file() -> Result<()> {
@@ -210,6 +210,25 @@ mod test {
             .recv_timeout(Duration::from_millis(2000))
             .expect("Failed to received response from handle_request");
         assert_ne!(check_health(&healthiness), HealthinessStatus::Healthy);
+        Ok(())
+    }
+
+    #[test]
+    fn test_healthiness_command() -> Result<()> {
+        let tempdir = TempDir::with_prefix("health")?;
+        let file_path = tempdir.path().join("file.txt");
+        let healthiness = Healthiness {
+            file_path: None,
+            http_endpoint: None,
+            command: Some(format!("cat {}", file_path.to_str().unwrap())),
+            ..Default::default()
+        };
+        prepare_service(&healthiness)?;
+        assert_ne!(check_health(&healthiness), HealthinessStatus::Healthy);
+        std::fs::write(&file_path, "Hello world!")?;
+        assert_eq!(check_health(&healthiness), HealthinessStatus::Healthy);
+        let healthiness: Healthiness = Default::default();
+        assert_eq!(check_health(&healthiness), HealthinessStatus::Healthy);
         Ok(())
     }
 }
