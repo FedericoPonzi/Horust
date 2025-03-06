@@ -719,6 +719,7 @@ mod test {
             healthiness: Healthiness {
                 http_endpoint: Some("http://localhost:8080/healthcheck".into()),
                 file_path: Some("/var/myservice/up".into()),
+                command: Some("curl -s http://localhost:8080/healthcheck".into()),
                 ..Default::default()
             },
             signal_rewrite: None,

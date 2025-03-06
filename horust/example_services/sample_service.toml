@@ -22,6 +22,7 @@ attempts = 0
 http-endpoint = "http://localhost:8080/healthcheck"
 # The service is expected to create this file to let horust know that is healthy, ready and running.
 file-path = "/var/myservice/up"
+command = "curl -s http://localhost:8080/healthcheck"
 # Max healthchecks allowed to fail in a row before considering this service failed.
 max-failed = 3
 
