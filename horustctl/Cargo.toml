@@ -3,6 +3,7 @@ name = "horustctl"
 version = "0.1.0"
 edition = "2021"
 authors = ["Federico Ponzi <me@fponzi.me>"]
+rust-version = "1.74.1"
 
 [dependencies]
 anyhow = "~1.0"
