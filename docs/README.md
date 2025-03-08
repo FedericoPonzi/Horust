@@ -205,12 +205,17 @@ die-if-failed = ["db.toml"]
 
 ```toml
 [resource]
-cpu-period = "100ms"
-cpu-quota = "50ms"
+cpu-percent = 200
 memory = "100 MiB"
 ```
 
-* **`cpu-period-us` = `"time"`**: 
+* **`cpu-percent` = `int`**: Percentage of the CPU that the service can use. Negative value means
+  no limit. If unset, the default value will be `-1`. `50` means 50% of one CPU core, `100` means 
+  one CPU core. `200` means two CPU cores, etc.
+* **`memory` = `string`**: Size of the memory that the service can use. Exceeding this limit will 
+  cause Out-Of-Memory.
+  The size is parsed using `bytefmt` - for example `100 MB`, `200 KB`, `110 MiB` or `200 GiB`.
+  If unset, the default value will be `1 TiB`.
 
 ---
 
