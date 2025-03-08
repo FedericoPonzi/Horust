@@ -144,6 +144,7 @@ fn spawn_process(service: &Service) -> Result<Pid> {
             // descriptor inside the LogOutput::Pipe stays open.
         }
         Ok(ForkResult::Parent { child, .. }) => {
+            service.resource.bind_pid(&service.name, child)?;
             pipe_read.and_then(|pipe| {
                 drop(pipe_write.unwrap());
                 std::thread::spawn(move || {

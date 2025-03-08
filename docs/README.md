@@ -201,6 +201,17 @@ die-if-failed = ["db.toml"]
 * **`die-if-failed` = `["<service-name>"]`**: As soon as any of the services defined in this the array fails, this
   service will be terminated as well.
 
+### Resource section
+
+```toml
+[resource]
+cpu-period = "100ms"
+cpu-quota = "50ms"
+memory = "100 MiB"
+```
+
+* **`cpu-period-us` = `"time"`**: 
+
 ---
 
 ## State machine

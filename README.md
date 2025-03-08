@@ -191,7 +191,11 @@ die-if-failed = ["db.toml"]
 [environment]
 keep-env = false
 re-export = ["PATH", "DB_PASS"]
-additional = { key = "value" } 
+additional = { key = "value" }
+
+[resource]
+cpu-percent = 200
+memory = "100 MiB"
 ```
 
 ## Building

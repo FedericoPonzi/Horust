@@ -1,4 +1,6 @@
 use anyhow::{Context, Error, Result};
+use cgroups_rs::cgroup_builder::CgroupBuilder;
+use cgroups_rs::CgroupPid;
 use nix::sys::signal::Signal;
 use nix::unistd;
 use serde::de::{self, Visitor};
@@ -55,6 +57,8 @@ pub struct Service {
     pub environment: Environment,
     #[serde(default)]
     pub termination: Termination,
+    #[serde(default)]
+    pub resource: Resource,
 }
 
 fn default_as_false() -> bool {
@@ -124,6 +128,7 @@ impl Default for Service {
             environment: Default::default(),
             failure: Default::default(),
             termination: Default::default(),
+            resource: Default::default(),
         }
     }
 }
@@ -624,6 +629,49 @@ impl From<TerminationSignal> for Signal {
     }
 }
 
+#[derive(Serialize, Clone, Deserialize, Debug, Eq, PartialEq)]
+#[serde(rename_all = "kebab-case", deny_unknown_fields)]
+pub struct Resource {
+    #[serde(default)]
+    /// The percentage of CPU quota that the process can use, negative value means no limit
+    pub(crate) cpu_percent: i64,
+    #[serde(default, skip_serializing, deserialize_with = "str_to_bytes")]
+    /// The maximum amount of memory that the process can use
+    pub(crate) memory: u64,
+}
+
+impl Default for Resource {
+    fn default() -> Self {
+        Resource {
+            cpu_percent: -1,
+            memory: 1024 * 1024 * 1024 * 1024, // set to an extreme large value of 1 TiB
+        }
+    }
+}
+
+impl Resource {
+    pub(crate) fn bind_pid(&self, name: &str, pid: unistd::Pid) -> anyhow::Result<()> {
+        let h = cgroups_rs::hierarchies::auto();
+        let cfs_quota = if self.cpu_percent < 0 {
+            -1
+        } else {
+            // default CFS CPU period is 100ms
+            self.cpu_percent * 1000
+        };
+        let cgroup = CgroupBuilder::new(name)
+            .memory()
+            .memory_hard_limit(self.memory as i64)
+            .done()
+            .cpu()
+            .quota(cfs_quota)
+            .period(100_000)
+            .done()
+            .build(h)?;
+        cgroup.add_task(CgroupPid::from(u64::try_from(pid.as_raw())?))?;
+        Ok(())
+    }
+}
+
 /// Runs some validation checks on the services.
 /// TODO: if redirect output is file, check it exists and permissions.
 pub fn validate(services: Vec<Service>) -> Result<Vec<Service>, ValidationErrors> {
@@ -670,6 +718,7 @@ mod test {
     use std::str::FromStr;
     use std::time::Duration;
 
+    use crate::horust::formats::Resource;
     use crate::horust::formats::{
         validate, Environment, Failure, FailureStrategy, Healthiness, Restart, RestartStrategy,
         Service, Termination, TerminationSignal::TERM,
@@ -731,6 +780,10 @@ mod test {
                 signal: TERM,
                 wait: Duration::from_secs(10),
                 die_if_failed: vec!["db.toml".into()],
+            },
+            resource: Resource {
+                cpu_percent: 200,
+                memory: 1024 * 1024 * 100,
             },
         };
 
