@@ -203,6 +203,9 @@ die-if-failed = ["db.toml"]
 
 ### Resource section
 
+> [!NOTE]
+> This feature requires running Horust as the root user.
+
 ```toml
 [resource]
 cpu-percent = 200

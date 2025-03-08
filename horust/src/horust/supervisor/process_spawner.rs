@@ -144,7 +144,6 @@ fn spawn_process(service: &Service) -> Result<Pid> {
             // descriptor inside the LogOutput::Pipe stays open.
         }
         Ok(ForkResult::Parent { child, .. }) => {
-            service.resource.bind_pid(&service.name, child)?;
             pipe_read.and_then(|pipe| {
                 drop(pipe_write.unwrap());
                 std::thread::spawn(move || {
@@ -152,6 +151,10 @@ fn spawn_process(service: &Service) -> Result<Pid> {
                 });
                 None::<()>
             });
+            if unistd::getuid().is_root() {
+                // only the root user can create the cgroup to limit the resources
+                service.resource.bind_pid(&service.name, child)?;
+            }
             debug!("Spawned child with PID {}.", child);
             Ok(child)
         }

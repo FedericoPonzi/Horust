@@ -666,8 +666,11 @@ impl Resource {
             .quota(cfs_quota)
             .period(100_000)
             .done()
-            .build(h)?;
-        cgroup.add_task(CgroupPid::from(u64::try_from(pid.as_raw())?))?;
+            .build(h)
+            .with_context(|| "Failed to create the cgroup")?;
+        cgroup
+            .add_task(CgroupPid::from(u64::try_from(pid.as_raw())?))
+            .with_context(|| "Failed to add task to cgroup")?;
         Ok(())
     }
 }
