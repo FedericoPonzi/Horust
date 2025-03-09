@@ -13,7 +13,7 @@ criteria of an issue or work on the task, please do reach out.
 
 ## Development environment
 
-To start hacking on Horust, you will need to install [Rust](https://www.rust-lang.org/tools/install) (>1.42.0) and
+To start hacking on Horust, you will need to install [Rust](https://www.rust-lang.org/tools/install) (>1.74.1) and
 protoc, the protobuf compiler (apt-get install protobuf-compiler).
 By using rustup, you will also automatically install cargo and other necessary tools.
 

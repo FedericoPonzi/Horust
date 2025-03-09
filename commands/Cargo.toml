@@ -11,6 +11,7 @@ readme = "README.md"
 keywords = ["init", "container", "supervisor"]
 categories = ["command-line-utilities"]
 include = ["src/**/*", "Cargo.*", "../LICENSE.txt", "README.md"]
+rust-version = "1.74.1"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
