@@ -48,3 +48,8 @@ wait = "10s"
 # If any of the services in the list has failed, shut down this service.
 die-if-failed = ["db.toml"]
 
+[resource]
+# CPU percentage. 100 means 1 core. -1 means no limit.
+cpu-percent = 200
+# Memory limit.
+memory = "100 MiB"
