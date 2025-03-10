@@ -55,6 +55,8 @@ pub struct Service {
     pub environment: Environment,
     #[serde(default)]
     pub termination: Termination,
+    #[serde(default = "Service::default_autostart")]
+    pub autostart: bool,
 }
 
 fn default_as_false() -> bool {
@@ -72,6 +74,10 @@ impl Service {
 
     fn default_stderr_log() -> LogOutput {
         LogOutput::Stderr
+    }
+
+    fn default_autostart() -> bool {
+        true
     }
 
     /// Tries to load specific config from path.
@@ -124,6 +130,7 @@ impl Default for Service {
             environment: Default::default(),
             failure: Default::default(),
             termination: Default::default(),
+            autostart: true,
         }
     }
 }
@@ -697,6 +704,7 @@ mod test {
             name: "".to_string(),
             command: "/bin/bash -c \'echo hello world\'".to_string(),
             user: super::User::Name(current_user_name),
+            autostart: true,
             environment: Environment {
                 keep_env: false,
                 re_export: vec!["PATH".to_string(), "DB_PASS".to_string()],
