@@ -151,9 +151,13 @@ fn spawn_process(service: &Service) -> Result<Pid> {
                 });
                 None::<()>
             });
-            if unistd::getuid().is_root() {
-                // only the root user can create the cgroup to limit the resources
-                service.resource.bind_pid(&service.name, child)?;
+            // only the root user and authorized users can manage the cgroup
+            if service
+                .resource_limit
+                .bind_pid(&service.name, child)
+                .is_err()
+            {
+                warn!("Failed to create the cgroup for service: {}, please check if the current user({}) has the required permissions", service.name, uid);
             }
             debug!("Spawned child with PID {}.", child);
             Ok(child)

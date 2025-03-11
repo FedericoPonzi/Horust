@@ -193,9 +193,10 @@ keep-env = false
 re-export = ["PATH", "DB_PASS"]
 additional = { key = "value" }
 
-[resource]
-cpu-percent = 200
+[resource-limit]
+cpu = 0.5
 memory = "100 MiB"
+pids-max = 100
 ```
 
 ## Building

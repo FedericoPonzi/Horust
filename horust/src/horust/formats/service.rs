@@ -58,7 +58,7 @@ pub struct Service {
     #[serde(default)]
     pub termination: Termination,
     #[serde(default)]
-    pub resource: Resource,
+    pub resource_limit: ResourceLimit,
 }
 
 fn default_as_false() -> bool {
@@ -128,7 +128,7 @@ impl Default for Service {
             environment: Default::default(),
             failure: Default::default(),
             termination: Default::default(),
-            resource: Default::default(),
+            resource_limit: Default::default(),
         }
     }
 }
@@ -629,39 +629,52 @@ impl From<TerminationSignal> for Signal {
     }
 }
 
-#[derive(Serialize, Clone, Deserialize, Debug, Eq, PartialEq)]
+#[derive(Serialize, Clone, Deserialize, Debug, PartialEq)]
 #[serde(rename_all = "kebab-case", deny_unknown_fields)]
-pub struct Resource {
+pub struct ResourceLimit {
     #[serde(default)]
-    /// The percentage of CPU quota that the process can use, negative value means no limit
-    pub(crate) cpu_percent: i64,
-    #[serde(default, skip_serializing, deserialize_with = "str_to_bytes")]
+    /// The CPU time that the process can use, non-positive value means no limit
+    pub(crate) cpu: f64,
+    #[serde(default, skip_serializing, deserialize_with = "str_to_optional_bytes")]
     /// The maximum amount of memory that the process can use
-    pub(crate) memory: u64,
+    pub(crate) memory: Option<u64>,
+    #[serde(default)]
+    /// The maximum number of processes/threads that the process can create
+    pub(crate) pids_max: Option<u64>,
 }
 
-impl Default for Resource {
+impl Default for ResourceLimit {
     fn default() -> Self {
-        Resource {
-            cpu_percent: -1,
-            memory: 1024 * 1024 * 1024 * 1024, // set to an extreme large value of 1 TiB
+        ResourceLimit {
+            cpu: -1.0,
+            memory: None,
+            pids_max: None,
         }
     }
 }
 
-impl Resource {
+impl Eq for ResourceLimit {}
+
+impl ResourceLimit {
     pub(crate) fn bind_pid(&self, name: &str, pid: unistd::Pid) -> anyhow::Result<()> {
         let h = cgroups_rs::hierarchies::auto();
-        let cfs_quota = if self.cpu_percent < 0 {
+        let cfs_quota = if !self.cpu.is_sign_positive() {
             -1
         } else {
             // default CFS CPU period is 100ms
-            self.cpu_percent * 1000
+            (self.cpu * 100_000.0) as i64
         };
-        let cgroup = CgroupBuilder::new(name)
-            .memory()
-            .memory_hard_limit(self.memory as i64)
-            .done()
+        let mut builder = CgroupBuilder::new(name);
+        if let Some(mem) = self.memory {
+            builder = builder.memory().memory_hard_limit(mem as i64).done();
+        }
+        if let Some(pids_max) = self.pids_max {
+            builder = builder
+                .pid()
+                .maximum_number_of_processes(cgroups_rs::MaxValue::Value(pids_max as i64))
+                .done();
+        }
+        let cgroup = builder
             .cpu()
             .quota(cfs_quota)
             .period(100_000)
@@ -716,12 +729,23 @@ where
     bytefmt::parse(s).map_err(de::Error::custom)
 }
 
+fn str_to_optional_bytes<'de, D>(deserializer: D) -> Result<Option<u64>, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    let s = Option::<String>::deserialize(deserializer)?;
+    match s {
+        Some(s) => bytefmt::parse(s).map(Some).map_err(de::Error::custom),
+        None => Ok(None),
+    }
+}
+
 #[cfg(test)]
 mod test {
     use std::str::FromStr;
     use std::time::Duration;
 
-    use crate::horust::formats::Resource;
+    use crate::horust::formats::ResourceLimit;
     use crate::horust::formats::{
         validate, Environment, Failure, FailureStrategy, Healthiness, Restart, RestartStrategy,
         Service, Termination, TerminationSignal::TERM,
@@ -784,9 +808,10 @@ mod test {
                 wait: Duration::from_secs(10),
                 die_if_failed: vec!["db.toml".into()],
             },
-            resource: Resource {
-                cpu_percent: 200,
-                memory: 1024 * 1024 * 100,
+            resource_limit: ResourceLimit {
+                cpu: 0.5,
+                memory: Some(100 * 1024 * 1024),
+                pids_max: Some(100),
             },
         };
 
