@@ -682,7 +682,7 @@ impl ResourceLimit {
             .build(h)
             .with_context(|| "Failed to create the cgroup")?;
         cgroup
-            .add_task(CgroupPid::from(u64::try_from(pid.as_raw())?))
+            .add_task(CgroupPid::from(pid.as_raw() as u64))
             .with_context(|| "Failed to add task to cgroup")?;
         Ok(())
     }

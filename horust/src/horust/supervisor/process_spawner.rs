@@ -152,12 +152,11 @@ fn spawn_process(service: &Service) -> Result<Pid> {
                 None::<()>
             });
             // only the root user and authorized users can manage the cgroup
-            if service
-                .resource_limit
-                .bind_pid(&service.name, child)
-                .is_err()
-            {
-                warn!("Failed to create the cgroup for service: {}, please check if the current user({}) has the required permissions", service.name, uid);
+            if let Err(err) = service.resource_limit.bind_pid(&service.name, child) {
+                warn!(
+                    "Failed to add the resource limit to {}: {}",
+                    &service.name, err
+                );
             }
             debug!("Spawned child with PID {}.", child);
             Ok(child)
