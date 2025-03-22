@@ -1,8 +1,10 @@
 use anyhow::{Context, Error, Result};
-use cgroups_rs::cgroup_builder::CgroupBuilder;
-use cgroups_rs::CgroupPid;
+use libcgroups::common::{
+    create_cgroup_manager, CgroupConfig, CgroupManager, ControllerOpt, DEFAULT_CGROUP_ROOT,
+};
 use nix::sys::signal::Signal;
 use nix::unistd;
+use oci_spec::runtime::{LinuxCpuBuilder, LinuxMemoryBuilder, LinuxPidsBuilder, LinuxResources};
 use serde::de::{self, Visitor};
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use std::collections::HashMap;
@@ -656,34 +658,43 @@ impl Default for ResourceLimit {
 impl Eq for ResourceLimit {}
 
 impl ResourceLimit {
-    pub(crate) fn bind_pid(&self, name: &str, pid: unistd::Pid) -> anyhow::Result<()> {
-        let h = cgroups_rs::hierarchies::auto();
-        let cfs_quota = if !self.cpu.is_sign_positive() {
-            -1
-        } else {
-            // default CFS CPU period is 100ms
-            (self.cpu * 100_000.0) as i64
-        };
-        let mut builder = CgroupBuilder::new(name);
+    pub(crate) fn apply(&self, name: &str, pid: unistd::Pid) -> anyhow::Result<()> {
+        let cgroup_name = format!("horust_{}", name);
+        let cgroup_path = Path::new(cgroup_name.as_str());
+        std::fs::create_dir_all(Path::new(DEFAULT_CGROUP_ROOT).join(&cgroup_path))?;
+        let manager = create_cgroup_manager(CgroupConfig {
+            cgroup_path: cgroup_path.to_path_buf(),
+            systemd_cgroup: false,
+            container_name: name.to_string(),
+        })
+        .with_context(|| format!("Failed to create cgroup manager for {}", name))?;
+        let mut resource = LinuxResources::default();
+        if self.cpu.is_sign_positive() {
+            let cpu = LinuxCpuBuilder::default()
+                .period(100_000u64)
+                .quota((self.cpu * 100_000.0) as i64)
+                .build()?;
+            resource.set_cpu(Some(cpu));
+        }
         if let Some(mem) = self.memory {
-            builder = builder.memory().memory_hard_limit(mem as i64).done();
+            let memory = LinuxMemoryBuilder::default().limit(mem as i64).build()?;
+            resource.set_memory(Some(memory));
         }
-        if let Some(pids_max) = self.pids_max {
-            builder = builder
-                .pid()
-                .maximum_number_of_processes(cgroups_rs::MaxValue::Value(pids_max as i64))
-                .done();
+        if let Some(pid_max) = self.pids_max {
+            let pid = LinuxPidsBuilder::default().limit(pid_max as i64).build()?;
+            resource.set_pids(Some(pid));
         }
-        let cgroup = builder
-            .cpu()
-            .quota(cfs_quota)
-            .period(100_000)
-            .done()
-            .build(h)
-            .with_context(|| "Failed to create the cgroup")?;
-        cgroup
-            .add_task(CgroupPid::from(pid.as_raw() as u64))
-            .with_context(|| "Failed to add task to cgroup")?;
+
+        manager.apply(&ControllerOpt {
+            resources: &resource,
+            disable_oom_killer: false,
+            oom_score_adj: None,
+            freezer_state: None,
+        })?;
+        manager
+            .add_task(pid)
+            .with_context(|| format!("Failed to add task to cgroup {}", name))?;
+
         Ok(())
     }
 }
