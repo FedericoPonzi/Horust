@@ -30,7 +30,7 @@ anyhow = "~1.0"
 thiserror = "~2.0"
 bytefmt = "0.1.7"
 horust-commands-lib = { version = "0.1.0" }
-libcgroups = { version = "0.5.3", features = ["v1", "v2"], default-features = false, git = "https://github.com/kemingy/youki.git", branch = "nix29" }
+libcgroups = { version = "0.5.3", features = ["v1", "v2"], default-features = false, git = "https://github.com/youki-dev/youki.git", rev = "1b840bb0936e61990f9eabbb0e094d08235b2220"}
 oci-spec = "0.7.1"
 
 [features]

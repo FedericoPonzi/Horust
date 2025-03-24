@@ -1031,7 +1031,7 @@ checksum = "b5aba8db14291edd000dfcc4d620c7ebfb122c613afb886ca8803fa4e128a20a"
 [[package]]
 name = "libcgroups"
 version = "0.5.3"
-source = "git+https://github.com/kemingy/youki.git?branch=nix29#ea9f654950eaeeaec61ca54a2478305d52872f57"
+source = "git+https://github.com/youki-dev/youki.git?rev=1b840bb0936e61990f9eabbb0e094d08235b2220#1b840bb0936e61990f9eabbb0e094d08235b2220"
 dependencies = [
  "fixedbitset",
  "nix",
