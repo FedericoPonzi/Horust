@@ -215,6 +215,7 @@ die-if-failed = ["db.toml"]
 
 > [!NOTE]
 > This feature requires running Horust as the root user or with related cgroups permissions.
+> If you're trying to use this feature in a container, you might need `--privileged --cgroupns=host` flags.
 
 ```toml
 [resource]

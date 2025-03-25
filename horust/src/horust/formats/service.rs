@@ -669,9 +669,8 @@ impl ResourceLimit {
             return Ok(());
         }
 
-        let cgroup_name = format!("horust_{}", name);
-        let cgroup_path = Path::new(cgroup_name.as_str());
-        std::fs::create_dir_all(Path::new(DEFAULT_CGROUP_ROOT).join(&cgroup_path))?;
+        // has to be an absolute path for cgroups v2
+        let cgroup_path = Path::new(DEFAULT_CGROUP_ROOT).join(format!("horust_{}", name));
         let manager = create_cgroup_manager(CgroupConfig {
             cgroup_path: cgroup_path.to_path_buf(),
             systemd_cgroup: false,
@@ -696,6 +695,9 @@ impl ResourceLimit {
         }
 
         manager
+            .add_task(pid)
+            .with_context(|| format!("Failed to add task to cgroup {}", name))?;
+        manager
             .apply(&ControllerOpt {
                 resources: &resource,
                 disable_oom_killer: false,
@@ -703,9 +705,6 @@ impl ResourceLimit {
                 freezer_state: None,
             })
             .with_context(|| format!("Failed to apply resource limits to cgroup {}", name))?;
-        manager
-            .add_task(pid)
-            .with_context(|| format!("Failed to add task to cgroup {}", name))?;
 
         Ok(())
     }
