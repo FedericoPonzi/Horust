@@ -635,8 +635,8 @@ impl From<TerminationSignal> for Signal {
 #[serde(rename_all = "kebab-case", deny_unknown_fields)]
 pub struct ResourceLimit {
     #[serde(default)]
-    /// The CPU time that the process can use, non-positive value means no limit
-    pub(crate) cpu: f64,
+    /// The CPU time that the process can use
+    pub(crate) cpu: Option<f64>,
     #[serde(default, skip_serializing, deserialize_with = "str_to_optional_bytes")]
     /// The maximum amount of memory that the process can use
     pub(crate) memory: Option<u64>,
@@ -645,10 +645,16 @@ pub struct ResourceLimit {
     pub(crate) pids_max: Option<u64>,
 }
 
+impl ResourceLimit {
+    fn has_no_limit(&self) -> bool {
+        self.cpu.is_none() && self.memory.is_none() && self.pids_max.is_none()
+    }
+}
+
 impl Default for ResourceLimit {
     fn default() -> Self {
         ResourceLimit {
-            cpu: -1.0,
+            cpu: None,
             memory: None,
             pids_max: None,
         }
@@ -659,6 +665,10 @@ impl Eq for ResourceLimit {}
 
 impl ResourceLimit {
     pub(crate) fn apply(&self, name: &str, pid: unistd::Pid) -> anyhow::Result<()> {
+        if self.has_no_limit() {
+            return Ok(());
+        }
+
         let cgroup_name = format!("horust_{}", name);
         let cgroup_path = Path::new(cgroup_name.as_str());
         std::fs::create_dir_all(Path::new(DEFAULT_CGROUP_ROOT).join(&cgroup_path))?;
@@ -669,10 +679,10 @@ impl ResourceLimit {
         })
         .with_context(|| format!("Failed to create cgroup manager for {}", name))?;
         let mut resource = LinuxResources::default();
-        if self.cpu.is_sign_positive() {
+        if let Some(cpu) = self.cpu {
             let cpu = LinuxCpuBuilder::default()
                 .period(100_000u64)
-                .quota((self.cpu * 100_000.0) as i64)
+                .quota((cpu * 100_000.0) as i64)
                 .build()?;
             resource.set_cpu(Some(cpu));
         }
@@ -685,12 +695,14 @@ impl ResourceLimit {
             resource.set_pids(Some(pid));
         }
 
-        manager.apply(&ControllerOpt {
-            resources: &resource,
-            disable_oom_killer: false,
-            oom_score_adj: None,
-            freezer_state: None,
-        })?;
+        manager
+            .apply(&ControllerOpt {
+                resources: &resource,
+                disable_oom_killer: false,
+                oom_score_adj: None,
+                freezer_state: None,
+            })
+            .with_context(|| format!("Failed to apply resource limits to cgroup {}", name))?;
         manager
             .add_task(pid)
             .with_context(|| format!("Failed to add task to cgroup {}", name))?;
@@ -820,7 +832,7 @@ mod test {
                 die_if_failed: vec!["db.toml".into()],
             },
             resource_limit: ResourceLimit {
-                cpu: 0.5,
+                cpu: Some(0.5),
                 memory: Some(100 * 1024 * 1024),
                 pids_max: Some(100),
             },

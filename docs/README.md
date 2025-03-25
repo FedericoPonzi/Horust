@@ -223,8 +223,8 @@ memory = "100 MiB"
 pids-max = 100
 ```
 
-* **`cpu` = `float`**: The maximum CPUs that the service can use. Negative value
-  means no limit. If unset, the default value will be `-1`.
+* **`cpu` = `float`**: The maximum CPUs that the service can use.
+  If unset, there will be no limit for the CPU usage.
 * **`memory` = `string`**: Size of the memory that the service can use. Exceeding this limit will 
   cause Out-Of-Memory.
   The size is parsed using `bytefmt` - for example `100 MB`, `200 KB`, `110 MiB` or `200 GiB`.
