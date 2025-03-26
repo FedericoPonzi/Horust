@@ -48,3 +48,10 @@ wait = "10s"
 # If any of the services in the list has failed, shut down this service.
 die-if-failed = ["db.toml"]
 
+[resource-limit]
+# CPU quota. 0.5 means 50% time of one CPU core.
+cpu = 0.5
+# The maximum amount of memory that the process can use.
+memory = "100 MiB"
+# The maximum number of processes/threads that the process can create.
+pids-max = 100

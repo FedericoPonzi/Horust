@@ -2,13 +2,23 @@
 
 ## Table of contents:
 
-* [Service configuration](#service-configuration)
-* [State machine](#state-machine)
-* [Horust's configuration](#horusts-configuration)
-* [Running a single command](#running-a-single-command)
-* [Multiple service directories](#multiple-service-directories)
-* [Plugins (WIP)](#plugins-wip)
-* [Checking system status (WIP) ](#checking-system-status-wip)
+- [Documentation](#documentation)
+  - [Table of contents:](#table-of-contents)
+  - [Service configuration](#service-configuration)
+    - [Service templating](#service-templating)
+    - [Main section](#main-section)
+      - [Restart section](#restart-section)
+    - [Healthiness Check](#healthiness-check)
+    - [Failure section](#failure-section)
+    - [Environment section](#environment-section)
+    - [Termination section](#termination-section)
+    - [ResourceLimit section](#resourcelimit-section)
+  - [State machine](#state-machine)
+  - [Horust's configuration](#horusts-configuration)
+  - [Running a single command](#running-a-single-command)
+  - [Multiple service directories](#multiple-service-directories)
+  - [Plugins (WIP)](#plugins-wip)
+  - [Checking system status (WIP)](#checking-system-status-wip)
 
 When starting horust, you can optionally specify where it should look for services and uses `/etc/horust/services` by
 default.
@@ -200,6 +210,32 @@ die-if-failed = ["db.toml"]
 * **`wait` = `"time"`**: How much time to wait before sending a SIGKILL after `signal` has been sent.
 * **`die-if-failed` = `["<service-name>"]`**: As soon as any of the services defined in this the array fails, this
   service will be terminated as well.
+
+### ResourceLimit section
+
+> [!NOTE]
+> This feature requires running Horust as the root user or with related cgroups permissions.
+> If you're trying to use this feature in a container, you might need `--privileged --cgroupns=host` flags.
+> Other solutions with container (haven't been tested yet):
+> - `podman`: https://github.com/containers/podman/pull/9536
+> - `containerd`: https://github.com/containerd/containerd/issues/10924
+
+```toml
+[resource]
+cpu = 0.5
+memory = "100 MiB"
+pids-max = 100
+```
+
+* **`cpu` = `float`**: The maximum CPUs that the service can use.
+  If unset, there will be no limit for the CPU usage.
+* **`memory` = `string`**: Size of the memory that the service can use. Exceeding this limit will 
+  cause Out-Of-Memory.
+  The size is parsed using `bytefmt` - for example `100 MB`, `200 KB`, `110 MiB` or `200 GiB`.
+  If unset, there will be no limit for the memory.
+* **`pids-max` = `int`**: The maximum number of processes/threads that the service
+  can create.
+  If unset, there will be no limit.
 
 ---
 

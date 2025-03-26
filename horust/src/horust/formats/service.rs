@@ -1,6 +1,10 @@
 use anyhow::{Context, Error, Result};
+use libcgroups::common::{
+    create_cgroup_manager, CgroupConfig, CgroupManager, ControllerOpt, DEFAULT_CGROUP_ROOT,
+};
 use nix::sys::signal::Signal;
 use nix::unistd;
+use oci_spec::runtime::{LinuxCpuBuilder, LinuxMemoryBuilder, LinuxPidsBuilder, LinuxResources};
 use serde::de::{self, Visitor};
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use std::collections::HashMap;
@@ -55,6 +59,8 @@ pub struct Service {
     pub environment: Environment,
     #[serde(default)]
     pub termination: Termination,
+    #[serde(default)]
+    pub resource_limit: ResourceLimit,
 }
 
 fn default_as_false() -> bool {
@@ -124,6 +130,7 @@ impl Default for Service {
             environment: Default::default(),
             failure: Default::default(),
             termination: Default::default(),
+            resource_limit: Default::default(),
         }
     }
 }
@@ -624,6 +631,85 @@ impl From<TerminationSignal> for Signal {
     }
 }
 
+#[derive(Serialize, Clone, Deserialize, Debug, PartialEq)]
+#[serde(rename_all = "kebab-case", deny_unknown_fields)]
+pub struct ResourceLimit {
+    #[serde(default)]
+    /// The CPU time that the process can use
+    pub(crate) cpu: Option<f64>,
+    #[serde(default, skip_serializing, deserialize_with = "str_to_optional_bytes")]
+    /// The maximum amount of memory that the process can use
+    pub(crate) memory: Option<u64>,
+    #[serde(default)]
+    /// The maximum number of processes/threads that the process can create
+    pub(crate) pids_max: Option<u64>,
+}
+
+impl ResourceLimit {
+    fn has_no_limit(&self) -> bool {
+        self.cpu.is_none() && self.memory.is_none() && self.pids_max.is_none()
+    }
+}
+
+impl Default for ResourceLimit {
+    fn default() -> Self {
+        ResourceLimit {
+            cpu: None,
+            memory: None,
+            pids_max: None,
+        }
+    }
+}
+
+impl Eq for ResourceLimit {}
+
+impl ResourceLimit {
+    pub(crate) fn apply(&self, name: &str, pid: unistd::Pid) -> anyhow::Result<()> {
+        if self.has_no_limit() {
+            return Ok(());
+        }
+
+        // has to be an absolute path for cgroups v2
+        let cgroup_path = Path::new(DEFAULT_CGROUP_ROOT).join(format!("horust_{}", name));
+        let manager = create_cgroup_manager(CgroupConfig {
+            cgroup_path: cgroup_path.to_path_buf(),
+            systemd_cgroup: false,
+            container_name: name.to_string(),
+        })
+        .with_context(|| format!("Failed to create cgroup manager for {}", name))?;
+        let mut resource = LinuxResources::default();
+        if let Some(cpu) = self.cpu {
+            let cpu = LinuxCpuBuilder::default()
+                .period(100_000u64)
+                .quota((cpu * 100_000.0) as i64)
+                .build()?;
+            resource.set_cpu(Some(cpu));
+        }
+        if let Some(mem) = self.memory {
+            let memory = LinuxMemoryBuilder::default().limit(mem as i64).build()?;
+            resource.set_memory(Some(memory));
+        }
+        if let Some(pid_max) = self.pids_max {
+            let pid = LinuxPidsBuilder::default().limit(pid_max as i64).build()?;
+            resource.set_pids(Some(pid));
+        }
+
+        manager
+            .add_task(pid)
+            .with_context(|| format!("Failed to add task to cgroup {}", name))?;
+        manager
+            .apply(&ControllerOpt {
+                resources: &resource,
+                disable_oom_killer: false,
+                oom_score_adj: None,
+                freezer_state: None,
+            })
+            .with_context(|| format!("Failed to apply resource limits to cgroup {}", name))?;
+
+        Ok(())
+    }
+}
+
 /// Runs some validation checks on the services.
 /// TODO: if redirect output is file, check it exists and permissions.
 pub fn validate(services: Vec<Service>) -> Result<Vec<Service>, ValidationErrors> {
@@ -665,11 +751,23 @@ where
     bytefmt::parse(s).map_err(de::Error::custom)
 }
 
+fn str_to_optional_bytes<'de, D>(deserializer: D) -> Result<Option<u64>, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    let s = Option::<String>::deserialize(deserializer)?;
+    match s {
+        Some(s) => bytefmt::parse(s).map(Some).map_err(de::Error::custom),
+        None => Ok(None),
+    }
+}
+
 #[cfg(test)]
 mod test {
     use std::str::FromStr;
     use std::time::Duration;
 
+    use crate::horust::formats::ResourceLimit;
     use crate::horust::formats::{
         validate, Environment, Failure, FailureStrategy, Healthiness, Restart, RestartStrategy,
         Service, Termination, TerminationSignal::TERM,
@@ -731,6 +829,11 @@ mod test {
                 signal: TERM,
                 wait: Duration::from_secs(10),
                 die_if_failed: vec!["db.toml".into()],
+            },
+            resource_limit: ResourceLimit {
+                cpu: Some(0.5),
+                memory: Some(100 * 1024 * 1024),
+                pids_max: Some(100),
             },
         };
 
