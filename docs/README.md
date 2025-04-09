@@ -17,8 +17,8 @@
   - [Horust's configuration](#horusts-configuration)
   - [Running a single command](#running-a-single-command)
   - [Multiple service directories](#multiple-service-directories)
+  - [horustctl: Checking system status](#horustctl-checking-system-status)
   - [Plugins (WIP)](#plugins-wip)
-  - [Checking system status (WIP)](#checking-system-status-wip)
 
 When starting horust, you can optionally specify where it should look for services and uses `/etc/horust/services` by
 default.
@@ -311,13 +311,21 @@ These directories are loaded at once and treated just like all `*.toml` files we
 It means that for example service from `./services/extra` can depend on service from `./services/core`.
 The last parameter is used to load a single service file instead of a directory.
 
+## horustctl: Checking system status
+
+Horustctl is a program that allows you to interact with horust. They communicate using Unix Domain Socket (UDS), and by
+default, horust stores the sockets in /var/run/horust. You can override the path by using the argument
+--uds-folder-path. Then you can use it, like this:
+
+```
+horustctl --uds-folder-path /tmp status myapp.toml
+```
+
+To check the status of your service. Currently, horustctl only supports querying for the service status. Additional
+capabilities are planned but not yet implemented.
+
 ## Plugins (WIP)
 
 Horust works via message passing, it should be fairly easy to plug additional components connected to its bus.
 At this time is unclear if there is the need for this. Please raise an issue if you're interested in seeing this
 feature.
-
-## Checking system status (WIP)
-
-WIP: https://github.com/FedericoPonzi/Horust/issues/31
-The idea is to create another binary, which will somehow report the system status. A `systemctl` for Horust.
