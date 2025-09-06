@@ -252,7 +252,7 @@ fn handle_status_change(
     };
     let allowed = allowed_transitions
         .get(&next_status)
-        .unwrap_or_else(|| panic!("New status: {} not found!", next_status));
+        .unwrap_or_else(|| panic!("New status: {next_status} not found!"));
     if allowed.contains(&service_handler.status) {
         match next_status {
             ServiceStatus::Started if allowed.contains(&service_handler.status) => {
@@ -398,9 +398,8 @@ mod test {
                     r#"name="servicename"
 command = "Not relevant"
 [restart]
-strategy = "{}"
-"#,
-                    strategy
+strategy = "{strategy}"
+"#
                 );
                 let service: Service = Service::from_str(service.as_str()).unwrap();
                 let sh = service.into();

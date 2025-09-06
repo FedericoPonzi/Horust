@@ -12,7 +12,7 @@ fn test_single_output_redirection(stream: &str, to: &str) {
     let (mut cmd, temp_dir) = get_cli();
     let pattern = "Hello".to_string();
     let to = if to == "FILE" {
-        let name = format!("{}.log", stream);
+        let name = format!("{stream}.log");
         let path = temp_dir.path().join(name);
         path.display().to_string()
     } else {
@@ -21,10 +21,9 @@ fn test_single_output_redirection(stream: &str, to: &str) {
     let redir = if stream == "stderr" { "1>&2" } else { "" };
     let script = format!(
         r#"#!/usr/bin/env bash
-printf "{}" {}"#,
-        pattern, redir
+printf "{pattern}" {redir}"#
     );
-    let service = format!(r#"{}="{}""#, stream, to);
+    let service = format!(r#"{stream}="{to}""#);
     store_service_script(
         temp_dir.path(),
         script.as_str(),
@@ -80,8 +79,8 @@ sync
         pattern_len - 1 // - 1 is the new line.
     );
     let service = [
-        format!(r#"stdout="{}""#, output),
-        format!(r#"stdout-rotate-size="{}""#, max_log_size),
+        format!(r#"stdout="{output}""#),
+        format!(r#"stdout-rotate-size="{max_log_size}""#),
     ]
     .join("\n");
     store_service_script(
@@ -95,10 +94,7 @@ sync
     assert!(last_output.exists());
 
     // it is effectively the last output
-    assert!(temp_dir
-        .path()
-        .join(format!("out.log.{}", num_logs))
-        .exists());
+    assert!(temp_dir.path().join(format!("out.log.{num_logs}")).exists());
 
     let content = std::fs::read_to_string(&last_output).unwrap();
     let last_file_first_number = total_iterations - (patterns_per_file);
@@ -106,7 +102,7 @@ sync
     // the last patterns_file number, say from (90, 100]
     for i in last_file_first_number + 1..=total_iterations {
         let mut number = i.to_string();
-        number = format!("{:0>4}", number);
+        number = format!("{number:0>4}");
         expected_content.push_str(&number);
         expected_content.push('\n');
     }
@@ -134,7 +130,7 @@ fn test_cwd() {
     let (mut cmd, temp_dir) = get_cli();
     let another_dir = TempDir::with_prefix("another").unwrap();
     let displ = another_dir.path().display().to_string();
-    let service = format!(r#"working-directory = "{}""#, displ);
+    let service = format!(r#"working-directory = "{displ}""#);
     let script = r#"#!/usr/bin/env bash
 pwd"#;
     store_service_script(temp_dir.path(), script, Some(service.as_str()), None);
@@ -149,7 +145,7 @@ pwd"#;
     store_service_script(temp_dir.path(), script, None, Some("a"));
     cmd.assert()
         .success()
-        .stdout(contains(&temp_dir.path().display().to_string()));
+        .stdout(contains(temp_dir.path().display().to_string()));
 }
 
 #[test]

@@ -95,9 +95,8 @@ fn test_restart_always_signal(signal: i32) -> Result<(), std::io::Error> {
     let suicide_script = format!(
         r#"#!/usr/bin/env bash
 echo "restarting"
-kill -{} $$
-"#,
-        signal
+kill -{signal} $$
+"#
     );
     let service = r#"
 [restart]
@@ -132,7 +131,7 @@ fn test_restart_always_killed_by_signals() -> Result<(), std::io::Error> {
         SIGSEGV, SIGSYS, SIGTERM, SIGTRAP, SIGUSR1, SIGUSR2, SIGVTALRM, SIGXCPU, SIGXFSZ,
     ];
     for sig in DEFAULT_TERMINATE {
-        test_restart_always_signal(sig as i32)?;
+        test_restart_always_signal(sig)?;
     }
     Ok(())
 }

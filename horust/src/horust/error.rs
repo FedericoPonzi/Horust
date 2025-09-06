@@ -11,7 +11,7 @@ impl ValidationErrors {
 fn validation_errors(errors: &[ValidationError]) -> String {
     errors
         .iter()
-        .map(|s| format!("* {}", s))
+        .map(|s| format!("* {s}"))
         .collect::<Vec<String>>()
         .join("\n")
 }

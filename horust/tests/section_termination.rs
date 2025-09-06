@@ -48,22 +48,20 @@ trap_with_arg() {{
     done
 }}
 func_trap() {{
-    if [ "$1" == "{0}" ] ; then
+    if [ "$1" == "{friendly_name}" ] ; then
         exit 0
     fi
 }}
-trap_with_arg func_trap {0}
+trap_with_arg func_trap {friendly_name}
 while true ; do
     sleep 0.3
 done
-"#,
-        friendly_name
+"#
     );
     let service = format!(
         r#"[termination]
-signal = "{}"
-wait = "10s""#,
-        friendly_name
+signal = "{friendly_name}"
+wait = "10s""#
     ); // wait is higher than the test duration.
 
     store_service_script(
@@ -93,7 +91,7 @@ fn test_termination_all_custom_signals() {
         "VTALRM", "PROF", "WINCH", "IO", "SYS",
     ];
     signals.into_iter().for_each(|friendly_name| {
-        eprintln!("Testing: {}", friendly_name);
+        eprintln!("Testing: {friendly_name}");
         test_termination_custom_signal(friendly_name);
     })
 }

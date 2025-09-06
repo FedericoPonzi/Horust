@@ -102,7 +102,7 @@ mod test {
     fn test_int_to_string_conversion() {
         let test = |i| {
             let (res, digits) = i32_to_str_bytes(i);
-            assert_eq!(&res[digits..], format!("{}", i).as_bytes());
+            assert_eq!(&res[digits..], format!("{i}").as_bytes());
         };
 
         for _ in 0..100 {
