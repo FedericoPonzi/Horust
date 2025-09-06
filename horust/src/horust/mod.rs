@@ -125,6 +125,7 @@ where
             let filename = path.file_name().unwrap().to_str().unwrap().to_owned();
             service.name = filename;
         }
+        service.config_file = Some(path.clone());
         service
     })
     .map_err(|error| {

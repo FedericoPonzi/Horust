@@ -12,7 +12,8 @@ use super::{LifecycleStatus, ShuttingDown};
 
 #[derive(Clone, Debug, Eq, PartialEq, Default)]
 pub(crate) struct ServiceHandler {
-    service: Service,
+    pub(super) service: Service,
+    pub(super) reload_config: bool,
     /// Status of this service.
     pub(super) status: ServiceStatus,
     /// Process ID of this service, if any
@@ -150,15 +151,25 @@ fn next_events(repo: &Repo, service_handler: &ServiceHandler) -> Vec<Event> {
         // This will kill the service after 3 failed healthchecks in a row.
         // Maybe this should be parametrized
         ServiceStatus::Running
-            if service_handler.healthiness_checks_failed.unwrap_or(-1)
-                > service_handler.service.healthiness.max_failed =>
+            if service_handler.reload_config
+                || service_handler.healthiness_checks_failed.unwrap_or(-1)
+                    > service_handler.service.healthiness.max_failed =>
         {
             vec![
                 ev_status(ServiceStatus::InKilling),
                 Event::Kill(service_handler.name().clone()),
             ]
         }
-        ServiceStatus::Success => vec![handle_restart_strategy(service_handler, false)],
+        ServiceStatus::Success => {
+            if service_handler.reload_config {
+                vec![Event::new_status_update(
+                    service_handler.name(),
+                    ServiceStatus::Initial,
+                )]
+            } else {
+                vec![handle_restart_strategy(service_handler, false)]
+            }
+        }
         ServiceStatus::Failed => {
             let mut failure_evs = handle_failed_service(
                 repo.get_dependents(service_handler.name()),

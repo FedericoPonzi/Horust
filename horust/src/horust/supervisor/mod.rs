@@ -17,7 +17,7 @@ pub(crate) use signal_handling::init;
 
 use crate::horust::bus::BusConnector;
 use crate::horust::formats::{Event, ExitStatus, Service, ServiceStatus, ShuttingDown};
-use crate::horust::healthcheck;
+use crate::horust::{healthcheck, load_service};
 
 mod process_spawner;
 mod reaper;
@@ -81,7 +81,7 @@ impl Supervisor {
                         && service_handler.is_early_state(),
                 );
 
-                let new_status = if has_failed
+                let new_status = if !service_handler.reload_config && has_failed
                     || (service_handler.status == ServiceStatus::Running
                         && service_handler.has_some_failed_healthchecks())
                 {
@@ -111,6 +111,7 @@ impl Supervisor {
             }
             Event::Run(service_name) if self.repo.get_sh(&service_name).is_initial() => {
                 let service_handler = self.repo.get_mut_sh(&service_name);
+                service_handler.reload_config = false;
                 service_handler.status = ServiceStatus::Starting;
                 let evs = vec![Event::StatusChanged(service_name, ServiceStatus::Starting)];
 
@@ -223,6 +224,19 @@ impl Supervisor {
                     );
                     vec![]
                 }
+            }
+            Event::ReloadConfig(path) => {
+                info!("Reloading config: {path:?}");
+                let service_handler = self
+                    .repo
+                    .get_service_by_path(&path)
+                    .map(|service_name| self.repo.get_mut_sh(&service_name))
+                    .zip(load_service(&path).ok());
+                if let Some((service_handler, service)) = service_handler {
+                    service_handler.service = service;
+                    service_handler.reload_config = true;
+                }
+                vec![]
             }
             ev => {
                 trace!("ignoring: {:?}", ev);

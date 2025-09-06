@@ -57,6 +57,7 @@ pub struct Service {
     pub termination: Termination,
     #[serde(default)]
     pub resource_limit: ResourceLimit,
+    pub config_file: Option<PathBuf>,
 }
 
 fn default_as_false() -> bool {
@@ -127,6 +128,7 @@ impl Default for Service {
             failure: Default::default(),
             termination: Default::default(),
             resource_limit: Default::default(),
+            config_file: None,
         }
     }
 }
@@ -793,6 +795,7 @@ mod test {
         let current_user_name: String = super::User::default().get_name().unwrap();
         let expected = Service {
             name: "".to_string(),
+            config_file: None,
             command: "/bin/bash -c \'echo hello world\'".to_string(),
             user: super::User::Name(current_user_name),
             environment: Environment {

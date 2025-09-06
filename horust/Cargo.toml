@@ -35,6 +35,7 @@ oci-spec = "0.7.1"
 
 [target.'cfg(target_os = "linux")'.dependencies]
 libcgroups = { version = "0.5.3", features = ["v1", "v2"], default-features = false, git = "https://github.com/youki-dev/youki.git", rev = "1b840bb0936e61990f9eabbb0e094d08235b2220"}
+notify = "7.0.0"
 
 [features]
 default = ["http-healthcheck"]
