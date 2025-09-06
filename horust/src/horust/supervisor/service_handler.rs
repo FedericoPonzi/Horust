@@ -255,14 +255,14 @@ fn handle_status_change(
         .unwrap_or_else(|| panic!("New status: {next_status} not found!"));
     if allowed.contains(&service_handler.status) {
         match next_status {
-            ServiceStatus::Started if allowed.contains(&service_handler.status) => {
+            ServiceStatus::Started => {
                 new_service_handler.status = ServiceStatus::Started;
                 new_service_handler.restart_attempts = 0;
             }
-            ServiceStatus::Running if allowed.contains(&service_handler.status) => {
+            ServiceStatus::Running => {
                 new_service_handler.status = ServiceStatus::Running;
             }
-            ServiceStatus::InKilling if allowed.contains(&service_handler.status) => {
+            ServiceStatus::InKilling => {
                 debug!(
                     " service: {},  status: {}, new status: {}",
                     service_handler.name(),
