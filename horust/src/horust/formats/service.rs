@@ -1,10 +1,6 @@
 use anyhow::{Context, Error, Result};
-use libcgroups::common::{
-    create_cgroup_manager, CgroupConfig, CgroupManager, ControllerOpt, DEFAULT_CGROUP_ROOT,
-};
 use nix::sys::signal::Signal;
 use nix::unistd;
-use oci_spec::runtime::{LinuxCpuBuilder, LinuxMemoryBuilder, LinuxPidsBuilder, LinuxResources};
 use serde::de::{self, Visitor};
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use std::collections::HashMap;
@@ -664,7 +660,20 @@ impl Default for ResourceLimit {
 impl Eq for ResourceLimit {}
 
 impl ResourceLimit {
+    #[cfg(target_os = "macos")]
+    pub(crate) fn apply(&self, _name: &str, _pid: unistd::Pid) -> anyhow::Result<()> {
+        anyhow::bail!("not supported on macOS");
+    }
+
+    #[cfg(target_os = "linux")]
     pub(crate) fn apply(&self, name: &str, pid: unistd::Pid) -> anyhow::Result<()> {
+        use libcgroups::common::{
+            create_cgroup_manager, CgroupConfig, CgroupManager, ControllerOpt, DEFAULT_CGROUP_ROOT,
+        };
+        use oci_spec::runtime::{
+            LinuxCpuBuilder, LinuxMemoryBuilder, LinuxPidsBuilder, LinuxResources,
+        };
+
         if self.has_no_limit() {
             return Ok(());
         }
