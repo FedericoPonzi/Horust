@@ -194,7 +194,7 @@ mod test {
         let socket = SocketAddrV4::new(loopback, 0);
         let listener = TcpListener::bind(socket)?;
         let port = listener.local_addr()?.port();
-        let endpoint = format!("http://localhost:{}", port);
+        let endpoint = format!("http://localhost:{port}");
         let healthiness = Healthiness {
             file_path: None,
             http_endpoint: Some(endpoint),

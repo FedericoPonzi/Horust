@@ -41,7 +41,7 @@ fn test_command_not_found() {
         .map(|x| x as char)
         .collect::<String>();
     let service_name = format!("{}.toml", rnd_name.as_str());
-    let service = format!(r#"command = ",sorry_not_found{}""#, rnd_name);
+    let service = format!(r#"command = ",sorry_not_found{rnd_name}""#);
     std::fs::write(dir.join(&service_name), service).unwrap();
     let recv = run_async(&mut cmd, true);
     // Error spawning process: NixError: ENOENT: No such file or directory

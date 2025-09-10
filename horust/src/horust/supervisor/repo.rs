@@ -1,6 +1,9 @@
 use std::collections::HashMap;
+use std::path::Path;
 
 use nix::unistd::Pid;
+use notify::event::ModifyKind;
+use notify::{EventKind, Watcher};
 
 use crate::horust::bus::BusConnector;
 use crate::horust::formats::{Service, ServiceName};
@@ -12,20 +15,66 @@ pub(crate) struct Repo {
     pub services: HashMap<ServiceName, ServiceHandler>,
     pub(crate) bus: BusConnector<Event>,
     pub(crate) pid_map: HashMap<Pid, ServiceName>,
+    _watcher: notify::RecommendedWatcher,
+}
+
+struct ConfigWatcher {
+    bus: BusConnector<Event>,
+}
+
+impl notify::EventHandler for ConfigWatcher {
+    fn handle_event(&mut self, event: notify::Result<notify::Event>) {
+        if let Ok(notify::Event {
+            kind: EventKind::Modify(ModifyKind::Data(_)),
+            paths,
+            attrs: _,
+        }) = event
+        {
+            paths
+                .iter()
+                .for_each(|path| self.bus.send_event(Event::ReloadConfig(path.clone())));
+        }
+    }
 }
 
 impl Repo {
     pub(crate) fn new(bus: BusConnector<Event>, services: Vec<Service>) -> Self {
+        let config_watcher = ConfigWatcher {
+            bus: bus.join_bus(),
+        };
+        let mut watcher = notify::recommended_watcher(config_watcher).unwrap();
+        services.iter().for_each(|service| {
+            if let Some(path) = service.config_file.as_ref() {
+                _ = watcher.watch(path.as_path(), notify::RecursiveMode::NonRecursive);
+            }
+        });
+
         let services = services
-            .into_iter()
-            .map(|service| (service.name.clone(), service.into()))
+            .iter()
+            .map(|service| (service.name.clone(), service.clone().into()))
             .collect();
+
         Self {
             bus,
             services,
             pid_map: HashMap::new(),
+            _watcher: watcher,
         }
     }
+
+    pub fn get_service_by_path(&self, path: &Path) -> Option<ServiceName> {
+        self.services
+            .iter()
+            .find(|(_, handler)| {
+                handler
+                    .service()
+                    .config_file
+                    .as_ref()
+                    .is_some_and(|config_file| config_file == path.as_os_str())
+            })
+            .map(|(service_name, _)| service_name.to_owned())
+    }
+
     pub(crate) fn insert_sh_by_name(&mut self, name: ServiceName, sh: ServiceHandler) {
         self.services.insert(name, sh);
     }

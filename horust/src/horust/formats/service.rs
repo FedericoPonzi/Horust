@@ -57,6 +57,7 @@ pub struct Service {
     pub termination: Termination,
     #[serde(default)]
     pub resource_limit: ResourceLimit,
+    pub config_file: Option<PathBuf>,
 }
 
 fn default_as_false() -> bool {
@@ -127,6 +128,7 @@ impl Default for Service {
             failure: Default::default(),
             termination: Default::default(),
             resource_limit: Default::default(),
+            config_file: None,
         }
     }
 }
@@ -240,10 +242,11 @@ impl Environment {
     /// Create the environment K=V variables, used for exec into the new process.
     /// User defined environment variables overwrite the predefined variables.
     pub(crate) fn get_environment(&self, user_name: String, user_home: String) -> Vec<String> {
-        let mut initial: HashMap<String, String> = self
-            .keep_env
-            .then(|| std::env::vars().collect())
-            .unwrap_or_default();
+        let mut initial: HashMap<String, String> = if self.keep_env {
+            std::env::vars().collect()
+        } else {
+            Default::default()
+        };
 
         let mut additional = self.additional.clone();
 
@@ -294,7 +297,7 @@ impl Environment {
         // This is the suitable format for `exec`
         additional
             .into_iter()
-            .map(|(k, v)| format!("{}={}", k, v))
+            .map(|(k, v)| format!("{k}={v}"))
             .collect()
     }
 }
@@ -357,7 +360,7 @@ impl User {
         match &self {
             User::Name(name) => {
                 let user = unistd::User::from_name(name)?
-                    .with_context(|| format!("User `{}` not found", name))?;
+                    .with_context(|| format!("User `{name}` not found"))?;
                 Ok(user.uid)
             }
             User::Uid(uid) => Ok(unistd::Uid::from_raw(*uid)),
@@ -367,7 +370,7 @@ impl User {
     fn get_raw_user(&self) -> Result<unistd::User> {
         let uid = self.get_uid()?;
         let user =
-            unistd::User::from_uid(uid)?.with_context(|| format!("User `{}` not found", uid))?;
+            unistd::User::from_uid(uid)?.with_context(|| format!("User `{uid}` not found"))?;
         Ok(user)
     }
 
@@ -627,7 +630,7 @@ impl From<TerminationSignal> for Signal {
     }
 }
 
-#[derive(Serialize, Clone, Deserialize, Debug, PartialEq)]
+#[derive(Serialize, Clone, Deserialize, Debug, Default, PartialEq)]
 #[serde(rename_all = "kebab-case", deny_unknown_fields)]
 pub struct ResourceLimit {
     #[serde(default)]
@@ -644,16 +647,6 @@ pub struct ResourceLimit {
 impl ResourceLimit {
     fn has_no_limit(&self) -> bool {
         self.cpu.is_none() && self.memory.is_none() && self.pids_max.is_none()
-    }
-}
-
-impl Default for ResourceLimit {
-    fn default() -> Self {
-        ResourceLimit {
-            cpu: None,
-            memory: None,
-            pids_max: None,
-        }
     }
 }
 
@@ -679,13 +672,13 @@ impl ResourceLimit {
         }
 
         // has to be an absolute path for cgroups v2
-        let cgroup_path = Path::new(DEFAULT_CGROUP_ROOT).join(format!("horust_{}", name));
+        let cgroup_path = Path::new(DEFAULT_CGROUP_ROOT).join(format!("horust_{name}"));
         let manager = create_cgroup_manager(CgroupConfig {
             cgroup_path: cgroup_path.to_path_buf(),
             systemd_cgroup: false,
             container_name: name.to_string(),
         })
-        .with_context(|| format!("Failed to create cgroup manager for {}", name))?;
+        .with_context(|| format!("Failed to create cgroup manager for {name}"))?;
         let mut resource = LinuxResources::default();
         if let Some(cpu) = self.cpu {
             let cpu = LinuxCpuBuilder::default()
@@ -705,7 +698,7 @@ impl ResourceLimit {
 
         manager
             .add_task(pid)
-            .with_context(|| format!("Failed to add task to cgroup {}", name))?;
+            .with_context(|| format!("Failed to add task to cgroup {name}"))?;
         manager
             .apply(&ControllerOpt {
                 resources: &resource,
@@ -713,7 +706,7 @@ impl ResourceLimit {
                 oom_score_adj: None,
                 freezer_state: None,
             })
-            .with_context(|| format!("Failed to apply resource limits to cgroup {}", name))?;
+            .with_context(|| format!("Failed to apply resource limits to cgroup {name}"))?;
 
         Ok(())
     }
@@ -802,6 +795,7 @@ mod test {
         let current_user_name: String = super::User::default().get_name().unwrap();
         let expected = Service {
             name: "".to_string(),
+            config_file: None,
             command: "/bin/bash -c \'echo hello world\'".to_string(),
             user: super::User::Name(current_user_name),
             environment: Environment {

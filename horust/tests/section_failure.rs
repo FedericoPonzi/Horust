@@ -9,9 +9,8 @@ fn test_failure_strategy(strategy: &str) {
     let (mut cmd, temp_dir) = get_cli();
     let failing_service = format!(
         r#"[failure]
-strategy = "{}"
-"#,
-        strategy
+strategy = "{strategy}"
+"#
     );
     let failing_script = r#"#!/usr/bin/env bash
 # Let's give horust some time to spinup the other service as well.

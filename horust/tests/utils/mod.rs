@@ -41,7 +41,7 @@ pub fn store_service_script(
 ) -> String {
     let rnd_name = create_random_name();
     let service_name = format!("{}.toml", service_name.unwrap_or(rnd_name.as_str()));
-    let script_name = format!("{}.sh", rnd_name);
+    let script_name = format!("{rnd_name}.sh");
     let script_path = dir.join(script_name);
     std::fs::write(&script_path, script).unwrap();
     let service = format!(
@@ -88,7 +88,7 @@ pub fn get_cli() -> (Command, TempDir) {
 /// Run the cmd in a new process and send a message on receiver when it's done.
 /// This allows for ensuring termination of a test.
 pub fn run_async(cmd: &mut Command, should_succeed: bool) -> RecvWrapper {
-    println!("Cmd: {:?}", cmd);
+    println!("Cmd: {cmd:?}");
     let mut child = cmd.spawn().unwrap();
     thread::sleep(Duration::from_millis(500));
 

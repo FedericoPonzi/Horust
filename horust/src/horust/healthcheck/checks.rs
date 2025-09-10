@@ -85,10 +85,10 @@ pub(crate) struct CommandCheck {}
 
 impl CommandCheck {
     fn prepare_cmd(&self, cmd: &str) -> anyhow::Result<()> {
-        let mut chunks = shlex::split(cmd).context(format!("Failed to split command: {}", cmd))?;
+        let mut chunks = shlex::split(cmd).context(format!("Failed to split command: {cmd}"))?;
         let program = chunks
             .first()
-            .context(format!("Failed to get program from command: {}", cmd))?;
+            .context(format!("Failed to get program from command: {cmd}"))?;
         let path = if program.contains('/') {
             program.to_string()
         } else {
@@ -128,7 +128,7 @@ impl Check for CommandCheck {
             .as_ref()
             .map(|command| {
                 self.prepare_cmd(command)
-                    .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e.to_string()))?;
+                    .map_err(|e| std::io::Error::other(e.to_string()))?;
                 Ok(())
             })
             .unwrap_or(Ok(()))

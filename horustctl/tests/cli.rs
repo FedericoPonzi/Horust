@@ -24,7 +24,7 @@ pub fn store_service_script(
         .map(|x| x as char)
         .collect::<String>();
     let service_name = format!("{}.toml", filename.unwrap_or(rnd_name.as_str()));
-    let script_name = format!("{}.sh", rnd_name);
+    let script_name = format!("{rnd_name}.sh");
     let script_path = dir.join(script_name);
     std::fs::write(&script_path, script).unwrap();
     let service = format!(
