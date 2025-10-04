@@ -214,66 +214,54 @@ fn next_events_shutting_down(
     }
 }
 
-// TODO: test
 /// Handles the service handler's status change
 fn handle_status_change(
     service_handler: &ServiceHandler,
     next_status: ServiceStatus,
 ) -> (ServiceHandler, ServiceStatus) {
+    use ServiceStatus::*;
+
     let mut new_service_handler = service_handler.clone();
     if next_status == service_handler.status {
         return (new_service_handler, next_status);
     }
-    //TODO: refactor + cleanup.
-    // A -> [B,C] means that transition to A is allowed only if service is in state B or C.
-    let allowed_transitions = hashmap! {
-        ServiceStatus::Initial        => vec![ServiceStatus::Success, ServiceStatus::Failed],
-        ServiceStatus::Starting       => vec![ServiceStatus::Initial],
-        ServiceStatus::Started        => vec![ServiceStatus::Starting],
-        ServiceStatus::InKilling      => vec![ServiceStatus::Initial,
-                                              ServiceStatus::Running,
-                                              ServiceStatus::Starting,
-                                              ServiceStatus::Started],
-        ServiceStatus::Running        => vec![ServiceStatus::Started],
-        ServiceStatus::FinishedFailed => vec![ServiceStatus::Starting,
-                                              ServiceStatus::Started,
-                                              ServiceStatus::Failed,
-                                              ServiceStatus::InKilling],
-        ServiceStatus::Success        => vec![ServiceStatus::Starting,
-                                              ServiceStatus::Started,
-                                              ServiceStatus::Running,
-                                              ServiceStatus::InKilling],
-        ServiceStatus::Failed         => vec![ServiceStatus::Starting,
-                                              ServiceStatus::Started,
-                                              ServiceStatus::Running,
-                                              ServiceStatus::InKilling],
-        ServiceStatus::Finished       => vec![ServiceStatus::Success,
-                                             ServiceStatus::Initial],
-    };
-    let allowed = allowed_transitions
-        .get(&next_status)
-        .unwrap_or_else(|| panic!("New status: {} not found!", next_status));
-    if allowed.contains(&service_handler.status) {
+
+    // Static lookup table of valid transitions
+    // A -> [B,C] means that transition to A is allowed only if the service is in state B or C.
+    const ALLOWED_TRANSITIONS: &[(ServiceStatus, &[ServiceStatus])] = &[
+        (Initial, &[Success, Failed]),
+        (Starting, &[Initial]),
+        (Started, &[Starting]),
+        (InKilling, &[Initial, Running, Starting, Started]),
+        (Running, &[Started]),
+        (FinishedFailed, &[Starting, Started, Failed, InKilling]),
+        (Success, &[Starting, Started, Running, InKilling]),
+        (Failed, &[Starting, Started, Running, InKilling]),
+        (Finished, &[Success, Initial]),
+    ];
+
+    let allowed = ALLOWED_TRANSITIONS
+        .iter()
+        .find(|(status, _)| *status == next_status)
+        .map(|(_, allowed_from)| allowed_from);
+
+    let valid = allowed.is_some_and(|allowed_from| allowed_from.contains(&service_handler.status));
+
+    if valid {
         match next_status {
-            ServiceStatus::Started if allowed.contains(&service_handler.status) => {
-                new_service_handler.status = ServiceStatus::Started;
+            Started => {
+                new_service_handler.status = Started;
                 new_service_handler.restart_attempts = 0;
             }
-            ServiceStatus::Running if allowed.contains(&service_handler.status) => {
-                new_service_handler.status = ServiceStatus::Running;
-            }
-            ServiceStatus::InKilling if allowed.contains(&service_handler.status) => {
+            InKilling if service_handler.status == Initial => {
+                // Nothing to do here, the service was never started.
                 debug!(
                     " service: {},  status: {}, new status: {}",
                     service_handler.name(),
                     service_handler.status,
                     next_status
                 );
-                new_service_handler.status = if service_handler.status == ServiceStatus::Initial {
-                    ServiceStatus::Success
-                } else {
-                    ServiceStatus::InKilling
-                };
+                new_service_handler.status = Success;
             }
             new_status => {
                 new_service_handler.status = new_status;
