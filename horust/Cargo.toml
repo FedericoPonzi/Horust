@@ -31,10 +31,10 @@ anyhow = "~1.0"
 thiserror = "~2.0"
 bytefmt = "0.1.7"
 horust-commands-lib = { version = "0.1.0" }
-oci-spec = "0.7.1"
+oci-spec = "0.8.3"
 
 [target.'cfg(target_os = "linux")'.dependencies]
-libcgroups = { version = "0.5.3", features = ["v1", "v2"], default-features = false, git = "https://github.com/youki-dev/youki.git", rev = "1b840bb0936e61990f9eabbb0e094d08235b2220"}
+libcgroups = { version = "0.5.5", features = ["v1", "v2"], default-features = false }
 
 [features]
 default = ["http-healthcheck"]
