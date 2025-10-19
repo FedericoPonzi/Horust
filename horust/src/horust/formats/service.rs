@@ -627,7 +627,7 @@ impl From<TerminationSignal> for Signal {
     }
 }
 
-#[derive(Serialize, Clone, Deserialize, Debug, PartialEq)]
+#[derive(Serialize, Clone, Deserialize, Debug, PartialEq, Default)]
 #[serde(rename_all = "kebab-case", deny_unknown_fields)]
 pub struct ResourceLimit {
     #[serde(default)]
@@ -642,18 +642,9 @@ pub struct ResourceLimit {
 }
 
 impl ResourceLimit {
+    #[cfg(target_os = "linux")]
     fn has_no_limit(&self) -> bool {
         self.cpu.is_none() && self.memory.is_none() && self.pids_max.is_none()
-    }
-}
-
-impl Default for ResourceLimit {
-    fn default() -> Self {
-        ResourceLimit {
-            cpu: None,
-            memory: None,
-            pids_max: None,
-        }
     }
 }
 
