@@ -1,6 +1,6 @@
 [<img src="https://github.com/FedericoPonzi/Horust/raw/master/res/horust-logo.png" width="300" align="center">](https://github.com/FedericoPonzi/Horust/raw/master/res/horust-logo.png)
 
-[![CI](https://github.com/FedericoPonzi/horust/workflows/CI/badge.svg?branch=master&event=push)](https://github.com/FedericoPonzi/Horust/actions?query=workflow%3ACI) [![MIT licensed](https://img.shields.io/badge/license-MIT-blue.svg)](./LICENSE)
+[![CI](https://github.com/FedericoPonzi/horust/workflows/CI/badge.svg?branch=master&event=push)](https://github.com/FedericoPonzi/Horust/actions?query=workflow%3ACI) [![MIT licensed](https://img.shields.io/badge/license-MIT-blue.svg)](./LICENSE.txt)
 
 [Horust](https://github.com/FedericoPonzi/Horust) is a supervisor / init system written in rust and designed to be run
 inside containers.
@@ -206,4 +206,4 @@ at [CONTRIBUTING.md](https://github.com/FedericoPonzi/Horust/blob/master/CONTRIB
 ## License
 
 Horust is provided under the MIT license. Please read the
-attached [license](https://github.com/FedericoPonzi/horust/blob/master/LICENSE) file.
+attached [license](https://github.com/FedericoPonzi/horust/blob/master/LICENSE.txt) file.
