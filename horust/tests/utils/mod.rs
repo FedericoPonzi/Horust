@@ -1,8 +1,8 @@
 use assert_cmd::prelude::*;
 use nix::sys::signal::{kill, Signal};
 use nix::unistd::Pid;
-use rand::distributions::Alphanumeric;
-use rand::{thread_rng, Rng};
+use rand::distr::Alphanumeric;
+use rand::Rng;
 use std::path::Path;
 use std::process::Command;
 use std::sync::mpsc;
@@ -12,7 +12,7 @@ use tempfile::TempDir;
 
 /// Create a random name
 pub fn create_random_name() -> String {
-    thread_rng()
+    rand::rng()
         .sample_iter(&Alphanumeric)
         .take(5)
         .map(|x| x as char)

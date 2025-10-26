@@ -1,7 +1,7 @@
 use assert_cmd::prelude::*;
 use predicates::str::contains;
-use rand::distributions::Alphanumeric;
-use rand::{thread_rng, Rng};
+use rand::distr::Alphanumeric;
+use rand::Rng;
 use std::time::Duration;
 
 #[allow(dead_code)]
@@ -35,7 +35,7 @@ exit 1
 fn test_command_not_found() {
     let (mut cmd, temp_dir) = get_cli();
     let dir = temp_dir.path();
-    let rnd_name = thread_rng()
+    let rnd_name = rand::rng()
         .sample_iter(&Alphanumeric)
         .take(5)
         .map(|x| x as char)

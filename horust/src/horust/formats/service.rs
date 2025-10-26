@@ -240,10 +240,11 @@ impl Environment {
     /// Create the environment K=V variables, used for exec into the new process.
     /// User defined environment variables overwrite the predefined variables.
     pub(crate) fn get_environment(&self, user_name: String, user_home: String) -> Vec<String> {
-        let mut initial: HashMap<String, String> = self
-            .keep_env
-            .then(|| std::env::vars().collect())
-            .unwrap_or_default();
+        let mut initial: HashMap<String, String> = if self.keep_env {
+            std::env::vars().collect()
+        } else {
+            Default::default()
+        };
 
         let mut additional = self.additional.clone();
 

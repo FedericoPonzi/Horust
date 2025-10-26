@@ -128,7 +128,7 @@ impl Check for CommandCheck {
             .as_ref()
             .map(|command| {
                 self.prepare_cmd(command)
-                    .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e.to_string()))?;
+                    .map_err(|e| std::io::Error::other(e.to_string()))?;
                 Ok(())
             })
             .unwrap_or(Ok(()))
