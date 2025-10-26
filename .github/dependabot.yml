@@ -8,3 +8,13 @@ updates:
       all-dependencies:
         patterns:
           - "*"
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "monthly"
+    commit-message:
+      prefix: "chore(actions)"
+    groups:
+      all-actions:
+        patterns:
+          - "*"
