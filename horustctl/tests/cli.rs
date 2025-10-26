@@ -1,8 +1,8 @@
 use assert_cmd::Command;
 use predicates::boolean::PredicateBooleanExt;
 use predicates::str::contains;
-use rand::distributions::Alphanumeric;
-use rand::{thread_rng, Rng};
+use rand::distr::Alphanumeric;
+use rand::Rng;
 use std::path::Path;
 use std::thread;
 use std::time::Duration;
@@ -18,7 +18,8 @@ pub fn store_service_script(
     service_content: Option<&str>,
     filename: Option<&str>,
 ) -> String {
-    let rnd_name = thread_rng()
+    let rng = rand::rng();
+    let rnd_name = rng
         .sample_iter(&Alphanumeric)
         .take(5)
         .map(|x| x as char)
