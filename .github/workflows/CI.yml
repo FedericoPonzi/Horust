@@ -79,8 +79,10 @@ jobs:
             ghcr.io/${{ github.repository_owner }}/horust
             federicoponzi/horust
           flavor: |
+            latest=false
             suffix=-${{ matrix.platform }}
           tags: |
+            type=ref,event=branch
             type=semver,pattern={{version}}
             type=semver,pattern={{major}}.{{minor}}
 
@@ -135,8 +137,7 @@ jobs:
       - name: Get the semver
         id: semver
         env:
-          # use 'latest' for master branch, tag for release
-          VERSION: ${{ github.ref_type == 'tag' && github.ref_name || 'latest' }}
+          VERSION: ${{ github.ref_type == 'tag' && github.ref_name || 'master' }}
         run: |
           SEMVER="${VERSION#v}"
           echo "semver=${SEMVER}" >> "$GITHUB_OUTPUT"
