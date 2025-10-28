@@ -147,10 +147,10 @@ jobs:
           ARM_TAG=${{ steps.semver.outputs.semver }}-arm64
           SEMVER=${{ steps.semver.outputs.semver }}
           docker manifest create \
-            ghcr.io/${{ github.repository_owner }}/horust:${SEMVER} \
-            --amend ghcr.io/${{ github.repository_owner }}/horust:${AMD_TAG} \
-            --amend ghcr.io/${{ github.repository_owner }}/horust:${ARM_TAG}
-          docker manifest push ghcr.io/${{ github.repository_owner }}/horust:${SEMVER}
+            ghcr.io/federicoponzi/horust:${SEMVER} \
+            --amend ghcr.io/federicoponzi/horust:${AMD_TAG} \
+            --amend ghcr.io/federicoponzi/horust:${ARM_TAG}
+          docker manifest push ghcr.io/federicoponzi/horust:${SEMVER}
           docker manifest create \
             federicoponzi/horust:${SEMVER} \
             --amend federicoponzi/horust:${AMD_TAG} \
