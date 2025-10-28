@@ -60,10 +60,12 @@ jobs:
       - name: Test
         run: cargo test
 
-  # Publish latest and releases (e.g. tags with semver).
-  docker-build-push-release:
+  docker-build-push:
     needs: [ test ]
-    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        platform: ["amd64", "arm64"]
+    runs-on: ${{ matrix.platform == 'amd64' && 'ubuntu-22.04' || 'ubuntu-22.04-arm' }}
     permissions:
       packages: write  # push to ghcr.io
     if: startsWith(github.ref, 'refs/tags/') || github.ref == 'refs/heads/master'
@@ -76,9 +78,10 @@ jobs:
           images: |
             ghcr.io/${{ github.repository_owner }}/horust
             federicoponzi/horust
+          flavor: |
+            latest=false
+            suffix=-${{ matrix.platform }}
           tags: |
-            type=sha
-            type=ref,event=branch
             type=semver,pattern={{version}}
             type=semver,pattern={{major}}.{{minor}}
 
@@ -103,19 +106,61 @@ jobs:
       - name: Build and push images
         uses: docker/build-push-action@v6
         with:
-          platforms: linux/amd64,linux/arm64
+          platforms: linux/${{ matrix.platform }}
           labels: ${{ steps.meta.outputs.labels }}
           tags: ${{ steps.meta.outputs.tags }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
           push: true
+          provenance: false  # avoid push manifest-list
+
+  # amend the platform tag for docker images
+  docker-manifests:
+    needs: ["docker-build-push"]
+    runs-on: ubuntu-latest
+    if: startsWith(github.ref, 'refs/tags/') || github.ref == 'refs/heads/master'
+    permissions:
+      packages: write  # push to ghcr.io
+    steps:
+      - name: Login to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKER_USERNAME }}
+          password: ${{ secrets.DOCKER_PASSWORD }}
+      - name: Login to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.repository_owner }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Get the semver
+        id: semver
+        run: |
+          VERSION="${{ github.ref_name }}"
+          SEMVER="${VERSION#v}"
+          echo "semver=${SEMVER}" >> "$GITHUB_OUTPUT"
+      - name: Create manifests
+        run: |
+          AMD_TAG=${{ steps.semver.outputs.semver }}-amd64
+          ARM_TAG=${{ steps.semver.outputs.semver }}-arm64
+          SEMVER=${{ steps.semver.outputs.semver }}
+          docker manifest create \
+            ghcr.io/${{ github.repository_owner }}/horust:${SEMVER} \
+            --amend ghcr.io/${{ github.repository_owner }}/horust:${AMD_TAG} \
+            --amend ghcr.io/${{ github.repository_owner }}/horust:${ARM_TAG}
+          docker manifest push ghcr.io/${{ github.repository_owner }}/horust:${SEMVER}
+          docker manifest create \
+            federicoponzi/horust:${SEMVER} \
+            --amend federicoponzi/horust:${AMD_TAG} \
+            --amend federicoponzi/horust:${ARM_TAG}
+          docker manifest push federicoponzi/horust:${SEMVER}
 
   ## This will create a new release in github/releases page. It will run only for tags with semver format.
   create-release:
     name: deploy
     needs: [ test ]
     if: startsWith(github.ref, 'refs/tags/')
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-22.04  # glibc 2.35
     strategy:
       matrix:
         target:

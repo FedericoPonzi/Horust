@@ -1,18 +1,24 @@
-FROM rust:1 AS builder
+FROM rust:1-bookworm AS builder
 WORKDIR /usr/src/myapp
 COPY . .
+
 ARG CARGO_PARAMS
 ARG GIT_COMMIT
 ARG GIT_BRANCH
 ARG IMAGE_NAME
-RUN apt-get update && apt-get install -y protobuf-compiler
 
+RUN apt-get update && apt-get install -y protobuf-compiler
 RUN echo "Running cargo build with params: $CARGO_PARAMS" && cargo build --release $CARGO_PARAMS
 
 FROM debian:bookworm-slim
+
+ARG CARGO_PARAMS
+ARG GIT_COMMIT
+ARG GIT_BRANCH
+
 COPY --from=builder /usr/src/myapp/target/release/horust /sbin/horust
 RUN mkdir -p /etc/horust/services/ && apt-get update && apt-get install bash
-ENV HORUST_LOG info
+ENV HORUST_LOG=info
 ENV GIT_COMMIT=$GIT_COMMIT
 ENV GIT_BRANCH=$GIT_BRANCH
 ENV CARGO_PARAMS=$CARGO_PARAMS

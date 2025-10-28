@@ -64,7 +64,7 @@ dargo-run-container: ## Runs a Rust container with the pwd (i.e. current folder)
 	@docker run \
 	--detach \
 	--tty \
- 	--name $(LOCAL_DEV_CONTAINER_NAME) \
- 	--workdir $(LOCAL_DEV_WORKDIR) \
- 	--mount type=bind,source="$(shell pwd)",target=$(LOCAL_DEV_WORKDIR) \
- 	rust:1
+	--name $(LOCAL_DEV_CONTAINER_NAME) \
+	--workdir $(LOCAL_DEV_WORKDIR) \
+	--mount type=bind,source="$(shell pwd)",target=$(LOCAL_DEV_WORKDIR) \
+	rust:1
