@@ -79,7 +79,6 @@ jobs:
             ghcr.io/${{ github.repository_owner }}/horust
             federicoponzi/horust
           flavor: |
-            latest=false
             suffix=-${{ matrix.platform }}
           tags: |
             type=semver,pattern={{version}}
@@ -135,8 +134,10 @@ jobs:
           password: ${{ secrets.GITHUB_TOKEN }}
       - name: Get the semver
         id: semver
+        env:
+          # use 'latest' for master branch, tag for release
+          VERSION: ${{ github.ref_type == 'tag' && github.ref_name || 'latest' }}
         run: |
-          VERSION="${{ github.ref_name }}"
           SEMVER="${VERSION#v}"
           echo "semver=${SEMVER}" >> "$GITHUB_OUTPUT"
       - name: Create manifests
