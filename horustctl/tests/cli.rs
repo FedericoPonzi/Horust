@@ -1,4 +1,7 @@
-#[expect(deprecated, reason = "false alert: https://github.com/rust-lang/rust/issues/148426")]
+#[expect(
+    deprecated,
+    reason = "false alert: https://github.com/rust-lang/rust/issues/148426"
+)]
 use assert_cmd::cargo::cargo_bin;
 use assert_cmd::prelude::*;
 use predicates::boolean::PredicateBooleanExt;

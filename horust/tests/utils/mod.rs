@@ -1,4 +1,7 @@
-#[expect(deprecated, reason = "false alert: https://github.com/rust-lang/rust/issues/148426")]
+#[expect(
+    deprecated,
+    reason = "false alert: https://github.com/rust-lang/rust/issues/148426"
+)]
 use assert_cmd::cargo::cargo_bin;
 use nix::sys::signal::{Signal, kill};
 use nix::unistd::Pid;
