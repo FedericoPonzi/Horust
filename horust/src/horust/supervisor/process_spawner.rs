@@ -1,9 +1,9 @@
-use anyhow::{anyhow, Context, Result};
+use anyhow::{Context, Result, anyhow};
 use crossbeam::channel::{after, tick};
 use nix::errno::Errno;
 use nix::fcntl;
 use nix::unistd;
-use nix::unistd::{fork, ForkResult, Pid, Uid};
+use nix::unistd::{ForkResult, Pid, Uid, fork};
 use std::ffi::{CStr, CString};
 use std::os::unix::io::AsRawFd;
 use std::path::{Path, PathBuf};

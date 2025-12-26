@@ -660,7 +660,7 @@ impl ResourceLimit {
     #[cfg(target_os = "linux")]
     pub(crate) fn apply(&self, name: &str, pid: unistd::Pid) -> anyhow::Result<()> {
         use libcgroups::common::{
-            create_cgroup_manager, CgroupConfig, CgroupManager, ControllerOpt, DEFAULT_CGROUP_ROOT,
+            CgroupConfig, CgroupManager, ControllerOpt, DEFAULT_CGROUP_ROOT, create_cgroup_manager,
         };
         use oci_spec::runtime::{
             LinuxCpuBuilder, LinuxMemoryBuilder, LinuxPidsBuilder, LinuxResources,
@@ -770,8 +770,8 @@ mod test {
 
     use crate::horust::formats::ResourceLimit;
     use crate::horust::formats::{
-        validate, Environment, Failure, FailureStrategy, Healthiness, Restart, RestartStrategy,
-        Service, Termination, TerminationSignal::TERM,
+        Environment, Failure, FailureStrategy, Healthiness, Restart, RestartStrategy, Service,
+        Termination, TerminationSignal::TERM, validate,
     };
     use crate::horust::get_sample_service;
 

@@ -3,7 +3,7 @@ name = "horust"
 version = "0.1.11"
 authors = ["Federico Ponzi <me@fponzi.me>"]
 description = "A complete supervisor and init system, designed for running in containers."
-edition = "2021"
+edition = "2024"
 license = "MIT"
 repository = "https://github.com/FedericoPonzi/horust"
 homepage = "https://github.com/FedericoPonzi/horust"
@@ -11,7 +11,7 @@ readme = "../README.md"
 keywords = ["init", "container", "supervisor"]
 categories = ["command-line-utilities"]
 include = ["src/**/*", "Cargo.*", "LICENSE.txt", "example_services/**/*"]
-rust-version = "1.74.1"
+rust-version = "1.85.1"
 
 [dependencies]
 clap = { version = "~4.5", features = ["derive"] }

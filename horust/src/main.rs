@@ -2,8 +2,8 @@ use std::path::PathBuf;
 
 use anyhow::{Context, Result};
 use clap::Parser;
-use horust::horust::{ExitStatus, HorustConfig};
 use horust::Horust;
+use horust::horust::{ExitStatus, HorustConfig};
 use log::{error, info};
 use nix::unistd::getpid;
 

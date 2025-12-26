@@ -2,11 +2,11 @@ use std::time::Instant;
 
 use nix::unistd::Pid;
 
+use crate::horust::Event;
 use crate::horust::formats::{
     FailureStrategy, HealthinessStatus, RestartStrategy, Service, ServiceName, ServiceStatus,
 };
 use crate::horust::supervisor::repo::Repo;
-use crate::horust::Event;
 
 use super::{LifecycleStatus, ShuttingDown};
 
@@ -362,11 +362,11 @@ mod test {
 
     use nix::unistd::Pid;
 
+    use crate::horust::Event;
     use crate::horust::formats::{FailureStrategy, Service, ServiceStatus, ShuttingDown};
     use crate::horust::supervisor::service_handler::{
-        handle_failed_service, handle_restart_strategy, should_force_kill, ServiceHandler,
+        ServiceHandler, handle_failed_service, handle_restart_strategy, should_force_kill,
     };
-    use crate::horust::Event;
 
     #[test]
     fn test_handle_restart_strategy() {

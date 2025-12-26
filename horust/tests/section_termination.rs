@@ -1,4 +1,4 @@
-use nix::sys::signal::{kill, Signal};
+use nix::sys::signal::{Signal, kill};
 use std::time::Duration;
 
 pub mod utils;

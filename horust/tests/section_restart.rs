@@ -4,8 +4,8 @@ use assert_cmd::cmd::Command;
 #[cfg(target_os = "linux")]
 use libc::SIGPOLL;
 use libc::{
-    c_int, SIGABRT, SIGBUS, SIGFPE, SIGHUP, SIGILL, SIGINT, SIGKILL, SIGPIPE, SIGPROF, SIGQUIT,
-    SIGSEGV, SIGSYS, SIGTERM, SIGTRAP, SIGUSR1, SIGUSR2, SIGVTALRM, SIGXCPU, SIGXFSZ,
+    SIGABRT, SIGBUS, SIGFPE, SIGHUP, SIGILL, SIGINT, SIGKILL, SIGPIPE, SIGPROF, SIGQUIT, SIGSEGV,
+    SIGSYS, SIGTERM, SIGTRAP, SIGUSR1, SIGUSR2, SIGVTALRM, SIGXCPU, SIGXFSZ, c_int,
 };
 use predicates::prelude::predicate;
 use utils::*;
@@ -132,7 +132,7 @@ fn test_restart_always_killed_by_signals() -> Result<(), std::io::Error> {
         SIGSEGV, SIGSYS, SIGTERM, SIGTRAP, SIGUSR1, SIGUSR2, SIGVTALRM, SIGXCPU, SIGXFSZ,
     ];
     for sig in DEFAULT_TERMINATE {
-        test_restart_always_signal(sig as i32)?;
+        test_restart_always_signal(sig)?;
     }
     Ok(())
 }

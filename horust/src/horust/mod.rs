@@ -6,14 +6,14 @@ use std::path::{Path, PathBuf};
 use anyhow::Result;
 use bus::BusConnector;
 #[cfg(target_os = "linux")]
-use libc::{prctl, PR_SET_CHILD_SUBREAPER};
+use libc::{PR_SET_CHILD_SUBREAPER, prctl};
 
 pub use formats::Event;
 
 use crate::horust::bus::Bus;
-use crate::horust::formats::{validate, Service};
+use crate::horust::formats::{Service, validate};
 
-pub use self::formats::{get_sample_service, ExitStatus, HorustConfig};
+pub use self::formats::{ExitStatus, HorustConfig, get_sample_service};
 
 pub mod bus;
 mod commands_handler;

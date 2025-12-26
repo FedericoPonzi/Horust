@@ -3,7 +3,7 @@ use predicates::str::{contains, is_empty};
 use tempfile::TempDir;
 
 mod utils;
-use nix::sys::signal::{kill, Signal};
+use nix::sys::signal::{Signal, kill};
 use std::thread::sleep;
 use std::time::Duration;
 use utils::*;
@@ -95,10 +95,12 @@ sync
     assert!(last_output.exists());
 
     // it is effectively the last output
-    assert!(temp_dir
-        .path()
-        .join(format!("out.log.{}", num_logs))
-        .exists());
+    assert!(
+        temp_dir
+            .path()
+            .join(format!("out.log.{}", num_logs))
+            .exists()
+    );
 
     let content = std::fs::read_to_string(&last_output).unwrap();
     let last_file_first_number = total_iterations - (patterns_per_file);
@@ -149,7 +151,7 @@ pwd"#;
     store_service_script(temp_dir.path(), script, None, Some("a"));
     cmd.assert()
         .success()
-        .stdout(contains(&temp_dir.path().display().to_string()));
+        .stdout(contains(temp_dir.path().display().to_string()));
 }
 
 #[test]

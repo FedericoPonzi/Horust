@@ -2,10 +2,10 @@ use std::collections::HashMap;
 
 use nix::unistd::Pid;
 
+use crate::horust::Event;
 use crate::horust::bus::BusConnector;
 use crate::horust::formats::{Service, ServiceName};
 use crate::horust::supervisor::service_handler::ServiceHandler;
-use crate::horust::Event;
 
 #[derive(Debug)]
 pub(crate) struct Repo {

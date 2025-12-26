@@ -58,8 +58,8 @@ http-endpoint = "{}""#,
         handle_requests(listener, sl_receiver).unwrap();
         sender.send(()).expect("Chan closed");
     });
-    let mut cmd = cmd.args(vec!["--unsuccessful-exit-finished-failed"]);
-    run_async(&mut cmd, true).recv_or_kill(Duration::from_secs(15));
+    let cmd = cmd.args(vec!["--unsuccessful-exit-finished-failed"]);
+    run_async(cmd, true).recv_or_kill(Duration::from_secs(15));
     stop_listener.send(()).unwrap();
     receiver
         .recv_timeout(Duration::from_millis(3000))
@@ -86,7 +86,7 @@ file-path = "{}""#,
     exit 0;
     "#;
     store_service_script(tempdir.path(), script, Some(service.as_str()), None);
-    let mut cmd = cmd.args(vec!["--unsuccessful-exit-finished-failed"]);
-    run_async(&mut cmd, true).recv_or_kill(Duration::from_secs(70));
+    let cmd = cmd.args(vec!["--unsuccessful-exit-finished-failed"]);
+    run_async(cmd, true).recv_or_kill(Duration::from_secs(70));
     Ok(())
 }

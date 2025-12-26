@@ -1,7 +1,7 @@
 [package]
 name = "horust-commands-lib"
 version = "0.1.0"
-edition = "2021"
+edition = "2024"
 authors = ["Federico Ponzi <me@fponzi.me>"]
 description = "A complete supervisor and init system, designed for running in containers."
 license = "MIT"
@@ -11,7 +11,7 @@ readme = "README.md"
 keywords = ["init", "container", "supervisor"]
 categories = ["command-line-utilities"]
 include = ["src/**/*", "Cargo.*", "../LICENSE.txt", "README.md"]
-rust-version = "1.74.1"
+rust-version = "1.85.1"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 

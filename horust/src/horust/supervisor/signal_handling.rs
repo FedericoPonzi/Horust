@@ -1,4 +1,4 @@
-use nix::sys::signal::{sigaction, SaFlags, SigAction, SigHandler, SigSet, SIGINT, SIGTERM};
+use nix::sys::signal::{SIGINT, SIGTERM, SaFlags, SigAction, SigHandler, SigSet, sigaction};
 
 use crate::horust::signal_safe::panic_ssafe;
 
