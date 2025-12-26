@@ -1,9 +1,15 @@
-use assert_cmd::Command;
+#[expect(
+    deprecated,
+    reason = "false alert: https://github.com/rust-lang/rust/issues/148426"
+)]
+use assert_cmd::cargo::cargo_bin;
+use assert_cmd::prelude::*;
 use predicates::boolean::PredicateBooleanExt;
 use predicates::str::contains;
-use rand::distr::Alphanumeric;
 use rand::Rng;
+use rand::distr::Alphanumeric;
 use std::path::Path;
+use std::process::Command;
 use std::thread;
 use std::time::Duration;
 use tempfile::TempDir;
@@ -40,8 +46,10 @@ pub fn store_service_script(
 
 #[test]
 fn test_cli_help() {
-    let mut cmd = Command::cargo_bin("horustctl").unwrap();
-    cmd.args(vec!["--help"]).assert().success();
+    Command::new(cargo_bin!("horustctl"))
+        .args(vec!["--help"])
+        .assert()
+        .success();
 }
 
 static ENVIRONMENT_SCRIPT: &str = r#"#!/usr/bin/env bash
@@ -50,7 +58,13 @@ printenv"#;
 #[test]
 fn test_cli_status() {
     let temp_dir = TempDir::with_prefix("horustctl").unwrap();
-    let mut horust_cmd = Command::cargo_bin("horust").unwrap();
+    let mut horust_cmd = escargot::CargoBuild::new()
+        .package("horust")
+        .current_release()
+        .current_target()
+        .run()
+        .expect("Building Horust binary")
+        .command();
 
     horust_cmd.current_dir(&temp_dir).args(vec![
         "--services-path",
@@ -90,8 +104,7 @@ done"#,
         total_wait += 50;
         thread::sleep(Duration::from_millis(50));
     }
-    let mut horustctl_cmd = Command::cargo_bin("horustctl").unwrap();
-    horustctl_cmd
+    Command::new(cargo_bin!("horustctl"))
         .current_dir(&temp_dir)
         .args(vec![
             "--uds-folder-path",
@@ -103,8 +116,7 @@ done"#,
         .success()
         .stdout(contains("terminated"));
 
-    let mut horustctl_cmd = Command::cargo_bin("horustctl").unwrap();
-    horustctl_cmd
+    Command::new(cargo_bin!("horustctl"))
         .current_dir(&temp_dir)
         .args(vec![
             "--uds-folder-path",

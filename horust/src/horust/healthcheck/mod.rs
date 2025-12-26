@@ -5,7 +5,7 @@ use std::thread;
 use std::thread::JoinHandle;
 use std::time::Duration;
 
-use crossbeam::channel::{unbounded, Receiver, RecvTimeoutError, Sender};
+use crossbeam::channel::{Receiver, RecvTimeoutError, Sender, unbounded};
 
 use checks::*;
 

@@ -3,11 +3,11 @@
 //! collect its exit status. This module will make sure to reap also zombie processes and not only
 //! child services.
 
-use nix::sys::wait::{waitpid, WaitPidFlag, WaitStatus};
+use nix::sys::wait::{WaitPidFlag, WaitStatus, waitpid};
 use nix::unistd::Pid;
 
-use crate::horust::supervisor::repo::Repo;
 use crate::horust::Event;
+use crate::horust::supervisor::repo::Repo;
 
 /// Reaps up to `max_iterations` dead processes
 ///

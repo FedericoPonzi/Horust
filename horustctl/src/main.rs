@@ -1,7 +1,7 @@
-use anyhow::{anyhow, bail, Result};
+use anyhow::{Result, anyhow, bail};
 use clap::{Args, Parser, Subcommand};
 use env_logger::Env;
-use horust_commands_lib::{get_path, ClientHandler};
+use horust_commands_lib::{ClientHandler, get_path};
 use log::debug;
 use std::fs::read_dir;
 use std::os::unix::fs::FileTypeExt;
@@ -87,7 +87,9 @@ fn get_uds_path(pid: Option<i32>, sockets_folder_path: PathBuf) -> Result<PathBu
                 .next()
                 .ok_or_else(|| anyhow!("No socket found in {sockets_folder_path:?}"))?;
             if readdir_iter.count() > 0 {
-                bail!("There is more than one socket in {sockets_folder_path:?}.Please use --pid to specify the pid of the horust process you want to talk to.");
+                bail!(
+                    "There is more than one socket in {sockets_folder_path:?}.Please use --pid to specify the pid of the horust process you want to talk to."
+                );
             }
             sockets_folder_path.join(ret)
         }

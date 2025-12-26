@@ -11,7 +11,7 @@ use std::{
     sync::{Arc, Mutex},
 };
 
-use crossbeam::channel::{unbounded, Receiver, Sender};
+use crossbeam::channel::{Receiver, Sender, unbounded};
 
 /// Bus state shared between `Bus` and all `BusConnector` instances.
 /// It contains all necessary components to send data and join the bus.

@@ -1,7 +1,7 @@
+use crate::horust::Event;
 use crate::horust::bus::BusConnector;
 use crate::horust::formats::{ServiceName, ServiceStatus};
-use crate::horust::Event;
-use anyhow::{anyhow, Result};
+use anyhow::{Result, anyhow};
 use horust_commands_lib::{CommandsHandlerTrait, HorustMsgServiceStatus};
 use std::collections::HashMap;
 use std::os::unix::net::UnixListener;

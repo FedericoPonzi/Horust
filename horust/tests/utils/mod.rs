@@ -1,8 +1,12 @@
-use assert_cmd::prelude::*;
-use nix::sys::signal::{kill, Signal};
+#[expect(
+    deprecated,
+    reason = "false alert: https://github.com/rust-lang/rust/issues/148426"
+)]
+use assert_cmd::cargo::cargo_bin;
+use nix::sys::signal::{Signal, kill};
 use nix::unistd::Pid;
-use rand::distr::Alphanumeric;
 use rand::Rng;
+use rand::distr::Alphanumeric;
 use std::path::Path;
 use std::process::Command;
 use std::sync::mpsc;
@@ -58,7 +62,7 @@ pub fn store_service_script(
 pub fn get_cli_multiple() -> (Command, TempDir, TempDir) {
     let temp_dir = TempDir::with_prefix("horust").unwrap();
     let temp_dir_2 = TempDir::with_prefix("horust_2").unwrap();
-    let mut cmd = Command::cargo_bin("horust").unwrap();
+    let mut cmd = Command::new(cargo_bin!("horust"));
     cmd.current_dir(&temp_dir).args(vec![
         "--uds-folder-path",
         temp_dir.path().display().to_string().as_str(),
@@ -73,7 +77,7 @@ pub fn get_cli_multiple() -> (Command, TempDir, TempDir) {
 
 pub fn get_cli() -> (Command, TempDir) {
     let temp_dir = TempDir::with_prefix("horust").expect("Tmp dir");
-    let mut cmd = Command::cargo_bin("horust").expect("Cargo bin");
+    let mut cmd = Command::new(cargo_bin!("horust"));
     cmd.current_dir(&temp_dir).args(vec![
         "--uds-folder-path",
         temp_dir.path().display().to_string().as_str(),

@@ -1,7 +1,7 @@
 use assert_cmd::prelude::*;
 use predicates::str::contains;
-use rand::distr::Alphanumeric;
 use rand::Rng;
+use rand::distr::Alphanumeric;
 use std::time::Duration;
 
 #[allow(dead_code)]

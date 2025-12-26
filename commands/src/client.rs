@@ -1,11 +1,11 @@
 use crate::proto::messages::horust_msg_message::MessageType;
 use crate::proto::messages::{
-    horust_msg_request, horust_msg_response, HorustMsgMessage, HorustMsgRequest,
-    HorustMsgServiceStatusRequest,
+    HorustMsgMessage, HorustMsgRequest, HorustMsgServiceStatusRequest, horust_msg_request,
+    horust_msg_response,
 };
 use crate::{HorustMsgServiceStatus, UdsConnectionHandler};
-use anyhow::{anyhow, Context};
-use anyhow::{bail, Result};
+use anyhow::{Context, anyhow};
+use anyhow::{Result, bail};
 use log::{debug, info};
 use std::net::Shutdown;
 use std::os::unix::net::UnixStream;
