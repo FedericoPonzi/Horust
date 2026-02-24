@@ -4,6 +4,12 @@ version = "0.1.0"
 edition = "2024"
 authors = ["Federico Ponzi <me@fponzi.me>"]
 rust-version = "1.85.1"
+description = "CLI tool for interacting with a running Horust instance."
+license = "MIT"
+repository = "https://github.com/FedericoPonzi/horust"
+homepage = "https://github.com/FedericoPonzi/horust"
+keywords = ["init", "container", "supervisor"]
+categories = ["command-line-utilities"]
 
 [dependencies]
 anyhow = "~1.0"
