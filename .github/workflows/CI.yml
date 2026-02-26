@@ -49,7 +49,7 @@ jobs:
           toolchain: ${{ matrix.build }}
 
       - name: Install protoc
-        run: sudo apt-get install -y protobuf-compiler
+        run: sudo apt-get update && sudo apt-get install -y protobuf-compiler
 
       - name: Build debug
         run: cargo build --all
@@ -173,7 +173,7 @@ jobs:
           toolchain: stable
 
       - name: Install protoc
-        run: sudo apt-get install -y protobuf-compiler
+        run: sudo apt-get update && sudo apt-get install -y protobuf-compiler
 
       - name: Publish horust-commands-lib
         run: cargo publish --package horust-commands-lib
@@ -218,7 +218,7 @@ jobs:
           targets: ${{ matrix.target }}
 
       - name: Install protoc
-        run: sudo apt-get install -y protobuf-compiler
+        run: sudo apt-get update && sudo apt-get install -y protobuf-compiler
 
       - name: Install cross
         uses: taiki-e/install-action@v2
