@@ -226,20 +226,19 @@ jobs:
           tool: cross
 
       - name: Build target
-        # TODO:   There should be a step to build horustctl.
-        run: cross build --release --package horust --bin horust --target ${{ matrix.target }}
+        run: |
+          cross build --release --package horust --bin horust --target ${{ matrix.target }}
+          cross build --release --package horustctl --bin horustctl --target ${{ matrix.target }}
 
       - name: Package
         shell: bash
         run: |
-          #strip target/${{ matrix.target }}/release/horust
           cd target/${{ matrix.target }}/release
-          tar czvf ../../../horust-${{ matrix.target }}.tar.gz horust
+          tar czvf ../../../horust-${{ matrix.target }}.tar.gz horust horustctl
           cd -
 
       - name: Publish
         uses: softprops/action-gh-release@v2
-        # TODO: if any of the build step fails, the release should be deleted.
         with:
           files: 'horust*'
         env:
