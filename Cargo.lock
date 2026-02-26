@@ -655,7 +655,7 @@ checksum = "7f24254aa9a54b5c858eaee2f5bccdb46aaf0e486a595ed5fd8f86ba55232a70"
 
 [[package]]
 name = "horust"
-version = "0.1.11"
+version = "0.1.12"
 dependencies = [
  "anyhow",
  "assert_cmd",
@@ -663,7 +663,7 @@ dependencies = [
  "clap",
  "crossbeam",
  "env_logger",
- "horust-commands-lib 0.1.0 (registry+https://github.com/rust-lang/crates.io-index)",
+ "horust-commands-lib",
  "humantime-serde",
  "libc",
  "libcgroups",
@@ -684,39 +684,25 @@ dependencies = [
 
 [[package]]
 name = "horust-commands-lib"
-version = "0.1.0"
+version = "0.1.12"
 dependencies = [
  "anyhow",
  "env_logger",
  "log",
- "prost 0.14.3",
- "prost-build 0.14.3",
-]
-
-[[package]]
-name = "horust-commands-lib"
-version = "0.1.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "62d6e909dddd78a58b14d303f8668b778584c9e026914cf2660feda1d070ccf5"
-dependencies = [
- "anyhow",
- "log",
- "prost 0.13.5",
- "prost-build 0.13.5",
- "serde",
- "serde_json",
+ "prost",
+ "prost-build",
 ]
 
 [[package]]
 name = "horustctl"
-version = "0.1.0"
+version = "0.1.12"
 dependencies = [
  "anyhow",
  "assert_cmd",
  "clap",
  "env_logger",
  "escargot",
- "horust-commands-lib 0.1.0 (registry+https://github.com/rust-lang/crates.io-index)",
+ "horust-commands-lib",
  "log",
  "predicates",
  "rand",
@@ -1219,16 +1205,6 @@ checksum = "9b4f627cb1b25917193a259e49bdad08f671f8d9708acfd5fe0a8c1455d87220"
 
 [[package]]
 name = "petgraph"
-version = "0.7.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "3672b37090dbd86368a4145bc067582552b29c27377cad4e0a306c97f9bd7772"
-dependencies = [
- "fixedbitset",
- "indexmap",
-]
-
-[[package]]
-name = "petgraph"
 version = "0.8.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "8701b58ea97060d5e5b155d383a69952a60943f0e6dfe30b04c287beb0b27455"
@@ -1381,42 +1357,12 @@ dependencies = [
 
 [[package]]
 name = "prost"
-version = "0.13.5"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "2796faa41db3ec313a31f7624d9286acf277b52de526150b7e69f3debf891ee5"
-dependencies = [
- "bytes",
- "prost-derive 0.13.5",
-]
-
-[[package]]
-name = "prost"
 version = "0.14.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d2ea70524a2f82d518bce41317d0fae74151505651af45faf1ffbd6fd33f0568"
 dependencies = [
  "bytes",
- "prost-derive 0.14.3",
-]
-
-[[package]]
-name = "prost-build"
-version = "0.13.5"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "be769465445e8c1474e9c5dac2018218498557af32d9ed057325ec9a41ae81bf"
-dependencies = [
- "heck",
- "itertools",
- "log",
- "multimap",
- "once_cell",
- "petgraph 0.7.1",
- "prettyplease",
- "prost 0.13.5",
- "prost-types 0.13.5",
- "regex",
- "syn",
- "tempfile",
+ "prost-derive",
 ]
 
 [[package]]
@@ -1429,26 +1375,13 @@ dependencies = [
  "itertools",
  "log",
  "multimap",
- "petgraph 0.8.3",
+ "petgraph",
  "prettyplease",
- "prost 0.14.3",
- "prost-types 0.14.3",
+ "prost",
+ "prost-types",
  "regex",
  "syn",
  "tempfile",
-]
-
-[[package]]
-name = "prost-derive"
-version = "0.13.5"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "8a56d757972c98b346a9b766e3f02746cde6dd1cd1d1d563472929fdd74bec4d"
-dependencies = [
- "anyhow",
- "itertools",
- "proc-macro2",
- "quote",
- "syn",
 ]
 
 [[package]]
@@ -1466,20 +1399,11 @@ dependencies = [
 
 [[package]]
 name = "prost-types"
-version = "0.13.5"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "52c2c1bf36ddb1a1c396b3601a3cec27c2462e45f07c386894ec3ccf5332bd16"
-dependencies = [
- "prost 0.13.5",
-]
-
-[[package]]
-name = "prost-types"
 version = "0.14.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "8991c4cbdb8bc5b11f0b074ffe286c30e523de90fee5ba8132f1399f23cb3dd7"
 dependencies = [
- "prost 0.14.3",
+ "prost",
 ]
 
 [[package]]

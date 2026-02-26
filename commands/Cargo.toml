@@ -1,6 +1,6 @@
 [package]
 name = "horust-commands-lib"
-version = "0.1.0"
+version.workspace = true
 edition = "2024"
 authors = ["Federico Ponzi <me@fponzi.me>"]
 description = "A complete supervisor and init system, designed for running in containers."

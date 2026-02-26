@@ -1,6 +1,6 @@
 [package]
 name = "horust"
-version = "0.1.11"
+version.workspace = true
 authors = ["Federico Ponzi <me@fponzi.me>"]
 description = "A complete supervisor and init system, designed for running in containers."
 edition = "2024"
@@ -30,7 +30,7 @@ shellexpand = "~3.1"
 anyhow = "~1.0"
 thiserror = "~2.0"
 bytefmt = "0.1.7"
-horust-commands-lib = { version = "0.1.0" }
+horust-commands-lib.workspace = true
 oci-spec = "0.8.3"
 
 [target.'cfg(target_os = "linux")'.dependencies]
