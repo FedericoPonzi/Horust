@@ -1,6 +1,6 @@
 [package]
 name = "horustctl"
-version = "0.1.0"
+version.workspace = true
 edition = "2024"
 authors = ["Federico Ponzi <me@fponzi.me>"]
 rust-version = "1.85.1"
@@ -16,7 +16,7 @@ anyhow = "~1.0"
 log = "~0.4"
 env_logger = "~0.11"
 clap = { version = "~4.5", features = ["derive"] }
-horust-commands-lib = { version = "0.1.0" }
+horust-commands-lib.workspace = true
 
 [dev-dependencies]
 assert_cmd = "~2.1"
