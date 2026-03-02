@@ -6,7 +6,7 @@ use assert_cmd::cargo::cargo_bin;
 use assert_cmd::prelude::*;
 use predicates::boolean::PredicateBooleanExt;
 use predicates::str::contains;
-use rand::Rng;
+use rand::RngExt;
 use rand::distr::Alphanumeric;
 use std::path::Path;
 use std::process::Command;
