@@ -1,6 +1,6 @@
 use assert_cmd::prelude::*;
 use predicates::str::contains;
-use rand::Rng;
+use rand::RngExt;
 use rand::distr::Alphanumeric;
 use std::time::Duration;
 
@@ -97,7 +97,7 @@ fn test_multiple() {
 #[test]
 fn test_stress_test_chained_services() {
     let (mut cmd, temp_dir) = get_cli();
-    let script = r#"#!/usr/bin/env bash 
+    let script = r#"#!/usr/bin/env bash
 :"#;
 
     let max = 10;

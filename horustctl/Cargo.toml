@@ -22,5 +22,5 @@ horust-commands-lib.workspace = true
 assert_cmd = "~2.1"
 escargot = "0.5.15"
 predicates = "~3.1"
-rand = "~0.9"
+rand = "~0.10"
 tempfile = "~3"

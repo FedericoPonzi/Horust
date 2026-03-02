@@ -5,7 +5,7 @@
 use assert_cmd::cargo::cargo_bin;
 use nix::sys::signal::{Signal, kill};
 use nix::unistd::Pid;
-use rand::Rng;
+use rand::RngExt;
 use rand::distr::Alphanumeric;
 use std::path::Path;
 use std::process::Command;
