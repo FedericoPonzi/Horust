@@ -703,7 +703,7 @@ dependencies = [
  "libcgroups",
  "log",
  "maplit",
- "nix 0.31.2",
+ "nix",
  "oci-spec",
  "predicates",
  "rand",
@@ -1083,7 +1083,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "ff828a1e0ab31b46ebefd1e8e231b7572dec6f663d17ecee1bee42a565649672"
 dependencies = [
  "fixedbitset",
- "nix 0.29.0",
+ "nix",
  "oci-spec",
  "pathrs",
  "procfs",
@@ -1170,18 +1170,6 @@ name = "nix"
 version = "0.29.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "71e2746dc3a24dd78b3cfcb7be93368c6de9963d30f43a6a73998a9cf4b17b46"
-dependencies = [
- "bitflags",
- "cfg-if",
- "cfg_aliases",
- "libc",
-]
-
-[[package]]
-name = "nix"
-version = "0.31.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "5d6d0705320c1e6ba1d912b5e37cf18071b6c2e9b7fa8215a1e8a7651966f5d3"
 dependencies = [
  "bitflags",
  "cfg-if",
