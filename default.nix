@@ -1,9 +1,11 @@
 {
   lib,
   rustPlatform,
+  protobuf,
 } : rustPlatform.buildRustPackage {
     name = "horust";
-    version = lib.commitIdFromGitRepo ./.git;
+    version = "master";
+    nativeBuildInputs = [protobuf];
     src = ./.;
-    cargoHash = lib.fakeHash;
+    cargoHash = "sha256-k5h1Z5AsDF+mGqqhGEzRGSxVNGOILKlMjQOoJSlbPUs=";
 }
