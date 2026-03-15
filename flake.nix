@@ -1,5 +1,5 @@
 {
-  description = "Description for the project";
+  description = "Horust - a supervisor / init system written in Rust, designed for containers";
 
   inputs = {
     flake-parts.url = "github:hercules-ci/flake-parts";
