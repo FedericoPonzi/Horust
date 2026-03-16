@@ -98,6 +98,20 @@ install it:
 cargo install horust
 ```
 
+Alternatively, horust can also be built with [nix](https://github.com/NixOS/nix):
+
+With flakes:
+```
+nix build github:FedericoPonzi/Horust
+```
+
+Without flakes:
+```
+git clone https://github.com/FedericoPonzi/Horust
+cd Horust
+nix-build
+```
+
 ## Horustctl:
 
 Horustctl is a program that allows you to interact with horust. They communicate using Unix Domain Socket (UDS), and by

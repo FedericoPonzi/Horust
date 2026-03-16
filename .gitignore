@@ -3,3 +3,5 @@
 .idea
 **/target
 # needed to be checked in because of how cargo publish works. commands/src/proto/messages.rs
+# nix builds
+/result
