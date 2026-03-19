@@ -119,3 +119,90 @@ exit 1
     let recv = run_async(&mut cmd, true);
     recv.recv_or_kill(Duration::from_secs(10));
 }
+
+/// Test that a service with shutdown-after waits for its dependency to stop first.
+/// Service "a" has no shutdown-after and stops immediately on SIGTERM.
+/// Service "b" has shutdown-after = ["a.toml"] and should only stop after "a" finishes.
+#[test]
+fn test_shutdown_after_basic() {
+    let (mut cmd, temp_dir) = get_cli();
+    let output_file = temp_dir.path().join("shutdown_order.txt");
+
+    // Service A: writes "a" to shared file on SIGTERM, then exits
+    let script_a = format!(
+        r#"#!/usr/bin/env bash
+trap 'echo "a" >> {0}; exit 0' TERM
+while true; do sleep 0.1; done
+"#,
+        output_file.display()
+    );
+    store_service_script(temp_dir.path(), &script_a, None, Some("a"));
+
+    // Service B: writes "b" on SIGTERM, has shutdown-after = ["a.toml"]
+    let script_b = format!(
+        r#"#!/usr/bin/env bash
+trap 'echo "b" >> {0}; exit 0' TERM
+while true; do sleep 0.1; done
+"#,
+        output_file.display()
+    );
+    let service_b = r#"shutdown-after = ["a.toml"]"#;
+    store_service_script(temp_dir.path(), &script_b, Some(service_b), Some("b"));
+
+    let recv = run_async(&mut cmd, true);
+    // Give services time to start
+    std::thread::sleep(Duration::from_secs(1));
+    kill(recv.pid, Signal::SIGTERM).expect("kill");
+    recv.recv_or_kill(Duration::from_secs(10));
+
+    let output = std::fs::read_to_string(&output_file).expect("read output file");
+    assert_eq!(output.trim(), "a\nb", "Service a should stop before b");
+}
+
+/// Test a chain of shutdown-after dependencies: a → b → c
+/// Expected shutdown order: c stops first, then b, then a.
+#[test]
+fn test_shutdown_after_chain() {
+    let (mut cmd, temp_dir) = get_cli();
+    let output_file = temp_dir.path().join("shutdown_order.txt");
+
+    // Service A: shutdown-after = ["b.toml"] — stops last
+    let script_a = format!(
+        r#"#!/usr/bin/env bash
+trap 'echo "a" >> {0}; exit 0' TERM
+while true; do sleep 0.1; done
+"#,
+        output_file.display()
+    );
+    let service_a = r#"shutdown-after = ["b.toml"]"#;
+    store_service_script(temp_dir.path(), &script_a, Some(service_a), Some("a"));
+
+    // Service B: shutdown-after = ["c.toml"] — stops second
+    let script_b = format!(
+        r#"#!/usr/bin/env bash
+trap 'echo "b" >> {0}; exit 0' TERM
+while true; do sleep 0.1; done
+"#,
+        output_file.display()
+    );
+    let service_b = r#"shutdown-after = ["c.toml"]"#;
+    store_service_script(temp_dir.path(), &script_b, Some(service_b), Some("b"));
+
+    // Service C: no shutdown-after — stops first
+    let script_c = format!(
+        r#"#!/usr/bin/env bash
+trap 'echo "c" >> {0}; exit 0' TERM
+while true; do sleep 0.1; done
+"#,
+        output_file.display()
+    );
+    store_service_script(temp_dir.path(), &script_c, None, Some("c"));
+
+    let recv = run_async(&mut cmd, true);
+    std::thread::sleep(Duration::from_secs(1));
+    kill(recv.pid, Signal::SIGTERM).expect("kill");
+    recv.recv_or_kill(Duration::from_secs(15));
+
+    let output = std::fs::read_to_string(&output_file).expect("read output file");
+    assert_eq!(output.trim(), "c\nb\na", "Shutdown order should be c, b, a");
+}

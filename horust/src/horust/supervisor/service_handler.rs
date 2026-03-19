@@ -48,6 +48,10 @@ impl ServiceHandler {
         self.service.start_after.as_ref()
     }
 
+    pub fn shutdown_after(&self) -> &Vec<String> {
+        self.service.shutdown_after.as_ref()
+    }
+
     pub(crate) fn is_early_state(&self) -> bool {
         const EARLY_STATES: [ServiceStatus; 3] = [
             ServiceStatus::Initial,
@@ -127,7 +131,7 @@ pub(crate) fn next(
     match lifecycle_status {
         LifecycleStatus::Running => next_events(repo, service_handler),
         LifecycleStatus::ShuttingDown(shutting_down) => {
-            next_events_shutting_down(service_handler, shutting_down)
+            next_events_shutting_down(service_handler, shutting_down, repo)
         }
     }
 }
@@ -194,6 +198,7 @@ fn next_events(repo: &Repo, service_handler: &ServiceHandler) -> Vec<Event> {
 fn next_events_shutting_down(
     service_handler: &ServiceHandler,
     shutting_down: ShuttingDown,
+    repo: &Repo,
 ) -> Vec<Event> {
     let ev_status =
         |status: ServiceStatus| Event::new_status_update(service_handler.name(), status);
@@ -201,10 +206,15 @@ fn next_events_shutting_down(
 
     // Handle the new state separately if we're shutting down.
     match &service_handler.status {
-        ServiceStatus::Running | ServiceStatus::Started => vec![
-            ev_status(ServiceStatus::InKilling),
-            Event::Kill(service_handler.name().clone()),
-        ],
+        ServiceStatus::Running | ServiceStatus::Started
+            if shutting_down == ShuttingDown::Forcefully
+                || repo.is_service_killable(service_handler) =>
+        {
+            vec![
+                ev_status(ServiceStatus::InKilling),
+                Event::Kill(service_handler.name().clone()),
+            ]
+        }
         ServiceStatus::Success | ServiceStatus::Initial => vev_status(ServiceStatus::Finished),
         ServiceStatus::Failed => vev_status(ServiceStatus::FinishedFailed),
         ServiceStatus::InKilling if should_force_kill(service_handler, shutting_down) => {

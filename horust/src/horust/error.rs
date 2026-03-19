@@ -22,6 +22,10 @@ pub enum ValidationError {
         "Service '{before}', should start after '{after}', but there is no service with such name."
     )]
     MissingDependency { before: String, after: String },
+    #[error(
+        "Service '{after}' has shutdown-after = ['{before}'], but there is no service with such name."
+    )]
+    MissingShutdownDependency { before: String, after: String },
     #[error("Command is defined, but it is empty for service: {service}")]
     CommandEmpty { service: String },
 }
