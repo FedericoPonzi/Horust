@@ -439,4 +439,495 @@ wait = "10s"
         let exp = vec![Event::ShuttingDownInitiated(ShuttingDown::Gracefully)];
         assert_eq!(evs, exp);
     }
+
+    // --- Helper to build a ServiceHandler in a given state ---
+
+    use crate::horust::supervisor::test_utils::{
+        make_handler, make_repo, make_repo_from_services, make_repo_with_start_after,
+    };
+
+    // ========================================================================
+    // State machine transition tests (handle_status_change)
+    // ========================================================================
+
+    #[test]
+    fn test_valid_transitions() {
+        use ServiceStatus::*;
+
+        // (current_status, next_status, expected_resulting_status)
+        let valid_cases = vec![
+            (Success, Initial, Initial),
+            (Failed, Initial, Initial),
+            (Initial, Starting, Starting),
+            (Starting, Started, Started),
+            (Started, Running, Running),
+            (Running, Success, Success),
+            (Running, Failed, Failed),
+            (Success, Finished, Finished),
+            (Initial, Finished, Finished),
+            // InKilling from various valid sources
+            (Running, InKilling, InKilling),
+            (Starting, InKilling, InKilling),
+            (Started, InKilling, InKilling),
+            // FinishedFailed from various sources
+            (Starting, FinishedFailed, FinishedFailed),
+            (Started, FinishedFailed, FinishedFailed),
+            (Failed, FinishedFailed, FinishedFailed),
+            (InKilling, FinishedFailed, FinishedFailed),
+            // Success/Failed from InKilling
+            (InKilling, Success, Success),
+            (InKilling, Failed, Failed),
+        ];
+
+        for (current, next, expected) in valid_cases {
+            let sh = make_handler("svc", current.clone());
+            let (new_sh, new_status) = sh.change_status(next.clone());
+            assert_eq!(
+                new_status, expected,
+                "Transition {:?} → {:?} should produce {:?}, got {:?}",
+                current, next, expected, new_status
+            );
+            assert_eq!(new_sh.status, expected);
+        }
+    }
+
+    #[test]
+    fn test_invalid_transitions_leave_status_unchanged() {
+        use ServiceStatus::*;
+
+        let invalid_cases = vec![
+            (Initial, Running),        // Can't jump to Running directly
+            (Initial, Failed),         // Not a valid source for Failed
+            (Finished, Starting),      // Terminal state
+            (Finished, Initial),       // Terminal state (not listed as valid source for Initial)
+            (FinishedFailed, Initial), // Terminal state
+            (Running, Initial),        // Can't go backward
+            (Running, Starting),       // Can't go backward
+            (Running, Started),        // Can't go backward
+            (Success, Starting),       // Not a valid source for Starting
+        ];
+
+        for (current, next) in invalid_cases {
+            let sh = make_handler("svc", current.clone());
+            let (_new_sh, new_status) = sh.change_status(next.clone());
+            assert_eq!(
+                new_status, current,
+                "Invalid transition {:?} → {:?} should leave status as {:?}, got {:?}",
+                current, next, current, new_status
+            );
+        }
+    }
+
+    #[test]
+    fn test_same_status_transition_is_noop() {
+        use ServiceStatus::*;
+        for status in [
+            Initial,
+            Starting,
+            Started,
+            Running,
+            InKilling,
+            Success,
+            Failed,
+            Finished,
+            FinishedFailed,
+        ] {
+            let sh = make_handler("svc", status.clone());
+            let (new_sh, new_status) = sh.change_status(status.clone());
+            assert_eq!(
+                new_status,
+                status.clone(),
+                "Same-status transition for {:?} should be noop",
+                status
+            );
+            assert_eq!(new_sh.status, status);
+        }
+    }
+
+    #[test]
+    fn test_in_killing_from_initial_becomes_success() {
+        // Special case: InKilling from Initial → Success (service was never started)
+        let sh = make_handler("svc", ServiceStatus::Initial);
+        let (new_sh, new_status) = sh.change_status(ServiceStatus::InKilling);
+        assert_eq!(new_status, ServiceStatus::Success);
+        assert_eq!(new_sh.status, ServiceStatus::Success);
+    }
+
+    #[test]
+    fn test_started_transition_resets_restart_attempts() {
+        let mut sh = make_handler("svc", ServiceStatus::Starting);
+        sh.restart_attempts = 5;
+        let (new_sh, new_status) = sh.change_status(ServiceStatus::Started);
+        assert_eq!(new_status, ServiceStatus::Started);
+        assert_eq!(new_sh.restart_attempts, 0);
+    }
+
+    #[test]
+    fn test_non_started_transition_preserves_restart_attempts() {
+        let mut sh = make_handler("svc", ServiceStatus::Started);
+        sh.restart_attempts = 3;
+        let (new_sh, _) = sh.change_status(ServiceStatus::Running);
+        assert_eq!(new_sh.restart_attempts, 3);
+    }
+
+    // ========================================================================
+    // Healthcheck event tracking tests
+    // ========================================================================
+
+    use crate::horust::formats::HealthinessStatus;
+
+    #[test]
+    fn test_add_healthcheck_healthy_while_running() {
+        let mut sh = make_handler("svc", ServiceStatus::Running);
+        sh.add_healthcheck_event(HealthinessStatus::Healthy);
+        assert_eq!(sh.healthiness_checks_failed, Some(0));
+    }
+
+    #[test]
+    fn test_add_healthcheck_event() {
+        // Unhealthy while alive increments
+        let mut sh = make_handler("svc", ServiceStatus::Running);
+        sh.add_healthcheck_event(HealthinessStatus::Unhealthy);
+        assert_eq!(sh.healthiness_checks_failed, Some(1));
+        sh.add_healthcheck_event(HealthinessStatus::Unhealthy);
+        assert_eq!(sh.healthiness_checks_failed, Some(2));
+
+        // Healthy while alive doesn't decrement (just adds 0)
+        sh.add_healthcheck_event(HealthinessStatus::Healthy);
+        assert_eq!(sh.healthiness_checks_failed, Some(2));
+
+        // Unhealthy while NOT alive (Initial) stays at 0
+        let mut sh = make_handler("svc", ServiceStatus::Initial);
+        sh.add_healthcheck_event(HealthinessStatus::Unhealthy);
+        assert_eq!(sh.healthiness_checks_failed, Some(0));
+
+        // All alive states (Running, Started, Starting) should increment
+        for status in [
+            ServiceStatus::Running,
+            ServiceStatus::Started,
+            ServiceStatus::Starting,
+        ] {
+            let mut sh = make_handler("svc", status.clone());
+            sh.add_healthcheck_event(HealthinessStatus::Unhealthy);
+            assert_eq!(
+                sh.healthiness_checks_failed,
+                Some(1),
+                "Unhealthy while {:?} should increment",
+                status
+            );
+        }
+    }
+
+    #[test]
+    fn test_has_some_failed_healthchecks() {
+        let sh = make_handler("svc", ServiceStatus::Running);
+        // None → unwrap_or(1) > 0 → true (conservative: assume unhealthy)
+        assert!(sh.has_some_failed_healthchecks());
+
+        let mut sh = make_handler("svc", ServiceStatus::Running);
+        sh.healthiness_checks_failed = Some(0);
+        assert!(!sh.has_some_failed_healthchecks());
+
+        sh.healthiness_checks_failed = Some(3);
+        assert!(sh.has_some_failed_healthchecks());
+    }
+
+    #[test]
+    fn test_restart_attempts_are_over() {
+        // attempts=0 (default) → always "over" (first condition: attempts == 0)
+        let sh: ServiceHandler = Service::from_name("svc").into();
+        assert!(sh.restart_attempts_are_over());
+
+        // attempts=5, restart_attempts=3 → not over
+        let svc: Service =
+            Service::from_str("command = \"test\"\n[restart]\nattempts = 5").unwrap();
+        let mut sh: ServiceHandler = svc.into();
+        sh.restart_attempts = 3;
+        assert!(!sh.restart_attempts_are_over());
+
+        // attempts=5, restart_attempts=6 → over
+        sh.restart_attempts = 6;
+        assert!(sh.restart_attempts_are_over());
+    }
+
+    // ========================================================================
+    // should_force_kill edge cases
+    // ========================================================================
+
+    #[test]
+    fn test_should_force_kill_forceful_shutdown() {
+        let service: Service = toml::from_str(r#"command="x""#).unwrap();
+        let mut sh: ServiceHandler = service.into();
+        sh.pid = Some(Pid::this());
+        sh.status = ServiceStatus::InKilling;
+        // Forceful → always force kill (if has PID)
+        assert!(should_force_kill(&sh, ShuttingDown::Forcefully));
+        // No PID → never force kill, even if forceful
+        sh.pid = None;
+        assert!(!should_force_kill(&sh, ShuttingDown::Forcefully));
+    }
+
+    // ========================================================================
+    // FSM event generation tests — next_events (normal operation)
+    // ========================================================================
+
+    use crate::horust::formats::RestartStrategy;
+    use crate::horust::supervisor::LifecycleStatus;
+
+    #[test]
+    fn test_next_initial_runnable_emits_run() {
+        let repo = make_repo(vec![("svc", ServiceStatus::Initial)]);
+        let sh = repo.services.get("svc").unwrap();
+        let events = sh.next(&repo, LifecycleStatus::Running);
+        assert_eq!(events, vec![Event::Run("svc".into())]);
+    }
+
+    #[test]
+    fn test_next_initial_deps_not_met_emits_nothing() {
+        let repo = make_repo_with_start_after(vec![
+            ("dep", ServiceStatus::Initial, vec![]),
+            ("svc", ServiceStatus::Initial, vec!["dep"]),
+        ]);
+        let sh = repo.services.get("svc").unwrap();
+        let events = sh.next(&repo, LifecycleStatus::Running);
+        assert!(events.is_empty());
+    }
+
+    #[test]
+    fn test_next_initial_deps_met_emits_run() {
+        let repo = make_repo_with_start_after(vec![
+            ("dep", ServiceStatus::Running, vec![]),
+            ("svc", ServiceStatus::Initial, vec!["dep"]),
+        ]);
+        let sh = repo.services.get("svc").unwrap();
+        let events = sh.next(&repo, LifecycleStatus::Running);
+        assert_eq!(events, vec![Event::Run("svc".into())]);
+    }
+
+    #[test]
+    fn test_next_started_no_failed_healthchecks_becomes_running() {
+        let mut repo = make_repo(vec![("svc", ServiceStatus::Started)]);
+        {
+            let sh = repo.services.get_mut("svc").unwrap();
+            sh.healthiness_checks_failed = Some(0);
+        }
+        let sh = repo.services.get("svc").unwrap();
+        let events = sh.next(&repo, LifecycleStatus::Running);
+        assert_eq!(
+            events,
+            vec![Event::new_status_update("svc", ServiceStatus::Running)]
+        );
+    }
+
+    #[test]
+    fn test_next_started_with_failed_healthchecks_stays() {
+        // has_some_failed_healthchecks() returns true → no transition
+        let repo = make_repo(vec![("svc", ServiceStatus::Started)]);
+        // Default healthiness_checks_failed is None → unwrap_or(1) > 0 → true
+        let sh = repo.services.get("svc").unwrap();
+        let events = sh.next(&repo, LifecycleStatus::Running);
+        assert!(events.is_empty());
+    }
+
+    #[test]
+    fn test_next_running_healthchecks_exceeded_kills() {
+        let mut repo = make_repo(vec![("svc", ServiceStatus::Running)]);
+        {
+            let sh = repo.services.get_mut("svc").unwrap();
+            sh.healthiness_checks_failed = Some(4); // > default max_failed of 3
+        }
+        let sh = repo.services.get("svc").unwrap();
+        let events = sh.next(&repo, LifecycleStatus::Running);
+        assert_eq!(
+            events,
+            vec![
+                Event::new_status_update("svc", ServiceStatus::InKilling),
+                Event::Kill("svc".into()),
+            ]
+        );
+    }
+
+    #[test]
+    fn test_next_running_healthchecks_ok_emits_nothing() {
+        let mut repo = make_repo(vec![("svc", ServiceStatus::Running)]);
+        {
+            let sh = repo.services.get_mut("svc").unwrap();
+            sh.healthiness_checks_failed = Some(2); // <= default max_failed of 3
+        }
+        let sh = repo.services.get("svc").unwrap();
+        let events = sh.next(&repo, LifecycleStatus::Running);
+        assert!(events.is_empty());
+    }
+
+    #[test]
+    fn test_next_success_with_never_restart_becomes_finished() {
+        let repo = make_repo(vec![("svc", ServiceStatus::Success)]);
+        let sh = repo.services.get("svc").unwrap();
+        let events = sh.next(&repo, LifecycleStatus::Running);
+        assert_eq!(
+            events,
+            vec![Event::new_status_update("svc", ServiceStatus::Finished)]
+        );
+    }
+
+    #[test]
+    fn test_next_success_with_always_restart_becomes_initial() {
+        let mut svc = Service::from_name("svc");
+        svc.restart.strategy = RestartStrategy::Always;
+        let mut repo = make_repo_from_services(vec![svc]);
+        repo.services.get_mut("svc").unwrap().status = ServiceStatus::Success;
+
+        let sh = repo.services.get("svc").unwrap();
+        let events = sh.next(&repo, LifecycleStatus::Running);
+        assert_eq!(
+            events,
+            vec![Event::new_status_update("svc", ServiceStatus::Initial)]
+        );
+    }
+
+    #[test]
+    fn test_next_failed_with_ignore_strategy() {
+        let mut svc = Service::from_name("svc");
+        svc.failure.strategy = FailureStrategy::Ignore;
+        svc.restart.strategy = RestartStrategy::OnFailure;
+        let mut repo = make_repo_from_services(vec![svc]);
+        repo.services.get_mut("svc").unwrap().status = ServiceStatus::Failed;
+
+        let sh = repo.services.get("svc").unwrap();
+        let events = sh.next(&repo, LifecycleStatus::Running);
+        assert!(events.contains(&Event::new_status_update("svc", ServiceStatus::Initial)));
+    }
+
+    #[test]
+    fn test_next_failed_shutdown_strategy() {
+        let mut svc = Service::from_name("svc");
+        svc.failure.strategy = FailureStrategy::Shutdown;
+        let mut repo = make_repo_from_services(vec![svc]);
+        repo.services.get_mut("svc").unwrap().status = ServiceStatus::Failed;
+
+        let sh = repo.services.get("svc").unwrap();
+        let events = sh.next(&repo, LifecycleStatus::Running);
+        assert!(events.contains(&Event::ShuttingDownInitiated(ShuttingDown::Gracefully)));
+    }
+
+    #[test]
+    fn test_next_failed_kill_dependents_strategy() {
+        let mut svc = Service::from_name("svc");
+        svc.failure.strategy = FailureStrategy::KillDependents;
+
+        let mut dep = Service::from_name("dep");
+        dep.start_after = vec!["svc".to_string()];
+
+        let mut repo = make_repo_from_services(vec![svc, dep]);
+        repo.services.get_mut("svc").unwrap().status = ServiceStatus::Failed;
+        repo.services.get_mut("dep").unwrap().status = ServiceStatus::Running;
+
+        let sh = repo.services.get("svc").unwrap();
+        let events = sh.next(&repo, LifecycleStatus::Running);
+
+        assert!(events.contains(&Event::new_status_update("dep", ServiceStatus::InKilling)));
+        assert!(events.contains(&Event::Kill("dep".into())));
+    }
+
+    #[test]
+    fn test_next_in_killing_no_force_kill_emits_nothing() {
+        let mut repo = make_repo(vec![("svc", ServiceStatus::InKilling)]);
+        {
+            let sh = repo.services.get_mut("svc").unwrap();
+            sh.pid = Some(Pid::this());
+            sh.shutting_down_started();
+        }
+        let sh = repo.services.get("svc").unwrap();
+        let events = sh.next(&repo, LifecycleStatus::Running);
+        // Recently started shutting down, wait time not exceeded
+        assert!(events.is_empty());
+    }
+
+    // ========================================================================
+    // FSM event generation tests — shutdown
+    // ========================================================================
+
+    #[test]
+    fn test_next_shutdown_state_transitions() {
+        let graceful = LifecycleStatus::ShuttingDown(ShuttingDown::Gracefully);
+
+        // Running/Started → InKilling + Kill
+        for status in [ServiceStatus::Running, ServiceStatus::Started] {
+            let repo = make_repo(vec![("svc", status.clone())]);
+            let sh = repo.services.get("svc").unwrap();
+            let events = sh.next(&repo, graceful);
+            assert_eq!(
+                events,
+                vec![
+                    Event::new_status_update("svc", ServiceStatus::InKilling),
+                    Event::Kill("svc".into()),
+                ],
+                "Shutdown from {:?} should produce InKilling+Kill",
+                status
+            );
+        }
+
+        // Success/Initial → Finished
+        for status in [ServiceStatus::Success, ServiceStatus::Initial] {
+            let repo = make_repo(vec![("svc", status.clone())]);
+            let sh = repo.services.get("svc").unwrap();
+            let events = sh.next(&repo, graceful);
+            assert_eq!(
+                events,
+                vec![Event::new_status_update("svc", ServiceStatus::Finished)],
+                "Shutdown from {:?} should produce Finished",
+                status
+            );
+        }
+
+        // Failed → FinishedFailed
+        let repo = make_repo(vec![("svc", ServiceStatus::Failed)]);
+        let sh = repo.services.get("svc").unwrap();
+        let events = sh.next(&repo, graceful);
+        assert_eq!(
+            events,
+            vec![Event::new_status_update(
+                "svc",
+                ServiceStatus::FinishedFailed
+            )]
+        );
+
+        // Already Finished/FinishedFailed → nothing
+        for status in [ServiceStatus::Finished, ServiceStatus::FinishedFailed] {
+            let repo = make_repo(vec![("svc", status)]);
+            let sh = repo.services.get("svc").unwrap();
+            assert!(sh.next(&repo, graceful).is_empty());
+        }
+    }
+
+    #[test]
+    fn test_next_shutdown_force_kill() {
+        // InKilling + graceful + recently started → no force kill yet
+        let mut repo = make_repo(vec![("svc", ServiceStatus::InKilling)]);
+        {
+            let sh = repo.services.get_mut("svc").unwrap();
+            sh.pid = Some(Pid::this());
+            sh.shutting_down_started();
+        }
+        let sh = repo.services.get("svc").unwrap();
+        assert!(
+            sh.next(
+                &repo,
+                LifecycleStatus::ShuttingDown(ShuttingDown::Gracefully)
+            )
+            .is_empty()
+        );
+
+        // InKilling + forceful → force kill immediately
+        let mut repo = make_repo(vec![("svc", ServiceStatus::InKilling)]);
+        repo.services.get_mut("svc").unwrap().pid = Some(Pid::this());
+        let sh = repo.services.get("svc").unwrap();
+        assert_eq!(
+            sh.next(
+                &repo,
+                LifecycleStatus::ShuttingDown(ShuttingDown::Forcefully)
+            ),
+            vec![Event::new_force_kill("svc")]
+        );
+    }
 }

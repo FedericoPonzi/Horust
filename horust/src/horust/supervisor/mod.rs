@@ -25,6 +25,63 @@ mod repo;
 mod service_handler;
 mod signal_handling;
 
+#[cfg(test)]
+mod test_utils {
+    use crate::horust::bus::{Bus, BusConnector};
+    use crate::horust::formats::{Event, Service, ServiceStatus};
+    use crate::horust::supervisor::repo::Repo;
+    use crate::horust::supervisor::service_handler::ServiceHandler;
+
+    fn make_bus_connector() -> BusConnector<Event> {
+        let bus: Bus<Event> = Bus::new();
+        let connector = bus.join_bus();
+        std::thread::spawn(move || bus.run());
+        connector
+    }
+
+    pub fn make_handler(name: &str, status: ServiceStatus) -> ServiceHandler {
+        let mut sh: ServiceHandler = Service::from_name(name).into();
+        sh.status = status;
+        sh
+    }
+
+    pub fn make_repo_from_services(services: Vec<Service>) -> Repo {
+        Repo::new(make_bus_connector(), services)
+    }
+
+    pub fn make_repo(services_with_status: Vec<(&str, ServiceStatus)>) -> Repo {
+        let svc_list: Vec<Service> = services_with_status
+            .iter()
+            .map(|(name, _)| Service::from_name(name))
+            .collect();
+        let mut repo = Repo::new(make_bus_connector(), svc_list);
+
+        for (name, status) in &services_with_status {
+            let sh = repo.services.get_mut(*name).unwrap();
+            sh.status = status.clone();
+        }
+        repo
+    }
+
+    pub fn make_repo_with_start_after(services: Vec<(&str, ServiceStatus, Vec<&str>)>) -> Repo {
+        let svc_list: Vec<Service> = services
+            .iter()
+            .map(|(name, _, deps)| {
+                let mut svc = Service::from_name(name);
+                svc.start_after = deps.iter().map(|d| d.to_string()).collect();
+                svc
+            })
+            .collect();
+        let mut repo = Repo::new(make_bus_connector(), svc_list);
+
+        for (name, status, _) in &services {
+            let sh = repo.services.get_mut(*name).unwrap();
+            sh.status = status.clone();
+        }
+        repo
+    }
+}
+
 /// How many pid reap per iteration of the reaper
 const MAX_PROCESS_REAPS_ITERS: u32 = 20;
 
