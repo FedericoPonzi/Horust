@@ -111,3 +111,250 @@ impl Repo {
             .any(|(_s_name, sh)| sh.is_finished_failed())
     }
 }
+
+#[cfg(test)]
+mod test {
+    use super::*;
+    use crate::horust::formats::ServiceStatus;
+
+    use crate::horust::supervisor::test_utils::{
+        make_repo, make_repo_from_services, make_repo_with_start_after,
+    };
+
+    // ========================================================================
+    // all_have_finished tests
+    // ========================================================================
+
+    #[test]
+    fn test_all_have_finished_when_all_finished() {
+        let repo = make_repo(vec![
+            ("a", ServiceStatus::Finished),
+            ("b", ServiceStatus::Finished),
+        ]);
+        assert!(repo.all_have_finished());
+    }
+
+    #[test]
+    fn test_all_have_finished_with_finished_failed() {
+        let repo = make_repo(vec![
+            ("a", ServiceStatus::Finished),
+            ("b", ServiceStatus::FinishedFailed),
+        ]);
+        assert!(repo.all_have_finished());
+    }
+
+    #[test]
+    fn test_all_have_finished_false_when_running() {
+        let repo = make_repo(vec![
+            ("a", ServiceStatus::Finished),
+            ("b", ServiceStatus::Running),
+        ]);
+        assert!(!repo.all_have_finished());
+    }
+
+    #[test]
+    fn test_all_have_finished_false_when_initial() {
+        let repo = make_repo(vec![("a", ServiceStatus::Initial)]);
+        assert!(!repo.all_have_finished());
+    }
+
+    // ========================================================================
+    // any_finished_failed tests
+    // ========================================================================
+
+    #[test]
+    fn test_any_finished_failed_true() {
+        let repo = make_repo(vec![
+            ("a", ServiceStatus::Finished),
+            ("b", ServiceStatus::FinishedFailed),
+        ]);
+        assert!(repo.any_finished_failed());
+    }
+
+    #[test]
+    fn test_any_finished_failed_false() {
+        let repo = make_repo(vec![
+            ("a", ServiceStatus::Finished),
+            ("b", ServiceStatus::Finished),
+        ]);
+        assert!(!repo.any_finished_failed());
+    }
+
+    // ========================================================================
+    // is_service_runnable tests
+    // ========================================================================
+
+    #[test]
+    fn test_is_runnable_no_dependencies() {
+        let repo = make_repo(vec![("svc", ServiceStatus::Initial)]);
+        let sh = repo.services.get("svc").unwrap();
+        assert!(repo.is_service_runnable(sh));
+    }
+
+    #[test]
+    fn test_is_runnable_not_initial_state() {
+        let repo = make_repo(vec![("svc", ServiceStatus::Running)]);
+        let sh = repo.services.get("svc").unwrap();
+        assert!(!repo.is_service_runnable(sh));
+    }
+
+    #[test]
+    fn test_is_runnable_dependency_running() {
+        let repo = make_repo_with_start_after(vec![
+            ("dep", ServiceStatus::Running, vec![]),
+            ("svc", ServiceStatus::Initial, vec!["dep"]),
+        ]);
+        let sh = repo.services.get("svc").unwrap();
+        assert!(repo.is_service_runnable(sh));
+    }
+
+    #[test]
+    fn test_is_runnable_dependency_finished() {
+        let repo = make_repo_with_start_after(vec![
+            ("dep", ServiceStatus::Finished, vec![]),
+            ("svc", ServiceStatus::Initial, vec!["dep"]),
+        ]);
+        let sh = repo.services.get("svc").unwrap();
+        assert!(repo.is_service_runnable(sh));
+    }
+
+    #[test]
+    fn test_is_not_runnable_dependency_not_started() {
+        let repo = make_repo_with_start_after(vec![
+            ("dep", ServiceStatus::Initial, vec![]),
+            ("svc", ServiceStatus::Initial, vec!["dep"]),
+        ]);
+        let sh = repo.services.get("svc").unwrap();
+        assert!(!repo.is_service_runnable(sh));
+    }
+
+    #[test]
+    fn test_is_not_runnable_dependency_starting() {
+        let repo = make_repo_with_start_after(vec![
+            ("dep", ServiceStatus::Starting, vec![]),
+            ("svc", ServiceStatus::Initial, vec!["dep"]),
+        ]);
+        let sh = repo.services.get("svc").unwrap();
+        assert!(!repo.is_service_runnable(sh));
+    }
+
+    #[test]
+    fn test_is_runnable_multiple_deps_all_ready() {
+        let repo = make_repo_with_start_after(vec![
+            ("dep1", ServiceStatus::Running, vec![]),
+            ("dep2", ServiceStatus::Finished, vec![]),
+            ("svc", ServiceStatus::Initial, vec!["dep1", "dep2"]),
+        ]);
+        let sh = repo.services.get("svc").unwrap();
+        assert!(repo.is_service_runnable(sh));
+    }
+
+    #[test]
+    fn test_is_not_runnable_multiple_deps_partial() {
+        let repo = make_repo_with_start_after(vec![
+            ("dep1", ServiceStatus::Running, vec![]),
+            ("dep2", ServiceStatus::Initial, vec![]),
+            ("svc", ServiceStatus::Initial, vec!["dep1", "dep2"]),
+        ]);
+        let sh = repo.services.get("svc").unwrap();
+        assert!(!repo.is_service_runnable(sh));
+    }
+
+    // ========================================================================
+    // get_dependents tests
+    // ========================================================================
+
+    #[test]
+    fn test_get_dependents_none() {
+        let repo = make_repo_with_start_after(vec![
+            ("a", ServiceStatus::Running, vec![]),
+            ("b", ServiceStatus::Initial, vec![]),
+        ]);
+        let deps = repo.get_dependents("a");
+        assert!(deps.is_empty());
+    }
+
+    #[test]
+    fn test_get_dependents_single() {
+        let repo = make_repo_with_start_after(vec![
+            ("a", ServiceStatus::Running, vec![]),
+            ("b", ServiceStatus::Initial, vec!["a"]),
+        ]);
+        let deps = repo.get_dependents("a");
+        assert_eq!(deps, vec!["b".to_string()]);
+    }
+
+    #[test]
+    fn test_get_dependents_multiple() {
+        let repo = make_repo_with_start_after(vec![
+            ("a", ServiceStatus::Running, vec![]),
+            ("b", ServiceStatus::Initial, vec!["a"]),
+            ("c", ServiceStatus::Initial, vec!["a"]),
+            ("d", ServiceStatus::Initial, vec![]),
+        ]);
+        let mut deps = repo.get_dependents("a");
+        deps.sort();
+        assert_eq!(deps, vec!["b".to_string(), "c".to_string()]);
+    }
+
+    #[test]
+    fn test_get_dependents_nonexistent_service() {
+        let repo = make_repo(vec![("a", ServiceStatus::Running)]);
+        let deps = repo.get_dependents("nonexistent");
+        assert!(deps.is_empty());
+    }
+
+    // ========================================================================
+    // get_die_if_failed tests
+    // ========================================================================
+
+    #[test]
+    fn test_get_die_if_failed_none() {
+        let repo = make_repo(vec![
+            ("a", ServiceStatus::Running),
+            ("b", ServiceStatus::Running),
+        ]);
+        let result = repo.get_die_if_failed("a");
+        assert!(result.is_empty());
+    }
+
+    #[test]
+    fn test_get_die_if_failed_single() {
+        let mut svc_b = Service::from_name("b");
+        svc_b.termination.die_if_failed = vec!["a".to_string()];
+
+        let repo = make_repo_from_services(vec![Service::from_name("a"), svc_b]);
+
+        let result = repo.get_die_if_failed("a");
+        assert_eq!(result.len(), 1);
+        assert_eq!(*result[0], "b");
+    }
+
+    // ========================================================================
+    // PID map tests
+    // ========================================================================
+
+    #[test]
+    fn test_add_and_get_pid() {
+        let mut repo = make_repo(vec![("svc", ServiceStatus::Running)]);
+        let pid = nix::unistd::Pid::from_raw(12345);
+        repo.add_pid(pid, "svc".to_string());
+        assert_eq!(repo.get_service_by_pid(pid), Some(&"svc".to_string()));
+    }
+
+    #[test]
+    fn test_get_pid_not_found() {
+        let repo = make_repo(vec![("svc", ServiceStatus::Running)]);
+        let pid = nix::unistd::Pid::from_raw(99999);
+        assert_eq!(repo.get_service_by_pid(pid), None);
+    }
+
+    #[test]
+    fn test_remove_pid() {
+        let mut repo = make_repo(vec![("svc", ServiceStatus::Running)]);
+        let pid = nix::unistd::Pid::from_raw(12345);
+        repo.add_pid(pid, "svc".to_string());
+        repo.remove_pid(pid);
+        assert_eq!(repo.get_service_by_pid(pid), None);
+    }
+}

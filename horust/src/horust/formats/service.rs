@@ -888,4 +888,75 @@ working-directory = "/tmp/"
         ];
         validate(services).expect("Validation failed");
     }
+
+    // --- LogOutput conversion tests ---
+
+    #[test]
+    fn test_log_output_roundtrip() {
+        let cases = vec![
+            LogOutput::Stdout,
+            LogOutput::Stderr,
+            LogOutput::Path("/tmp/test.log".into()),
+        ];
+        for lo in cases {
+            let s: String = lo.clone().into();
+            let back = LogOutput::from(s.as_str());
+            assert_eq!(lo, back);
+        }
+    }
+
+    // --- Validate edge cases ---
+
+    #[test]
+    fn test_validate_whitespace_command_is_not_empty() {
+        // TODO: whitespace-only commands pass validation because is_empty() doesn't trim.
+        let services = vec![Service::from_command("   ".into())];
+        assert!(validate(services).is_ok());
+    }
+
+    #[test]
+    fn test_validate_multiple_errors_reported() {
+        let services = vec![
+            Service::from_command("".into()),
+            Service::start_after("a", vec!["nonexistent"]),
+        ];
+        let err = validate(services).unwrap_err();
+        let msg = err.to_string();
+        assert!(
+            msg.contains("Command is defined, but it is empty"),
+            "Expected empty command error in: {}",
+            msg
+        );
+        assert!(
+            msg.contains("should start after"),
+            "Expected missing dependency error in: {}",
+            msg
+        );
+    }
+
+    // --- TOML deserialization with all sections ---
+
+    #[test]
+    fn test_deserialize_service_with_all_sections() {
+        let toml_str = r#"
+command = "test"
+[restart]
+strategy = "always"
+[failure]
+strategy = "shutdown"
+[healthiness]
+http-endpoint = "http://localhost:8080/health"
+max-failed = 5
+"#;
+        let svc: Service = Service::from_str(toml_str).unwrap();
+        assert_eq!(svc.restart.strategy, RestartStrategy::Always);
+        assert_eq!(svc.failure.strategy, FailureStrategy::Shutdown);
+        assert_eq!(
+            svc.healthiness.http_endpoint.as_deref(),
+            Some("http://localhost:8080/health")
+        );
+        assert_eq!(svc.healthiness.max_failed, 5);
+    }
+
+    use super::LogOutput;
 }
