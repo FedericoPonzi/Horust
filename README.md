@@ -44,6 +44,7 @@ This is a quick overview:
 command = "/bin/bash -c 'echo hello world'"
 start-delay = "2s"
 start-after = ["database", "backend.toml"]
+shutdown-after = ["database"]
 stdout = "STDOUT"
 stdout-rotate-size = "100MB"
 stdout-should-append-timestamp-to-filename = false

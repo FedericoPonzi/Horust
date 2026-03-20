@@ -60,6 +60,7 @@ stderr = "${HOME}${HORUST_LOGDIR}/stderr"
 command = "/bin/bash -c 'echo hello world'"
 start-delay = "2s"
 start-after = ["database", "backend.toml"]
+shutdown-after = ["database"]
 stdout = "STDOUT"
 stderr = "/var/logs/hello_world_svc/stderr.log"
 stdout-rotate-size = "100MB"
@@ -75,6 +76,10 @@ working-directory = "/tmp/"
   If service `a` should start after service `b`, then `a` will be started as soon as `b` is considered Running or
   Finished.
   If `b` goes in a `FinishedFailed` state (finished in an unsuccessful manner), `a` might not start at all.
+* **`shutdown-after` = `list<ServiceName>`**: Shut down this service only after the listed services have stopped.
+  This allows controlling the order in which services are terminated during a graceful shutdown.
+  For example, if service `vpn` has `shutdown-after = ["api.toml"]`, then `vpn` will only receive its termination
+  signal after `api` has fully stopped. A second SIGTERM (forceful shutdown) bypasses this ordering.
 * **`start-delay` = `time`**: Start this service with the specified delay. Check how to specify
   times [here](https://github.com/tailhook/humantime/blob/49f11fdc2a59746085d2457cb46bce204dec746a/src/duration.rs#L338)
 * **`stdout` = `STDOUT|STDERR|file-path`**: Redirect stdout of this service. STDOUT and STDERR are special strings,

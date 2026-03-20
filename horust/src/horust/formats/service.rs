@@ -43,6 +43,8 @@ pub struct Service {
     pub start_delay: Duration,
     #[serde(default)]
     pub start_after: Vec<ServiceName>,
+    #[serde(default)]
+    pub shutdown_after: Vec<ServiceName>,
     #[serde()]
     pub signal_rewrite: Option<String>,
     #[serde(default)]
@@ -112,6 +114,7 @@ impl Default for Service {
         Self {
             name: "".to_owned(),
             start_after: Default::default(),
+            shutdown_after: Default::default(),
             working_directory: env::current_dir().unwrap(),
             stdout: Default::default(),
             stdout_rotate_size: 0,
@@ -736,6 +739,15 @@ pub fn validate(services: Vec<Service>) -> Result<Vec<Service>, ValidationErrors
                 });
             }
         });
+        service.shutdown_after.iter().for_each(|name| {
+            let passed = services.iter().any(|s| s.name == *name);
+            if !passed {
+                errors.push(ValidationError::MissingShutdownDependency {
+                    before: name.into(),
+                    after: service.name.clone(),
+                });
+            }
+        });
     });
     if errors.is_empty() {
         Ok(services)
@@ -784,6 +796,14 @@ mod test {
             }
         }
 
+        pub fn shutdown_after(name: &str, shutdown_after: Vec<&str>) -> Self {
+            Self {
+                name: name.to_owned(),
+                shutdown_after: shutdown_after.into_iter().map(|v| v.into()).collect(),
+                ..Default::default()
+            }
+        }
+
         pub fn from_name(name: &str) -> Self {
             Self::start_after(name, Vec::new())
         }
@@ -810,6 +830,7 @@ mod test {
             stderr: "STDERR".into(),
             start_delay: Duration::from_secs(2),
             start_after: vec!["database".into(), "backend.toml".into()],
+            shutdown_after: vec![],
             restart: Restart {
                 strategy: RestartStrategy::Never,
                 backoff: Duration::from_millis(0),
@@ -887,6 +908,17 @@ working-directory = "/tmp/"
             Service::start_after("a", vec!["b"]),
         ];
         validate(services).expect("Validation failed");
+
+        // shutdown-after references non-existent service:
+        let services = vec![Service::shutdown_after("a", vec!["nonexistent"])];
+        validate(services).unwrap_err();
+
+        // shutdown-after with valid reference should pass:
+        let services = vec![
+            Service::from_name("b"),
+            Service::shutdown_after("a", vec!["b"]),
+        ];
+        validate(services).expect("shutdown-after validation failed");
     }
 
     // --- LogOutput conversion tests ---

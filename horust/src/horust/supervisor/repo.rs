@@ -105,6 +105,17 @@ impl Repo {
         sh.start_after().iter().all(is_started)
     }
 
+    /// Checks if the service can be killed during shutdown.
+    /// A service is killable if all services listed in its `shutdown-after`
+    /// have reached a terminal state (Finished or FinishedFailed).
+    pub(crate) fn is_service_killable(&self, sh: &ServiceHandler) -> bool {
+        let is_stopped = |service_name: &ServiceName| {
+            let sh = self.services.get(service_name).unwrap();
+            sh.is_finished() || sh.is_finished_failed()
+        };
+        sh.shutdown_after().iter().all(is_stopped)
+    }
+
     pub(crate) fn any_finished_failed(&self) -> bool {
         self.services
             .iter()
