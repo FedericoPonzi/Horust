@@ -26,6 +26,10 @@ pub enum Event {
     Run(ServiceName),
     ShuttingDownInitiated(ShuttingDown),
     HealthCheck(ServiceName, HealthinessStatus),
+    /// Request to restart a specific service (kill if alive, then set to Initial).
+    Restart(ServiceName),
+    /// A new service definition to add at runtime (consumed by supervisor, healthcheck, commands_handler).
+    ServiceAdded(Service),
 }
 
 impl Event {

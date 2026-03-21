@@ -23,6 +23,8 @@ pub(crate) struct ServiceHandler {
     pub(super) healthiness_checks_failed: Option<i32>,
     /// Instant representing at which time we received a shutdown request. Will be used for comparing Service.termination.wait
     pub(super) shutting_down_start: Option<Instant>,
+    /// When true, force the service back to Initial after it exits (explicit restart request).
+    pub(super) restart_pending: bool,
 }
 
 impl From<Service> for ServiceHandler {
@@ -35,7 +37,7 @@ impl From<Service> for ServiceHandler {
 }
 
 impl ServiceHandler {
-    fn is_alive_state(&self) -> bool {
+    pub(super) fn is_alive_state(&self) -> bool {
         const ALIVE_STATES: [ServiceStatus; 3] = [
             ServiceStatus::Running,
             ServiceStatus::Started,
@@ -239,7 +241,7 @@ fn handle_status_change(
     // Static lookup table of valid transitions
     // A -> [B,C] means that transition to A is allowed only if the service is in state B or C.
     const ALLOWED_TRANSITIONS: &[(ServiceStatus, &[ServiceStatus])] = &[
-        (Initial, &[Success, Failed]),
+        (Initial, &[Success, Failed, Finished, FinishedFailed]),
         (Starting, &[Initial]),
         (Started, &[Starting]),
         (InKilling, &[Initial, Running, Starting, Started]),
@@ -487,6 +489,9 @@ wait = "10s"
             // Success/Failed from InKilling
             (InKilling, Success, Success),
             (InKilling, Failed, Failed),
+            // Explicit restart from terminal states
+            (Finished, Initial, Initial),
+            (FinishedFailed, Initial, Initial),
         ];
 
         for (current, next, expected) in valid_cases {
@@ -506,15 +511,13 @@ wait = "10s"
         use ServiceStatus::*;
 
         let invalid_cases = vec![
-            (Initial, Running),        // Can't jump to Running directly
-            (Initial, Failed),         // Not a valid source for Failed
-            (Finished, Starting),      // Terminal state
-            (Finished, Initial),       // Terminal state (not listed as valid source for Initial)
-            (FinishedFailed, Initial), // Terminal state
-            (Running, Initial),        // Can't go backward
-            (Running, Starting),       // Can't go backward
-            (Running, Started),        // Can't go backward
-            (Success, Starting),       // Not a valid source for Starting
+            (Initial, Running),   // Can't jump to Running directly
+            (Initial, Failed),    // Not a valid source for Failed
+            (Finished, Starting), // Terminal state
+            (Running, Initial),   // Can't go backward
+            (Running, Starting),  // Can't go backward
+            (Running, Started),   // Can't go backward
+            (Success, Starting),  // Not a valid source for Starting
         ];
 
         for (current, next) in invalid_cases {

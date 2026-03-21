@@ -125,6 +125,22 @@ impl Supervisor {
                 service_handler.shutting_down_start = None;
                 service_handler.pid = None;
 
+                // If an explicit restart was requested, bypass the restart strategy
+                // and force the service back to Initial.
+                if service_handler.restart_pending {
+                    service_handler.restart_pending = false;
+                    service_handler.restart_attempts = 0;
+                    service_handler.healthiness_checks_failed = None;
+                    // Transition through Failed first (valid from InKilling)
+                    let (new_sh, _) = service_handler.change_status(ServiceStatus::Failed);
+                    self.repo.insert_sh_by_name(service_name.clone(), new_sh);
+                    // Then transition Failed → Initial (valid per FSM)
+                    let sh = self.repo.get_sh(&service_name);
+                    let (new_sh, new_status) = sh.change_status(ServiceStatus::Initial);
+                    self.repo.insert_sh_by_name(service_name.clone(), new_sh);
+                    return vec![Event::StatusChanged(service_name, new_status)];
+                }
+
                 let has_failed = !service_handler
                     .service()
                     .failure
@@ -252,6 +268,32 @@ impl Supervisor {
                 sh.add_healthcheck_event(health);
                 vec![]
             }
+            Event::Restart(service_name) => {
+                let sh = self.repo.get_mut_sh(&service_name);
+                if sh.status == ServiceStatus::InKilling {
+                    // Already being killed; just mark for restart after exit
+                    sh.restart_pending = true;
+                    vec![]
+                } else if sh.is_alive_state() {
+                    sh.restart_pending = true;
+                    let (new_sh, new_status) = sh.change_status(ServiceStatus::InKilling);
+                    self.repo.insert_sh_by_name(service_name.clone(), new_sh);
+                    let sh = self.repo.get_mut_sh(&service_name);
+                    sh.shutting_down_started();
+                    kill(sh, None);
+                    vec![Event::StatusChanged(service_name, new_status)]
+                } else {
+                    // Terminal state (Finished/FinishedFailed/Success/Failed): go to Initial
+                    let (new_sh, new_status) = sh.change_status(ServiceStatus::Initial);
+                    self.repo.insert_sh_by_name(service_name.clone(), new_sh);
+                    vec![Event::StatusChanged(service_name, new_status)]
+                }
+            }
+            Event::ServiceAdded(service) => {
+                let name = service.name.clone();
+                self.repo.add_service(service);
+                vec![Event::StatusChanged(name, ServiceStatus::Initial)]
+            }
             Event::ShuttingDownInitiated(shutting_down) => {
                 match shutting_down {
                     ShuttingDown::Gracefully => {
@@ -288,50 +330,64 @@ impl Supervisor {
         }
     }
 
+    /// One iteration of the supervisor loop: ingest events, handle them, produce next events.
+    fn tick(&mut self) {
+        // Ingest updates
+        let received_events = self.repo.get_events();
+        debug!("Applying events... {:?}", received_events);
+        match (self.status, signal_handling::is_sigterm_received()) {
+            (LifecycleStatus::Running, true) => {
+                warn!("1. SIGTERM received");
+                self.repo
+                    .send_ev(Event::ShuttingDownInitiated(ShuttingDown::Gracefully));
+            }
+            (LifecycleStatus::ShuttingDown(ShuttingDown::Gracefully), true) => {
+                warn!("2. SIGTERM received");
+                self.repo
+                    .send_ev(Event::ShuttingDownInitiated(ShuttingDown::Forcefully));
+            }
+            _ => {}
+        }
+        // Handling of the received events and commands:
+        let produced_events = received_events
+            .into_iter()
+            .flat_map(|ev| self.handle_event(ev))
+            .collect::<Vec<Event>>();
+        debug!("Produced events: {:?}", produced_events);
+        // Producing commands which will be applied in the next iteration
+        let next_evs: Vec<Event> = self
+            .repo
+            .services
+            .iter()
+            .flat_map(|(_s_name, sh)| sh.next(&self.repo, self.status))
+            .chain(reaper::run(&self.repo, MAX_PROCESS_REAPS_ITERS))
+            .collect();
+        debug!("Next evs: {:?}", next_evs);
+        // Dispatch everything via the bus. Since the bus is run by another thread,
+        // the next_evs might not arrive in the next batch, leading to possibly duplicated
+        // commands.
+        produced_events
+            .into_iter()
+            .chain(next_evs)
+            .for_each(|ev| self.repo.send_ev(ev));
+
+        thread::sleep(Duration::from_millis(300));
+    }
+
     /// Blocking call.
     /// This function will run the services and reap dead pids.
     fn run(mut self) -> ExitStatus {
         while !self.repo.all_have_finished() {
-            // Ingest updates
-            let received_events = self.repo.get_events();
-            debug!("Applying events... {:?}", received_events);
-            match (self.status, signal_handling::is_sigterm_received()) {
-                (LifecycleStatus::Running, true) => {
-                    warn!("1. SIGTERM received");
-                    self.repo
-                        .send_ev(Event::ShuttingDownInitiated(ShuttingDown::Gracefully));
-                }
-                (LifecycleStatus::ShuttingDown(ShuttingDown::Gracefully), true) => {
-                    warn!("2. SIGTERM received");
-                    self.repo
-                        .send_ev(Event::ShuttingDownInitiated(ShuttingDown::Forcefully));
-                }
-                _ => {}
+            self.tick();
+        }
+        // Drain one more round of events to avoid the exit race:
+        // a restart/start command may have arrived after all_have_finished() was true.
+        self.tick();
+        if !self.repo.all_have_finished() {
+            // New work appeared (e.g. restart/start command), keep running.
+            while !self.repo.all_have_finished() {
+                self.tick();
             }
-            // Handling of the received events and commands:
-            let produced_events = received_events
-                .into_iter()
-                .flat_map(|ev| self.handle_event(ev))
-                .collect::<Vec<Event>>();
-            debug!("Produced events: {:?}", produced_events);
-            // Producing commands which will be applied in the next iteration
-            let next_evs: Vec<Event> = self
-                .repo
-                .services
-                .iter()
-                .flat_map(|(_s_name, sh)| sh.next(&self.repo, self.status))
-                .chain(reaper::run(&self.repo, MAX_PROCESS_REAPS_ITERS))
-                .collect();
-            debug!("Next evs: {:?}", next_evs);
-            // Dispatch everything via the bus. Since the bus is run by another thread,
-            // the next_evs might not arrive in the next batch, leading to possibly duplicated
-            // commands.
-            produced_events
-                .into_iter()
-                .chain(next_evs)
-                .for_each(|ev| self.repo.send_ev(ev));
-
-            thread::sleep(Duration::from_millis(300));
         }
 
         debug!("All services have finished");
@@ -379,5 +435,105 @@ fn kill(sh: &ServiceHandler, signal: Option<signal::Signal>) {
             sh.name(),
             sh.status
         );
+    }
+}
+
+#[cfg(test)]
+mod supervisor_tests {
+    use super::*;
+    use crate::horust::bus::Bus;
+    use crate::horust::formats::{Service, ServiceStatus};
+
+    fn make_supervisor(services: Vec<(&str, ServiceStatus)>) -> Supervisor {
+        let bus: Bus<Event> = Bus::new();
+        let connector = bus.join_bus();
+        std::thread::spawn(move || bus.run());
+        let svc_list: Vec<Service> = services
+            .iter()
+            .map(|(name, _)| Service::from_name(name))
+            .collect();
+        let mut sup = Supervisor::new(connector, svc_list);
+        for (name, status) in &services {
+            let sh = sup.repo.get_mut_sh(name);
+            sh.status = status.clone();
+        }
+        sup
+    }
+
+    /// Regression: restarting a service already in InKilling should set restart_pending
+    /// without attempting an invalid FSM transition (InKilling → Initial is not allowed).
+    #[test]
+    fn test_restart_on_inkilling_service_sets_pending() {
+        let mut sup = make_supervisor(vec![("svc", ServiceStatus::InKilling)]);
+        let events = sup.handle_event(Event::Restart("svc".into()));
+        // Should produce no status-change events (service is already being killed)
+        assert!(events.is_empty(), "Expected no events, got: {:?}", events);
+        // But restart_pending should be set
+        let sh = sup.repo.get_sh("svc");
+        assert!(
+            sh.restart_pending,
+            "restart_pending should be true for InKilling service"
+        );
+    }
+
+    /// Regression: restarting a Running service should use change_status() to transition
+    /// to InKilling (valid FSM transition), not directly assign the status field.
+    #[test]
+    fn test_restart_on_running_service_transitions_via_fsm() {
+        let mut sup = make_supervisor(vec![("svc", ServiceStatus::Running)]);
+        let events = sup.handle_event(Event::Restart("svc".into()));
+        // Should produce a StatusChanged event to InKilling
+        assert_eq!(events.len(), 1);
+        assert!(
+            matches!(&events[0], Event::StatusChanged(name, ServiceStatus::InKilling) if name == "svc"),
+            "Expected StatusChanged to InKilling, got: {:?}",
+            events[0]
+        );
+        // Service should be InKilling with restart_pending
+        let sh = sup.repo.get_sh("svc");
+        assert_eq!(sh.status, ServiceStatus::InKilling);
+        assert!(sh.restart_pending);
+    }
+
+    /// Regression: restarting a terminal-state service (e.g. Failed) should transition
+    /// to Initial via change_status() (valid FSM: Failed → Initial).
+    #[test]
+    fn test_restart_on_failed_service_transitions_to_initial() {
+        let mut sup = make_supervisor(vec![("svc", ServiceStatus::Failed)]);
+        let events = sup.handle_event(Event::Restart("svc".into()));
+        assert_eq!(events.len(), 1);
+        assert!(
+            matches!(&events[0], Event::StatusChanged(name, ServiceStatus::Initial) if name == "svc"),
+            "Expected StatusChanged to Initial, got: {:?}",
+            events[0]
+        );
+        let sh = sup.repo.get_sh("svc");
+        assert_eq!(sh.status, ServiceStatus::Initial);
+    }
+
+    /// Regression: when restart_pending is set and service exits, it should transition
+    /// back to Initial via FSM (InKilling → Failed → Initial), not via direct assignment.
+    #[test]
+    fn test_service_exited_with_restart_pending_goes_to_initial() {
+        let mut sup = make_supervisor(vec![("svc", ServiceStatus::InKilling)]);
+        // Simulate: service has a pid and restart_pending is set
+        {
+            let sh = sup.repo.get_mut_sh("svc");
+            sh.restart_pending = true;
+            sh.pid = Some(nix::unistd::Pid::from_raw(99999));
+            sup.repo
+                .add_pid(nix::unistd::Pid::from_raw(99999), "svc".into());
+        }
+        let events = sup.handle_event(Event::ServiceExited("svc".into(), 0));
+        // Should produce StatusChanged to Initial
+        assert_eq!(events.len(), 1);
+        assert!(
+            matches!(&events[0], Event::StatusChanged(name, ServiceStatus::Initial) if name == "svc"),
+            "Expected StatusChanged to Initial after restart_pending exit, got: {:?}",
+            events[0]
+        );
+        let sh = sup.repo.get_sh("svc");
+        assert_eq!(sh.status, ServiceStatus::Initial);
+        assert!(!sh.restart_pending, "restart_pending should be cleared");
     }
 }

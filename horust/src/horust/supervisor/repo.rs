@@ -92,6 +92,12 @@ impl Repo {
         self.bus.send_event(ev)
     }
 
+    /// Add a new service at runtime (e.g. from a reload request).
+    pub(crate) fn add_service(&mut self, service: Service) {
+        let name = service.name.clone();
+        self.services.insert(name, service.into());
+    }
+
     /// Checks if the service is runnable. So the current status is Initial, and
     /// all the start-after have started or finished.
     pub(crate) fn is_service_runnable(&self, sh: &ServiceHandler) -> bool {

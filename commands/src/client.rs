@@ -1,7 +1,8 @@
 use crate::proto::messages::horust_msg_message::MessageType;
 use crate::proto::messages::{
-    HorustMsgMessage, HorustMsgRequest, HorustMsgServiceStatusRequest, horust_msg_request,
-    horust_msg_response,
+    HorustMsgAllServicesStatusRequest, HorustMsgMessage, HorustMsgReloadRequest, HorustMsgRequest,
+    HorustMsgRestartRequest, HorustMsgServiceChangeRequest, HorustMsgServiceStatusRequest,
+    horust_msg_request, horust_msg_response,
 };
 use crate::{HorustMsgServiceStatus, UdsConnectionHandler};
 use anyhow::{Context, anyhow};
@@ -28,10 +29,21 @@ fn unwrap_response(response: HorustMsgMessage) -> Option<Result<horust_msg_respo
             horust_msg_response::Response::Error(error) => {
                 Some(Err(anyhow!("Error: {}", error.error_string)))
             }
-            horust_msg_response::Response::StatusResponse(_status) => Some(Ok(v)),
+            _ => Some(Ok(v)),
         };
     }
     None
+}
+
+fn send_and_receive(
+    uds_connection_handler: &mut UdsConnectionHandler,
+    message: HorustMsgMessage,
+) -> Result<horust_msg_response::Response> {
+    uds_connection_handler.send_message(message)?;
+    uds_connection_handler.socket.shutdown(Shutdown::Write)?;
+    let received = uds_connection_handler.receive_message()?;
+    debug!("Client: received: {received:?}");
+    unwrap_response(received).ok_or_else(|| anyhow!("No response received"))?
 }
 
 pub struct ClientHandler {
@@ -52,20 +64,76 @@ impl ClientHandler {
         let status = new_request(horust_msg_request::Request::StatusRequest(
             HorustMsgServiceStatusRequest { service_name },
         ));
-        self.uds_connection_handler.send_message(status)?;
-        // server is waiting for EOF.
-        self.uds_connection_handler
-            .socket
-            .shutdown(Shutdown::Write)?;
-        //Reads all bytes until EOF in this source, appending them to buf.
-        let received = self.uds_connection_handler.receive_message()?;
-        debug!("Client: received: {received:?}");
-        let response = unwrap_response(received).unwrap()?;
+        let response = send_and_receive(&mut self.uds_connection_handler, status)?;
         if let horust_msg_response::Response::StatusResponse(resp) = response {
             Ok((
                 resp.service_name,
                 HorustMsgServiceStatus::try_from(resp.service_status).unwrap(),
             ))
+        } else {
+            bail!("Invalid response received: {:?}", response);
+        }
+    }
+
+    pub fn send_change_request(
+        &mut self,
+        service_name: String,
+        new_status: HorustMsgServiceStatus,
+    ) -> Result<(String, bool)> {
+        let msg = new_request(horust_msg_request::Request::ChangeRequest(
+            HorustMsgServiceChangeRequest {
+                service_name,
+                service_status: new_status.into(),
+            },
+        ));
+        let response = send_and_receive(&mut self.uds_connection_handler, msg)?;
+        if let horust_msg_response::Response::ChangeResponse(resp) = response {
+            Ok((resp.service_name, resp.accepted))
+        } else {
+            bail!("Invalid response received: {:?}", response);
+        }
+    }
+
+    pub fn send_restart_request(&mut self, service_name: String) -> Result<(String, bool)> {
+        let msg = new_request(horust_msg_request::Request::RestartRequest(
+            HorustMsgRestartRequest { service_name },
+        ));
+        let response = send_and_receive(&mut self.uds_connection_handler, msg)?;
+        if let horust_msg_response::Response::RestartResponse(resp) = response {
+            Ok((resp.service_name, resp.accepted))
+        } else {
+            bail!("Invalid response received: {:?}", response);
+        }
+    }
+
+    pub fn send_reload_request(&mut self) -> Result<(bool, Vec<String>)> {
+        let msg = new_request(horust_msg_request::Request::ReloadRequest(
+            HorustMsgReloadRequest {},
+        ));
+        let response = send_and_receive(&mut self.uds_connection_handler, msg)?;
+        if let horust_msg_response::Response::ReloadResponse(resp) = response {
+            Ok((resp.accepted, resp.new_services))
+        } else {
+            bail!("Invalid response received: {:?}", response);
+        }
+    }
+
+    pub fn send_all_status_request(&mut self) -> Result<Vec<(String, HorustMsgServiceStatus)>> {
+        let msg = new_request(horust_msg_request::Request::AllStatusRequest(
+            HorustMsgAllServicesStatusRequest {},
+        ));
+        let response = send_and_receive(&mut self.uds_connection_handler, msg)?;
+        if let horust_msg_response::Response::AllStatusResponse(resp) = response {
+            let statuses = resp
+                .services
+                .into_iter()
+                .filter_map(|entry| {
+                    HorustMsgServiceStatus::try_from(entry.service_status)
+                        .ok()
+                        .map(|status| (entry.service_name, status))
+                })
+                .collect();
+            Ok(statuses)
         } else {
             bail!("Invalid response received: {:?}", response);
         }
