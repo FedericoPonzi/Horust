@@ -162,7 +162,15 @@ impl CommandsHandler {
                 }
             }
         } else {
-            Ok(())
+            // No explicit user mapping — service runs as horust's own user.
+            let default_uid = nix::unistd::getuid().as_raw();
+            if peer_uid == default_uid {
+                Ok(())
+            } else {
+                bail!(
+                    "Permission denied: UID {peer_uid} cannot manage service '{service_name}' (runs as UID {default_uid})."
+                )
+            }
         }
     }
 
@@ -403,6 +411,34 @@ mod tests {
         assert!(
             result.unwrap_err().to_string().contains("cannot resolve"),
             "Error should mention cannot resolve"
+        );
+        let _ = std::fs::remove_file(&handler.uds_path);
+    }
+
+    /// When no user mapping exists for a service, the permission check should
+    /// use the default user (horust's own UID) for comparison.
+    #[test]
+    fn test_permission_uses_default_user_when_no_mapping() {
+        let current_uid = nix::unistd::getuid().as_raw();
+
+        // Peer UID matches horust's own UID — should be allowed
+        let handler = make_handler_for_perms(
+            "default_allow",
+            Some(current_uid),
+            vec![], // No user mappings
+        );
+        assert!(
+            handler.check_permission("unmapped_svc").is_ok(),
+            "Same UID as horust should be allowed for unmapped services"
+        );
+        let _ = std::fs::remove_file(&handler.uds_path);
+
+        // Peer UID differs from horust's own UID — should be denied
+        let other_uid = if current_uid == 12345 { 12346 } else { 12345 };
+        let handler = make_handler_for_perms("default_deny", Some(other_uid), vec![]);
+        assert!(
+            handler.check_permission("unmapped_svc").is_err(),
+            "Different UID should be denied for unmapped services"
         );
         let _ = std::fs::remove_file(&handler.uds_path);
     }
