@@ -31,12 +31,24 @@ impl CommandsHandlerTrait for MockCommandsHandler {
         })
     }
 
+    fn start_service(&self, _service_name: &str) -> Result<()> {
+        Ok(())
+    }
+
+    fn stop_service(&self, _service_name: &str) -> Result<()> {
+        Ok(())
+    }
+
     fn update_service_status(
         &self,
-        _service_name: &str,
-        _new_status: HorustMsgServiceStatus,
+        service_name: &str,
+        new_status: HorustMsgServiceStatus,
     ) -> Result<()> {
-        Ok(())
+        match new_status {
+            HorustMsgServiceStatus::Initial => self.start_service(service_name),
+            HorustMsgServiceStatus::Inkilling => self.stop_service(service_name),
+            _ => Ok(()),
+        }
     }
 
     fn restart_service(&self, _service_name: &str) -> Result<()> {

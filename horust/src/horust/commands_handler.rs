@@ -212,31 +212,37 @@ impl CommandsHandlerTrait for CommandsHandler {
             .map(from_service_status)
             .ok_or_else(|| anyhow!("Error: service {service_name} not found."))
     }
+    fn start_service(&self, service_name: &str) -> Result<()> {
+        if !self.services.contains_key(service_name) {
+            bail!("Service {service_name} not found.");
+        }
+        self.check_permission(service_name)?;
+        self.bus.send_event(Event::StatusUpdate(
+            service_name.to_string(),
+            ServiceStatus::Initial,
+        ));
+        Ok(())
+    }
+    fn stop_service(&self, service_name: &str) -> Result<()> {
+        if !self.services.contains_key(service_name) {
+            bail!("Service {service_name} not found.");
+        }
+        self.check_permission(service_name)?;
+        self.bus.send_event(Event::StatusUpdate(
+            service_name.to_string(),
+            ServiceStatus::InKilling,
+        ));
+        self.bus.send_event(Event::Kill(service_name.to_string()));
+        Ok(())
+    }
     fn update_service_status(
         &self,
         service_name: &str,
         new_status: HorustMsgServiceStatus,
     ) -> Result<()> {
-        if !self.services.contains_key(service_name) {
-            bail!("Service {service_name} not found.");
-        }
-        self.check_permission(service_name)?;
         match new_status {
-            HorustMsgServiceStatus::Initial => {
-                self.bus.send_event(Event::StatusUpdate(
-                    service_name.to_string(),
-                    ServiceStatus::Initial,
-                ));
-                Ok(())
-            }
-            HorustMsgServiceStatus::Inkilling => {
-                self.bus.send_event(Event::StatusUpdate(
-                    service_name.to_string(),
-                    ServiceStatus::InKilling,
-                ));
-                self.bus.send_event(Event::Kill(service_name.to_string()));
-                Ok(())
-            }
+            HorustMsgServiceStatus::Initial => self.start_service(service_name),
+            HorustMsgServiceStatus::Inkilling => self.stop_service(service_name),
             _ => bail!("Only INITIAL (start) and INKILLING (stop) are supported change targets."),
         }
     }

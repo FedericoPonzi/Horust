@@ -117,13 +117,29 @@ nix-build
 
 Horustctl is a program that allows you to interact with horust. They communicate using Unix Domain Socket (UDS), and by
 default, horust stores the sockets in /var/run/horust. You can override the path by using the argument
---uds-folder-path. Then you can use it like this:
+--uds-folder-path.
+
+Supported commands:
 
 ```
+# Check the status of a specific service
 horustctl --uds-folder-path /tmp status myapp.toml
-```
 
-To check the status of your service. Currently, horustctl only supports querying for the service status.
+# Check the status of all services
+horustctl --uds-folder-path /tmp status
+
+# Start a stopped service
+horustctl --uds-folder-path /tmp start myapp.toml
+
+# Stop a running service
+horustctl --uds-folder-path /tmp stop myapp.toml
+
+# Restart a service (stop then start)
+horustctl --uds-folder-path /tmp restart myapp.toml
+
+# Reload service directories to pick up new service definitions
+horustctl --uds-folder-path /tmp reload
+```
 
 ## Quick tutorial
 

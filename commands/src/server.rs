@@ -121,6 +121,8 @@ pub trait CommandsHandlerTrait {
     }
 
     fn get_service_status(&self, service_name: &str) -> Result<HorustMsgServiceStatus>;
+    fn start_service(&self, service_name: &str) -> Result<()>;
+    fn stop_service(&self, service_name: &str) -> Result<()>;
     fn update_service_status(
         &self,
         service_name: &str,
