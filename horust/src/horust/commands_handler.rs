@@ -132,6 +132,14 @@ impl CommandsHandler {
         Ok(services)
     }
 
+    /// Validate that a service exists and the peer has permission to manage it.
+    fn validate_and_authorize(&self, service_name: &str) -> Result<()> {
+        if !self.services.contains_key(service_name) {
+            bail!("Service {service_name} not found.");
+        }
+        self.check_permission(service_name)
+    }
+
     /// Check if the current peer has permission to manage a given service.
     /// Root (UID 0) can manage all services. Non-root can only manage services
     /// where the service's user matches their UID.
@@ -213,10 +221,7 @@ impl CommandsHandlerTrait for CommandsHandler {
             .ok_or_else(|| anyhow!("Error: service {service_name} not found."))
     }
     fn start_service(&self, service_name: &str) -> Result<()> {
-        if !self.services.contains_key(service_name) {
-            bail!("Service {service_name} not found.");
-        }
-        self.check_permission(service_name)?;
+        self.validate_and_authorize(service_name)?;
         self.bus.send_event(Event::StatusUpdate(
             service_name.to_string(),
             ServiceStatus::Initial,
@@ -224,10 +229,7 @@ impl CommandsHandlerTrait for CommandsHandler {
         Ok(())
     }
     fn stop_service(&self, service_name: &str) -> Result<()> {
-        if !self.services.contains_key(service_name) {
-            bail!("Service {service_name} not found.");
-        }
-        self.check_permission(service_name)?;
+        self.validate_and_authorize(service_name)?;
         self.bus.send_event(Event::StatusUpdate(
             service_name.to_string(),
             ServiceStatus::InKilling,
@@ -247,10 +249,7 @@ impl CommandsHandlerTrait for CommandsHandler {
         }
     }
     fn restart_service(&self, service_name: &str) -> Result<()> {
-        if !self.services.contains_key(service_name) {
-            bail!("Service {service_name} not found.");
-        }
-        self.check_permission(service_name)?;
+        self.validate_and_authorize(service_name)?;
         self.bus
             .send_event(Event::Restart(service_name.to_string()));
         Ok(())

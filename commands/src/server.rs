@@ -133,79 +133,59 @@ pub trait CommandsHandlerTrait {
     fn get_all_service_statuses(&self) -> Vec<(String, HorustMsgServiceStatus)>;
 }
 
-pub fn new_horust_msg_error_response(error: String) -> HorustMsgMessage {
+fn wrap_response(response: horust_msg_response::Response) -> HorustMsgMessage {
     HorustMsgMessage {
         message_type: Some(horust_msg_message::MessageType::Response(
             HorustMsgResponse {
-                response: Some(horust_msg_response::Response::Error(HorustMsgError {
-                    error_string: error,
-                })),
+                response: Some(response),
             },
         )),
     }
+}
+
+pub fn new_horust_msg_error_response(error: String) -> HorustMsgMessage {
+    wrap_response(horust_msg_response::Response::Error(HorustMsgError {
+        error_string: error,
+    }))
 }
 
 pub fn new_horust_msg_service_status_response(
     service_name: String,
     status: HorustMsgServiceStatus,
 ) -> HorustMsgMessage {
-    HorustMsgMessage {
-        message_type: Some(horust_msg_message::MessageType::Response(
-            HorustMsgResponse {
-                response: Some(horust_msg_response::Response::StatusResponse(
-                    HorustMsgServiceStatusResponse {
-                        service_name,
-                        service_status: status.into(),
-                    },
-                )),
-            },
-        )),
-    }
+    wrap_response(horust_msg_response::Response::StatusResponse(
+        HorustMsgServiceStatusResponse {
+            service_name,
+            service_status: status.into(),
+        },
+    ))
 }
 
 fn new_horust_msg_change_response(service_name: String, accepted: bool) -> HorustMsgMessage {
-    HorustMsgMessage {
-        message_type: Some(horust_msg_message::MessageType::Response(
-            HorustMsgResponse {
-                response: Some(horust_msg_response::Response::ChangeResponse(
-                    HorustMsgServiceChangeResponse {
-                        service_name,
-                        accepted,
-                    },
-                )),
-            },
-        )),
-    }
+    wrap_response(horust_msg_response::Response::ChangeResponse(
+        HorustMsgServiceChangeResponse {
+            service_name,
+            accepted,
+        },
+    ))
 }
 
 fn new_horust_msg_restart_response(service_name: String, accepted: bool) -> HorustMsgMessage {
-    HorustMsgMessage {
-        message_type: Some(horust_msg_message::MessageType::Response(
-            HorustMsgResponse {
-                response: Some(horust_msg_response::Response::RestartResponse(
-                    HorustMsgRestartResponse {
-                        service_name,
-                        accepted,
-                    },
-                )),
-            },
-        )),
-    }
+    wrap_response(horust_msg_response::Response::RestartResponse(
+        HorustMsgRestartResponse {
+            service_name,
+            accepted,
+        },
+    ))
 }
 
 fn new_horust_msg_reload_response(accepted: bool, new_services: Vec<String>) -> HorustMsgMessage {
-    HorustMsgMessage {
-        message_type: Some(horust_msg_message::MessageType::Response(
-            HorustMsgResponse {
-                response: Some(horust_msg_response::Response::ReloadResponse(
-                    HorustMsgReloadResponse {
-                        accepted,
-                        new_services,
-                    },
-                )),
-            },
-        )),
-    }
+    wrap_response(horust_msg_response::Response::ReloadResponse(
+        HorustMsgReloadResponse {
+            accepted,
+            new_services,
+        },
+    ))
 }
 
 fn new_horust_msg_all_status_response(
@@ -218,13 +198,7 @@ fn new_horust_msg_all_status_response(
             service_status: status.into(),
         })
         .collect();
-    HorustMsgMessage {
-        message_type: Some(horust_msg_message::MessageType::Response(
-            HorustMsgResponse {
-                response: Some(horust_msg_response::Response::AllStatusResponse(
-                    HorustMsgAllServicesStatusResponse { services },
-                )),
-            },
-        )),
-    }
+    wrap_response(horust_msg_response::Response::AllStatusResponse(
+        HorustMsgAllServicesStatusResponse { services },
+    ))
 }
