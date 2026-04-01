@@ -12,4 +12,3 @@ Supported commands:
 * `start <service_name>`: start a stopped service.
 * `stop <service_name>`: stop a running service.
 * `restart <service_name>`: restart a service (stop then start). Internally reuses the stop and start operations.
-* `reload`: reload service directories to pick up new service definitions added at runtime.

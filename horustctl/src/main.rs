@@ -36,8 +36,6 @@ enum Commands {
     Stop(ServiceNameArg),
     /// Restart a service (stop then start)
     Restart(ServiceNameArg),
-    /// Reload service directories to pick up new service definitions
-    Reload,
 }
 
 #[derive(Args, Debug)]
@@ -107,21 +105,6 @@ fn main() -> Result<()> {
                 println!("Restart command accepted for '{name}'.");
             } else {
                 println!("Restart command rejected for '{name}'.");
-            }
-        }
-        Commands::Reload => {
-            let (accepted, new_services) = uds_handler.send_reload_request()?;
-            if accepted {
-                if new_services.is_empty() {
-                    println!("Reload complete. No new services found.");
-                } else {
-                    println!("Reload complete. New services added:");
-                    for name in &new_services {
-                        println!("  {name}");
-                    }
-                }
-            } else {
-                println!("Reload command rejected.");
             }
         }
     }

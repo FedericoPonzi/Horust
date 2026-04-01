@@ -16,7 +16,7 @@ pub mod horust_msg_message {
 }
 #[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
 pub struct HorustMsgRequest {
-    #[prost(oneof = "horust_msg_request::Request", tags = "1, 2, 3, 4, 5")]
+    #[prost(oneof = "horust_msg_request::Request", tags = "1, 2, 3, 5")]
     pub request: ::core::option::Option<horust_msg_request::Request>,
 }
 /// Nested message and enum types in `HorustMsgRequest`.
@@ -29,15 +29,13 @@ pub mod horust_msg_request {
         ChangeRequest(super::HorustMsgServiceChangeRequest),
         #[prost(message, tag = "3")]
         RestartRequest(super::HorustMsgRestartRequest),
-        #[prost(message, tag = "4")]
-        ReloadRequest(super::HorustMsgReloadRequest),
         #[prost(message, tag = "5")]
         AllStatusRequest(super::HorustMsgAllServicesStatusRequest),
     }
 }
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct HorustMsgResponse {
-    #[prost(oneof = "horust_msg_response::Response", tags = "1, 2, 3, 4, 5, 6")]
+    #[prost(oneof = "horust_msg_response::Response", tags = "1, 2, 3, 4, 5")]
     pub response: ::core::option::Option<horust_msg_response::Response>,
 }
 /// Nested message and enum types in `HorustMsgResponse`.
@@ -53,8 +51,6 @@ pub mod horust_msg_response {
         #[prost(message, tag = "4")]
         RestartResponse(super::HorustMsgRestartResponse),
         #[prost(message, tag = "5")]
-        ReloadResponse(super::HorustMsgReloadResponse),
-        #[prost(message, tag = "6")]
         AllStatusResponse(super::HorustMsgAllServicesStatusResponse),
     }
 }
@@ -102,16 +98,6 @@ pub struct HorustMsgRestartResponse {
     pub service_name: ::prost::alloc::string::String,
     #[prost(bool, tag = "2")]
     pub accepted: bool,
-}
-/// Reload service directories for new service definitions.
-#[derive(Clone, Copy, PartialEq, Eq, Hash, ::prost::Message)]
-pub struct HorustMsgReloadRequest {}
-#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
-pub struct HorustMsgReloadResponse {
-    #[prost(bool, tag = "1")]
-    pub accepted: bool,
-    #[prost(string, repeated, tag = "2")]
-    pub new_services: ::prost::alloc::vec::Vec<::prost::alloc::string::String>,
 }
 /// Request status of all services.
 #[derive(Clone, Copy, PartialEq, Eq, Hash, ::prost::Message)]

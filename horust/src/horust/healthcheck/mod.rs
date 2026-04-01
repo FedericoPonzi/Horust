@@ -70,22 +70,20 @@ fn check_health(healthiness: &Healthiness) -> HealthinessStatus {
 
 fn run(bus: BusConnector<Event>, services: Vec<Service>) {
     let mut workers = hashmap! {};
-    let mut all_services = services;
-
-    let get_service = |services: &[Service], s_name: &ServiceName| -> Option<Service> {
-        services.iter().find(|sh| sh.name == *s_name).cloned()
+    let get_service = |s_name: &ServiceName| {
+        services
+            .iter()
+            .filter(|sh| sh.name == *s_name)
+            .take(1)
+            .cloned()
+            .collect::<Vec<Service>>()
+            .remove(0)
     };
 
     for ev in bus.iter() {
         match ev {
             Event::StatusChanged(s_name, ServiceStatus::Started) => {
-                let service = match get_service(&all_services, &s_name) {
-                    Some(s) => s,
-                    None => {
-                        warn!("Service {} not found for healthcheck", s_name);
-                        continue;
-                    }
-                };
+                let service = get_service(&s_name);
                 if !service.healthiness.has_any_check_defined() {
                     bus.send_event(Event::HealthCheck(s_name, HealthinessStatus::Healthy));
                     continue;
@@ -103,9 +101,6 @@ fn run(bus: BusConnector<Event>, services: Vec<Service>) {
                 } else {
                     warn!("Worker thread for {} not found.", s_name);
                 }
-            }
-            Event::ServiceAdded(service) => {
-                all_services.push(service);
             }
             Event::ShuttingDownInitiated(_) => {
                 // Stop all the workers:

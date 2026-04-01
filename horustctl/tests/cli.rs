@@ -331,38 +331,3 @@ sleep 30"#;
         "Other service should not have been restarted. PIDs before: {other_pid_count_before}, after: {other_pid_count_after}"
     );
 }
-
-/// Test: `horustctl reload` picks up a newly added service file.
-#[test]
-fn test_reload_new_service() {
-    let temp_dir = TempDir::with_prefix("horustctl_reload").unwrap();
-    let mut horust_cmd = build_horust_cmd(&temp_dir);
-
-    store_service_script(temp_dir.path(), LONG_RUNNING_SCRIPT, None, Some("existing"));
-
-    thread::spawn(move || {
-        horust_cmd.assert().success();
-    });
-    wait_for_file(temp_dir.path(), "marker", 5000);
-
-    // Add a new service file while horust is running
-    store_service_script(
-        temp_dir.path(),
-        "#!/usr/bin/env bash\ntouch new_marker\nsleep 10",
-        None,
-        Some("newsvc"),
-    );
-
-    // Reload
-    let mut cmd = horustctl_cmd(&temp_dir);
-    cmd.arg("reload");
-    cmd.assert().success().stdout(contains("newsvc.toml"));
-
-    // Wait for the new service to start
-    wait_for_file(temp_dir.path(), "new_marker", 5000);
-
-    // Verify it shows up in status
-    let mut cmd = horustctl_cmd(&temp_dir);
-    cmd.arg("status");
-    cmd.assert().success().stdout(contains("newsvc.toml"));
-}

@@ -1,8 +1,8 @@
 use crate::UdsConnectionHandler;
 use crate::proto::messages::horust_msg_message::MessageType::Request;
 use crate::proto::messages::{
-    HorustMsgAllServicesStatusResponse, HorustMsgError, HorustMsgMessage, HorustMsgReloadResponse,
-    HorustMsgRequest, HorustMsgResponse, HorustMsgRestartResponse, HorustMsgServiceChangeResponse,
+    HorustMsgAllServicesStatusResponse, HorustMsgError, HorustMsgMessage, HorustMsgRequest,
+    HorustMsgResponse, HorustMsgRestartResponse, HorustMsgServiceChangeResponse,
     HorustMsgServiceStatus, HorustMsgServiceStatusEntry, HorustMsgServiceStatusResponse,
     horust_msg_message, horust_msg_request, horust_msg_response,
 };
@@ -100,15 +100,6 @@ pub trait CommandsHandlerTrait {
                         )),
                     }
                 }
-                horust_msg_request::Request::ReloadRequest(_) => {
-                    info!("Requested service reload");
-                    match self.reload_services() {
-                        Ok(new_services) => new_horust_msg_reload_response(true, new_services),
-                        Err(err) => new_horust_msg_error_response(format!(
-                            "Error from reload handler: {err}"
-                        )),
-                    }
-                }
                 horust_msg_request::Request::AllStatusRequest(_) => {
                     info!("Requested all services status");
                     let statuses = self.get_all_service_statuses();
@@ -129,7 +120,6 @@ pub trait CommandsHandlerTrait {
         new_status: HorustMsgServiceStatus,
     ) -> Result<()>;
     fn restart_service(&self, service_name: &str) -> Result<()>;
-    fn reload_services(&self) -> Result<Vec<String>>;
     fn get_all_service_statuses(&self) -> Vec<(String, HorustMsgServiceStatus)>;
 }
 
@@ -175,15 +165,6 @@ fn new_horust_msg_restart_response(service_name: String, accepted: bool) -> Horu
         HorustMsgRestartResponse {
             service_name,
             accepted,
-        },
-    ))
-}
-
-fn new_horust_msg_reload_response(accepted: bool, new_services: Vec<String>) -> HorustMsgMessage {
-    wrap_response(horust_msg_response::Response::ReloadResponse(
-        HorustMsgReloadResponse {
-            accepted,
-            new_services,
         },
     ))
 }

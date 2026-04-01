@@ -12,7 +12,6 @@ message HorustMsgRequest {
     HorustMsgServiceStatusRequest status_request = 1;
     HorustMsgServiceChangeRequest change_request = 2;
     HorustMsgRestartRequest restart_request = 3;
-    HorustMsgReloadRequest reload_request = 4;
     HorustMsgAllServicesStatusRequest all_status_request = 5;
   }
 }
@@ -22,8 +21,7 @@ message HorustMsgResponse {
     HorustMsgServiceStatusResponse status_response = 2;
     HorustMsgServiceChangeResponse change_response = 3;
     HorustMsgRestartResponse restart_response = 4;
-    HorustMsgReloadResponse reload_response = 5;
-    HorustMsgAllServicesStatusResponse all_status_response = 6;
+    HorustMsgAllServicesStatusResponse all_status_response = 5;
   }
 }
 
@@ -59,15 +57,6 @@ message HorustMsgRestartRequest {
 message HorustMsgRestartResponse {
   string service_name = 1;
   bool accepted = 2;
-}
-
-// Reload service directories for new service definitions.
-message HorustMsgReloadRequest {
-}
-
-message HorustMsgReloadResponse {
-  bool accepted = 1;
-  repeated string new_services = 2;
 }
 
 // Request status of all services.

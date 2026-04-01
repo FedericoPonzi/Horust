@@ -27,16 +27,14 @@ mod supervisor;
 pub struct Horust {
     services: Vec<Service>,
     uds_path: PathBuf,
-    services_paths: Vec<PathBuf>,
     bus: Option<Bus<Event>>,
 }
 
 impl Horust {
-    fn new(services: Vec<Service>, uds_path: PathBuf, services_paths: Vec<PathBuf>) -> Self {
+    fn new(services: Vec<Service>, uds_path: PathBuf) -> Self {
         Horust {
             services,
             uds_path,
-            services_paths,
             bus: Some(Bus::new()),
         }
     }
@@ -44,7 +42,7 @@ impl Horust {
     /// Creates a new Horust instance from a command.
     /// The command will be wrapped in a service and run with sane defaults
     pub fn from_command(command: String, uds_path: PathBuf) -> Self {
-        Self::new(vec![Service::from_command(command)], uds_path, vec![])
+        Self::new(vec![Service::from_command(command)], uds_path)
     }
 
     fn load_services_from_folders(paths: &[PathBuf]) -> Result<Vec<Service>> {
@@ -61,12 +59,12 @@ impl Horust {
     pub fn from_services_dirs(paths: &[PathBuf], uds_path: PathBuf) -> Result<Self> {
         let services = Self::load_services_from_folders(paths)?;
         let services = validate(services)?;
-        Ok(Horust::new(services, uds_path, paths.to_vec()))
+        Ok(Horust::new(services, uds_path))
     }
 
     /// Creates a new Horust instance from a Vec of `Service`s.
     pub fn from_services(services: Vec<Service>, uds_path: PathBuf) -> Self {
-        Horust::new(services, uds_path, vec![])
+        Horust::new(services, uds_path)
     }
 
     /// Returns a BusConnector.
@@ -107,7 +105,6 @@ impl Horust {
                 .iter()
                 .map(|s| (s.name.clone(), s.user.clone()))
                 .collect(),
-            self.services_paths.clone(),
         );
         let handle = supervisor::spawn(self.join_bus(), self.services.clone());
         let bus = self

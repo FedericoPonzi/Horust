@@ -1,8 +1,8 @@
 use crate::proto::messages::horust_msg_message::MessageType;
 use crate::proto::messages::{
-    HorustMsgAllServicesStatusRequest, HorustMsgMessage, HorustMsgReloadRequest, HorustMsgRequest,
-    HorustMsgRestartRequest, HorustMsgServiceChangeRequest, HorustMsgServiceStatusRequest,
-    horust_msg_request, horust_msg_response,
+    HorustMsgAllServicesStatusRequest, HorustMsgMessage, HorustMsgRequest, HorustMsgRestartRequest,
+    HorustMsgServiceChangeRequest, HorustMsgServiceStatusRequest, horust_msg_request,
+    horust_msg_response,
 };
 use crate::{HorustMsgServiceStatus, UdsConnectionHandler};
 use anyhow::{Context, anyhow};
@@ -101,18 +101,6 @@ impl ClientHandler {
         let response = send_and_receive(&mut self.uds_connection_handler, msg)?;
         if let horust_msg_response::Response::RestartResponse(resp) = response {
             Ok((resp.service_name, resp.accepted))
-        } else {
-            bail!("Invalid response received: {:?}", response);
-        }
-    }
-
-    pub fn send_reload_request(&mut self) -> Result<(bool, Vec<String>)> {
-        let msg = new_request(horust_msg_request::Request::ReloadRequest(
-            HorustMsgReloadRequest {},
-        ));
-        let response = send_and_receive(&mut self.uds_connection_handler, msg)?;
-        if let horust_msg_response::Response::ReloadResponse(resp) = response {
-            Ok((resp.accepted, resp.new_services))
         } else {
             bail!("Invalid response received: {:?}", response);
         }

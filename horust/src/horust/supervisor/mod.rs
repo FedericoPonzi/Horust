@@ -289,11 +289,6 @@ impl Supervisor {
                     vec![Event::StatusChanged(service_name, new_status)]
                 }
             }
-            Event::ServiceAdded(service) => {
-                let name = service.name.clone();
-                self.repo.add_service(service);
-                vec![Event::StatusChanged(name, ServiceStatus::Initial)]
-            }
             Event::ShuttingDownInitiated(shutting_down) => {
                 match shutting_down {
                     ShuttingDown::Gracefully => {

@@ -136,9 +136,6 @@ horustctl --uds-folder-path /tmp stop myapp.toml
 
 # Restart a service (stop then start)
 horustctl --uds-folder-path /tmp restart myapp.toml
-
-# Reload service directories to pick up new service definitions
-horustctl --uds-folder-path /tmp reload
 ```
 
 ## Quick tutorial

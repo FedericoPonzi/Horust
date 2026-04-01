@@ -1,6 +1,6 @@
 use crate::horust::Event;
 use crate::horust::bus::BusConnector;
-use crate::horust::formats::{Service, ServiceName, ServiceStatus, User};
+use crate::horust::formats::{ServiceName, ServiceStatus, User};
 use anyhow::{Result, anyhow, bail};
 use horust_commands_lib::{CommandsHandlerTrait, HorustMsgServiceStatus, UdsConnectionHandler};
 use std::collections::HashMap;
@@ -14,10 +14,9 @@ pub fn spawn(
     bus: BusConnector<Event>,
     uds_path: PathBuf,
     services: Vec<(ServiceName, User)>,
-    services_paths: Vec<PathBuf>,
 ) -> JoinHandle<()> {
     thread::spawn(move || {
-        let mut commands_handler = CommandsHandler::new(bus, uds_path, services, services_paths);
+        let mut commands_handler = CommandsHandler::new(bus, uds_path, services);
         commands_handler.run();
     })
 }
@@ -28,7 +27,6 @@ struct CommandsHandler {
     service_users: HashMap<ServiceName, User>,
     uds_listener: UnixListener,
     uds_path: PathBuf,
-    services_paths: Vec<PathBuf>,
     /// Peer UID of the current connection being handled (set during accept).
     current_peer_uid: Option<u32>,
 }
@@ -38,7 +36,6 @@ impl CommandsHandler {
         bus: BusConnector<Event>,
         uds_path: PathBuf,
         services: Vec<(ServiceName, User)>,
-        services_paths: Vec<PathBuf>,
     ) -> Self {
         let uds_listener = UnixListener::bind(&uds_path).unwrap();
         uds_listener.set_nonblocking(true).unwrap();
@@ -50,7 +47,6 @@ impl CommandsHandler {
             bus,
             uds_path,
             uds_listener,
-            services_paths,
             service_users,
             current_peer_uid: None,
             services: services
@@ -69,12 +65,6 @@ impl CommandsHandler {
                             *k = status;
                         }
                     }
-                    Event::ServiceAdded(ref service) => {
-                        self.services
-                            .insert(service.name.clone(), ServiceStatus::Initial);
-                        self.service_users
-                            .insert(service.name.clone(), service.user.clone());
-                    }
                     Event::ShuttingDownInitiated(_) => {
                         fs::remove_file(&self.uds_path).unwrap();
                         return;
@@ -85,51 +75,6 @@ impl CommandsHandler {
             self.accept().unwrap();
             thread::sleep(Duration::from_millis(300));
         }
-    }
-
-    fn load_services_from_paths(paths: &[PathBuf]) -> Result<Vec<Service>> {
-        let mut services = Vec::new();
-        for path in paths {
-            if !path.exists() {
-                continue;
-            }
-            let entries = if path.is_file() {
-                vec![path.to_path_buf()]
-            } else {
-                fs::read_dir(path)?
-                    .filter_map(Result::ok)
-                    .map(|e| e.path())
-                    .filter(|p| {
-                        p.is_file()
-                            && p.extension()
-                                .and_then(|ext| ext.to_str())
-                                .is_some_and(|ext| ext == "toml")
-                    })
-                    .collect()
-            };
-            for entry in entries {
-                match Service::from_file(&entry) {
-                    Ok(mut svc) => {
-                        if svc.name.is_empty() {
-                            svc.name = entry
-                                .file_name()
-                                .unwrap_or_default()
-                                .to_string_lossy()
-                                .into_owned();
-                        }
-                        if svc.name.is_empty() {
-                            error!("Skipping service with empty name from {:?}", entry);
-                            continue;
-                        }
-                        services.push(svc);
-                    }
-                    Err(err) => {
-                        error!("Failed to load service from {:?}: {}", entry, err);
-                    }
-                }
-            }
-        }
-        Ok(services)
     }
 
     /// Validate that a service exists and the peer has permission to manage it.
@@ -262,18 +207,6 @@ impl CommandsHandlerTrait for CommandsHandler {
             .send_event(Event::Restart(service_name.to_string()));
         Ok(())
     }
-    fn reload_services(&self) -> Result<Vec<String>> {
-        let all_on_disk = Self::load_services_from_paths(&self.services_paths)?;
-        let new_services: Vec<Service> = all_on_disk
-            .into_iter()
-            .filter(|s| !self.services.contains_key(&s.name))
-            .collect();
-        let new_names: Vec<String> = new_services.iter().map(|s| s.name.clone()).collect();
-        for service in new_services {
-            self.bus.send_event(Event::ServiceAdded(service));
-        }
-        Ok(new_names)
-    }
     fn get_all_service_statuses(&self) -> Vec<(String, HorustMsgServiceStatus)> {
         let mut statuses: Vec<(String, HorustMsgServiceStatus)> = self
             .services
@@ -334,7 +267,6 @@ mod tests {
             service_users,
             uds_listener,
             uds_path: socket_path,
-            services_paths: vec![],
             current_peer_uid: peer_uid,
         };
         handler

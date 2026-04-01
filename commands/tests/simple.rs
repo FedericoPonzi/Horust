@@ -55,10 +55,6 @@ impl CommandsHandlerTrait for MockCommandsHandler {
         Ok(())
     }
 
-    fn reload_services(&self) -> Result<Vec<String>> {
-        Ok(vec!["new-service.toml".to_string()])
-    }
-
     fn get_all_service_statuses(&self) -> Vec<(String, HorustMsgServiceStatus)> {
         vec![
             ("Running".to_string(), HorustMsgServiceStatus::Running),
@@ -156,35 +152,6 @@ fn test_restart_request() -> Result<()> {
         let (name, accepted) = client.send_restart_request("Running".into()).unwrap();
         assert_eq!(name, "Running");
         assert!(accepted);
-    });
-    s_handle.join().unwrap();
-    c_handle.join().unwrap();
-    Ok(())
-}
-
-#[test]
-fn test_reload_request() -> Result<()> {
-    init();
-    let socket_path: PathBuf = "/tmp/test_reload.sock".into();
-    if socket_path.exists() {
-        std::fs::remove_file(&socket_path)?;
-    }
-    let socket_path2 = socket_path.clone();
-    let barrier = Arc::new(Barrier::new(2));
-    let barrier2 = Arc::clone(&barrier);
-
-    let s_handle = thread::spawn(move || {
-        let mut uds = MockCommandsHandler::new(socket_path2);
-        barrier.wait();
-        uds.accept().unwrap();
-    });
-
-    let c_handle = thread::spawn(move || {
-        barrier2.wait();
-        let mut client = ClientHandler::new_client(&socket_path).unwrap();
-        let (accepted, new_services) = client.send_reload_request().unwrap();
-        assert!(accepted);
-        assert_eq!(new_services, vec!["new-service.toml"]);
     });
     s_handle.join().unwrap();
     c_handle.join().unwrap();
