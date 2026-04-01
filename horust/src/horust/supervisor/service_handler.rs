@@ -273,7 +273,7 @@ fn handle_status_change(
                     service_handler.status,
                     next_status
                 );
-                new_service_handler.status = Success;
+                new_service_handler.status = Finished;
             }
             new_status => {
                 new_service_handler.status = new_status;
@@ -558,12 +558,12 @@ wait = "10s"
     }
 
     #[test]
-    fn test_in_killing_from_initial_becomes_success() {
-        // Special case: InKilling from Initial → Success (service was never started)
+    fn test_in_killing_from_initial_becomes_finished() {
+        // Special case: InKilling from Initial → Finished (service was never started)
         let sh = make_handler("svc", ServiceStatus::Initial);
         let (new_sh, new_status) = sh.change_status(ServiceStatus::InKilling);
-        assert_eq!(new_status, ServiceStatus::Success);
-        assert_eq!(new_sh.status, ServiceStatus::Success);
+        assert_eq!(new_status, ServiceStatus::Finished);
+        assert_eq!(new_sh.status, ServiceStatus::Finished);
     }
 
     #[test]
