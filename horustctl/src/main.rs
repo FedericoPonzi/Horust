@@ -73,7 +73,7 @@ fn main() -> Result<()> {
                     if statuses.is_empty() {
                         println!("No services found.");
                     } else {
-                        println!("{:<30} {}", "SERVICE", "STATUS");
+                        println!("{:<30} STATUS", "SERVICE");
                         for (name, status) in &statuses {
                             println!("{:<30} {}", name, format_status(status));
                         }

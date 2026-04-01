@@ -39,6 +39,13 @@ impl CommandsHandler {
     ) -> Self {
         let uds_listener = UnixListener::bind(&uds_path).unwrap();
         uds_listener.set_nonblocking(true).unwrap();
+        // Allow all users to connect so they can query status.
+        // Mutation permissions are enforced via SO_PEERCRED in check_permission.
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            fs::set_permissions(&uds_path, fs::Permissions::from_mode(0o666)).unwrap();
+        }
         let service_users: HashMap<ServiceName, User> = services
             .iter()
             .map(|(name, user)| (name.clone(), user.clone()))
@@ -261,15 +268,14 @@ mod tests {
             .map(|(name, _)| (name.to_string(), ServiceStatus::Running))
             .collect();
 
-        let handler = CommandsHandler {
+        CommandsHandler {
             bus: connector,
             services: services_map,
             service_users,
             uds_listener,
             uds_path: socket_path,
             current_peer_uid: peer_uid,
-        };
-        handler
+        }
     }
 
     /// Regression: when current_peer_uid is None (SO_PEERCRED failed or non-Linux),
