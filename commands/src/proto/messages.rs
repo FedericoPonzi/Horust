@@ -16,7 +16,7 @@ pub mod horust_msg_message {
 }
 #[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
 pub struct HorustMsgRequest {
-    #[prost(oneof = "horust_msg_request::Request", tags = "1, 2, 3, 5")]
+    #[prost(oneof = "horust_msg_request::Request", tags = "1, 2, 3, 4")]
     pub request: ::core::option::Option<horust_msg_request::Request>,
 }
 /// Nested message and enum types in `HorustMsgRequest`.
@@ -29,7 +29,7 @@ pub mod horust_msg_request {
         ChangeRequest(super::HorustMsgServiceChangeRequest),
         #[prost(message, tag = "3")]
         RestartRequest(super::HorustMsgRestartRequest),
-        #[prost(message, tag = "5")]
+        #[prost(message, tag = "4")]
         AllStatusRequest(super::HorustMsgAllServicesStatusRequest),
     }
 }

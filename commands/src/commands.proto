@@ -12,7 +12,7 @@ message HorustMsgRequest {
     HorustMsgServiceStatusRequest status_request = 1;
     HorustMsgServiceChangeRequest change_request = 2;
     HorustMsgRestartRequest restart_request = 3;
-    HorustMsgAllServicesStatusRequest all_status_request = 5;
+    HorustMsgAllServicesStatusRequest all_status_request = 4;
   }
 }
 message HorustMsgResponse {
