@@ -21,7 +21,7 @@ pub fn get_path(socket_folder_path: &Path, horust_pid: i32) -> PathBuf {
 }
 
 pub struct UdsConnectionHandler {
-    socket: UnixStream,
+    pub socket: UnixStream,
 }
 impl UdsConnectionHandler {
     pub fn new(socket: UnixStream) -> Self {
