@@ -259,7 +259,7 @@ fn handle_status_change(
 
     if valid {
         match next_status {
-            Started => {
+            Started if service_handler.service.restart.strategy != RestartStrategy::OnFailure => {
                 new_service_handler.status = Started;
                 new_service_handler.restart_attempts = 0;
             }
@@ -304,6 +304,13 @@ fn handle_restart_strategy(service_handler: &ServiceHandler, is_failed: bool) ->
             } else {
                 ServiceStatus::Initial
             }
+        }
+        RestartStrategy::OnFailure
+            if is_failed
+                && service_handler.service.restart.attempts > 0
+                && service_handler.restart_attempts_are_over() =>
+        {
+            ServiceStatus::FinishedFailed
         }
         RestartStrategy::OnFailure if is_failed => ServiceStatus::Initial,
         RestartStrategy::Never | RestartStrategy::OnFailure => ServiceStatus::Finished,
@@ -405,6 +412,32 @@ strategy = "{}"
                 let received = handle_restart_strategy(&sh, has_failed);
                 assert_eq!(received, expected);
             });
+    }
+
+    #[test]
+    fn test_on_failure_exhausts_configured_restart_attempts() {
+        let service: Service = Service::from_str(
+            r#"name="servicename"
+command = "Not relevant"
+[restart]
+strategy = "on-failure"
+attempts = 3
+"#,
+        )
+        .unwrap();
+        let mut sh: ServiceHandler = service.into();
+
+        sh.restart_attempts = 3;
+        assert_eq!(
+            handle_restart_strategy(&sh, true),
+            Event::new_status_update("servicename", ServiceStatus::Initial)
+        );
+
+        sh.restart_attempts = 4;
+        assert_eq!(
+            handle_restart_strategy(&sh, true),
+            Event::new_status_update("servicename", ServiceStatus::FinishedFailed)
+        );
     }
 
     #[test]
@@ -564,8 +597,19 @@ wait = "10s"
     }
 
     #[test]
-    fn test_started_transition_resets_restart_attempts() {
+    fn test_started_transition_preserves_restart_attempts() {
         let mut sh = make_handler("svc", ServiceStatus::Starting);
+        sh.service.restart.strategy = RestartStrategy::OnFailure;
+        sh.restart_attempts = 5;
+        let (new_sh, new_status) = sh.change_status(ServiceStatus::Started);
+        assert_eq!(new_status, ServiceStatus::Started);
+        assert_eq!(new_sh.restart_attempts, 5);
+    }
+
+    #[test]
+    fn test_started_transition_resets_attempts_for_other_strategies() {
+        let mut sh = make_handler("svc", ServiceStatus::Starting);
+        sh.service.restart.strategy = RestartStrategy::Always;
         sh.restart_attempts = 5;
         let (new_sh, new_status) = sh.change_status(ServiceStatus::Started);
         assert_eq!(new_status, ServiceStatus::Started);
@@ -573,7 +617,7 @@ wait = "10s"
     }
 
     #[test]
-    fn test_non_started_transition_preserves_restart_attempts() {
+    fn test_running_transition_preserves_restart_attempts() {
         let mut sh = make_handler("svc", ServiceStatus::Started);
         sh.restart_attempts = 3;
         let (new_sh, _) = sh.change_status(ServiceStatus::Running);

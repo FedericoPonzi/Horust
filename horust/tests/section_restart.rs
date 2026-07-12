@@ -86,6 +86,58 @@ strategy = "on-failure"
     recv.recv_or_kill(Duration::from_secs(15));
 }
 
+#[test]
+fn test_restart_strategy_on_failure_exhausts_attempts() {
+    let (cmd, temp_dir) = get_cli();
+    let attempts_log = temp_dir.path().join("attempts.log");
+    let always_failing_script = format!(
+        r#"#!/usr/bin/env bash
+printf 'run\n' >> "{}"
+exit 1
+"#,
+        attempts_log.display()
+    );
+    let service = r#"
+[restart]
+attempts = 3
+backoff = "1ms"
+strategy = "on-failure"
+
+[failure]
+successful-exit-code = [0]
+strategy = "ignore"
+"#;
+    store_service_script(temp_dir.path(), &always_failing_script, Some(service), None);
+
+    let mut cmd = cmd;
+    let mut child = cmd
+        .arg("--unsuccessful-exit-finished-failed")
+        .spawn()
+        .unwrap();
+    let deadline = std::time::Instant::now() + Duration::from_secs(15);
+    let status = loop {
+        if let Some(status) = child.try_wait().unwrap() {
+            break status;
+        }
+        if std::time::Instant::now() >= deadline {
+            let launches = std::fs::read_to_string(&attempts_log)
+                .map(|contents| contents.lines().count())
+                .unwrap_or(0);
+            child.kill().unwrap();
+            child.wait().unwrap();
+            panic!("Horust did not stop after {launches} launches");
+        }
+        std::thread::sleep(Duration::from_millis(20));
+    };
+    assert_eq!(status.code(), Some(101));
+
+    let launches = std::fs::read_to_string(attempts_log)
+        .unwrap()
+        .lines()
+        .count();
+    assert_eq!(launches, 4, "initial launch plus three retries");
+}
+
 /// With restart strategy set to always, the child service should be always restarted regardless of
 /// the reason why it exited.
 fn test_restart_always_signal(signal: i32) -> Result<(), std::io::Error> {

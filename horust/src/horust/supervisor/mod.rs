@@ -16,7 +16,9 @@ use service_handler::ServiceHandler;
 pub(crate) use signal_handling::init;
 
 use crate::horust::bus::BusConnector;
-use crate::horust::formats::{Event, ExitStatus, Service, ServiceStatus, ShuttingDown};
+use crate::horust::formats::{
+    Event, ExitStatus, RestartStrategy, Service, ServiceStatus, ShuttingDown,
+};
 use crate::horust::healthcheck;
 
 mod process_spawner;
@@ -133,10 +135,11 @@ impl Supervisor {
 
                 // If it has failed too quickly, increase service_handler's restart attempts
                 // and check if it has more attempts left.
-                service_handler.restart_attempts += u32::from(
-                    service_handler.has_some_failed_healthchecks()
-                        && service_handler.is_early_state(),
-                );
+                let counts_toward_restart_budget = (has_failed
+                    && service_handler.service().restart.strategy == RestartStrategy::OnFailure)
+                    || (service_handler.has_some_failed_healthchecks()
+                        && service_handler.is_early_state());
+                service_handler.restart_attempts += u32::from(counts_toward_restart_budget);
 
                 let new_status = if has_failed
                     || (service_handler.status == ServiceStatus::Running
