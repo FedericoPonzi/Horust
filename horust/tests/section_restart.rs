@@ -86,6 +86,142 @@ strategy = "on-failure"
     recv.recv_or_kill(Duration::from_secs(15));
 }
 
+/// Runs an always-failing service and returns (horust exit status, number of launches).
+fn run_bounded_crash_loop(strategy: &str, attempts: u32) -> (std::process::ExitStatus, usize) {
+    let (mut cmd, temp_dir) = get_cli();
+    let attempts_log = temp_dir.path().join("attempts.log");
+    let always_failing_script = format!(
+        r#"#!/usr/bin/env bash
+printf 'run\n' >> "{}"
+exit 1
+"#,
+        attempts_log.display()
+    );
+    // healthy-after keeps the service in the not-yet-green state long enough that each
+    // immediate crash counts against the restart budget, making the bound deterministic.
+    let service = format!(
+        r#"
+[restart]
+attempts = {attempts}
+backoff = "1ms"
+strategy = "{strategy}"
+
+[healthiness]
+healthy-after = "10s"
+
+[failure]
+successful-exit-code = [0]
+strategy = "ignore"
+"#
+    );
+    store_service_script(
+        temp_dir.path(),
+        &always_failing_script,
+        Some(&service),
+        None,
+    );
+
+    let mut child = cmd
+        .arg("--unsuccessful-exit-finished-failed")
+        .spawn()
+        .unwrap();
+    let deadline = std::time::Instant::now() + Duration::from_secs(15);
+    let status = loop {
+        if let Some(status) = child.try_wait().unwrap() {
+            break status;
+        }
+        if std::time::Instant::now() >= deadline {
+            let launches = std::fs::read_to_string(&attempts_log)
+                .map(|contents| contents.lines().count())
+                .unwrap_or(0);
+            child.kill().unwrap();
+            child.wait().unwrap();
+            panic!("Horust did not stop after {launches} launches");
+        }
+        std::thread::sleep(Duration::from_millis(20));
+    };
+    let launches = std::fs::read_to_string(attempts_log)
+        .unwrap()
+        .lines()
+        .count();
+    (status, launches)
+}
+
+#[test]
+fn test_restart_strategy_on_failure_exhausts_attempts() {
+    let (status, launches) = run_bounded_crash_loop("on-failure", 3);
+    assert_eq!(status.code(), Some(101));
+    assert_eq!(launches, 4, "initial launch plus three retries");
+}
+
+#[test]
+fn test_restart_strategy_always_exhausts_attempts() {
+    let (status, launches) = run_bounded_crash_loop("always", 3);
+    assert_eq!(status.code(), Some(101));
+    assert_eq!(launches, 4, "initial launch plus three retries");
+}
+
+/// A service that survives past `healthy-after` becomes stable, resetting its restart
+/// budget. It must therefore keep restarting on failure rather than being bounded.
+#[test]
+fn test_healthy_after_resets_restart_budget() {
+    let (mut cmd, temp_dir) = get_cli();
+    let attempts_log = temp_dir.path().join("attempts.log");
+    // Sleeps past healthy-after (so it reaches Running and resets the budget) before
+    // failing. With attempts = 2 this would exhaust quickly if the budget never reset.
+    let script = format!(
+        r#"#!/usr/bin/env bash
+count=0
+[ -f "{0}" ] && count=$(wc -l < "{0}")
+printf 'run\n' >> "{0}"
+sleep 0.5
+if [ "$count" -lt 4 ]; then
+    exit 1
+fi
+sleep 60
+"#,
+        attempts_log.display()
+    );
+    let service = r#"
+[restart]
+attempts = 2
+backoff = "1ms"
+strategy = "on-failure"
+
+[healthiness]
+healthy-after = "100ms"
+
+[failure]
+successful-exit-code = [0]
+strategy = "ignore"
+"#;
+    store_service_script(temp_dir.path(), &script, Some(service), None);
+
+    let mut child = cmd
+        .arg("--unsuccessful-exit-finished-failed")
+        .spawn()
+        .unwrap();
+
+    // Give it time to fail several times and then stabilize. If the budget were not
+    // reset on reaching a stable state, Horust would have exited (FinishedFailed) after
+    // 3 launches; instead it should keep restarting past the budget and still be running.
+    std::thread::sleep(Duration::from_secs(6));
+    let still_running = child.try_wait().unwrap().is_none();
+    let launches = std::fs::read_to_string(&attempts_log)
+        .map(|c| c.lines().count())
+        .unwrap_or(0);
+    child.kill().unwrap();
+    child.wait().unwrap();
+    assert!(
+        still_running,
+        "Horust exited early after {launches} launches; the budget was not reset on reaching a stable state"
+    );
+    assert!(
+        launches > 3,
+        "expected more than the 3 allowed launches (initial + 2 retries), got {launches}"
+    );
+}
+
 /// With restart strategy set to always, the child service should be always restarted regardless of
 /// the reason why it exited.
 fn test_restart_always_signal(signal: i32) -> Result<(), std::io::Error> {
