@@ -16,7 +16,7 @@ use service_handler::ServiceHandler;
 pub(crate) use signal_handling::init;
 
 use crate::horust::bus::BusConnector;
-use crate::horust::formats::{Event, ExitStatus, Service, ServiceStatus, ShuttingDown};
+use crate::horust::formats::{Event, ExitStatus, Restart, Service, ServiceStatus, ShuttingDown};
 use crate::horust::healthcheck;
 
 mod process_spawner;
@@ -87,6 +87,24 @@ const MAX_PROCESS_REAPS_ITERS: u32 = 20;
 
 /// PID 1 is reserved for the init process.
 const INIT_PID: unistd::Pid = unistd::Pid::from_raw(1);
+
+/// Caps the restart delay when the attempts budget is unbounded. Matches the number of
+/// attempts Horust used to default to, so the longest delay stays in a familiar range.
+const MAX_BACKOFF_MULTIPLIER: u32 = 10;
+
+/// Delay before respawning a service: it grows with the number of rapid failures, so that
+/// a service failing over and over is retried increasingly slowly.
+/// The multiplier is capped because `restart_attempts` is only reset once the service
+/// becomes stable: with an unbounded budget (`attempts = 0`) it would otherwise grow
+/// forever and push restarts infinitely far apart.
+fn restart_backoff(restart: &Restart, restart_attempts: u32) -> Duration {
+    let cap = if restart.attempts > 0 {
+        restart.attempts
+    } else {
+        MAX_BACKOFF_MULTIPLIER
+    };
+    restart.backoff.mul(restart_attempts.min(cap))
+}
 
 // Spawns and runs this component in a new thread.
 pub fn spawn(bus: BusConnector<Event>, services: Vec<Service>) -> thread::JoinHandle<ExitStatus> {
@@ -169,6 +187,10 @@ impl Supervisor {
             Event::Run(service_name) if self.repo.get_sh(&service_name).is_initial() => {
                 let service_handler = self.repo.get_mut_sh(&service_name);
                 service_handler.status = ServiceStatus::Starting;
+                // Health check results from a previous run must not carry over to the new
+                // process, otherwise a service that was healthy before would immediately
+                // be considered green again (skipping its `healthy-after` window).
+                service_handler.healthiness_checks_failed = None;
                 let evs = vec![Event::StatusChanged(service_name, ServiceStatus::Starting)];
 
                 let res = healthcheck::prepare_service(&service_handler.service().healthiness);
@@ -188,11 +210,10 @@ impl Supervisor {
                         Event::ShuttingDownInitiated(ShuttingDown::Gracefully),
                     ];
                 }
-                let backoff = service_handler
-                    .service()
-                    .restart
-                    .backoff
-                    .mul(service_handler.restart_attempts);
+                let backoff = restart_backoff(
+                    &service_handler.service().restart,
+                    service_handler.restart_attempts,
+                );
                 process_spawner::spawn_fork_exec_handler(
                     service_handler.service().clone(),
                     backoff,
@@ -202,6 +223,10 @@ impl Supervisor {
             }
             Event::SpawnFailed(s_name) => {
                 let service_handler = self.repo.get_mut_sh(&s_name);
+                // The process never came to exist, so no ServiceExited will ever arrive to
+                // account for this failure. Count it here, otherwise a service that can
+                // never be spawned (e.g. command not found) would restart forever.
+                service_handler.restart_attempts += 1;
                 service_handler.status = ServiceStatus::Failed;
                 vec![Event::StatusUpdate(s_name, ServiceStatus::Failed)]
             }
@@ -379,5 +404,43 @@ fn kill(sh: &ServiceHandler, signal: Option<signal::Signal>) {
             sh.name(),
             sh.status
         );
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::time::Duration;
+
+    use super::restart_backoff;
+    use crate::horust::formats::{Restart, RestartStrategy};
+
+    fn restart(attempts: u32, backoff_ms: u64) -> Restart {
+        Restart {
+            strategy: RestartStrategy::OnFailure,
+            backoff: Duration::from_millis(backoff_ms),
+            attempts,
+        }
+    }
+
+    #[test]
+    fn test_restart_backoff_grows_with_attempts() {
+        let r = restart(5, 100);
+        assert_eq!(restart_backoff(&r, 0), Duration::from_millis(0));
+        assert_eq!(restart_backoff(&r, 3), Duration::from_millis(300));
+    }
+
+    #[test]
+    fn test_restart_backoff_is_capped() {
+        // restart_attempts is only reset once a service becomes stable, so with an
+        // unbounded budget it grows forever: the delay must not grow with it.
+        let unbounded = restart(0, 100);
+        assert_eq!(
+            restart_backoff(&unbounded, 10_000),
+            restart_backoff(&unbounded, 10),
+            "an unbounded budget must not push restarts infinitely far apart"
+        );
+        // With a budget the multiplier can never exceed it anyway.
+        let bounded = restart(5, 100);
+        assert_eq!(restart_backoff(&bounded, 99), Duration::from_millis(500));
     }
 }

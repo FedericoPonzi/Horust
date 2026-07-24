@@ -312,6 +312,11 @@ pub struct Healthiness {
     #[serde(default = "Healthiness::default_max_failed")]
     // todo: use an u32
     pub max_failed: i32,
+    /// For services without an explicit healthcheck, how long the process must stay
+    /// alive before it's considered healthy (and thus stably running). Defaults to 0s,
+    /// meaning the service is considered healthy immediately.
+    #[serde(default, with = "humantime_serde")]
+    pub healthy_after: Duration,
 }
 
 impl Healthiness {
@@ -331,6 +336,7 @@ impl Default for Healthiness {
             file_path: None,
             command: None,
             max_failed: 3,
+            healthy_after: Duration::from_secs(0),
         }
     }
 }
@@ -988,6 +994,22 @@ max-failed = 5
             Some("http://localhost:8080/health")
         );
         assert_eq!(svc.healthiness.max_failed, 5);
+    }
+
+    #[test]
+    fn test_healthy_after_defaults_and_parses() {
+        // Defaults to 0s when unspecified.
+        let svc: Service = Service::from_str(r#"command = "test""#).unwrap();
+        assert_eq!(svc.healthiness.healthy_after, Duration::from_secs(0));
+
+        // Parses a humantime duration.
+        let toml_str = r#"
+command = "test"
+[healthiness]
+healthy-after = "5s"
+"#;
+        let svc: Service = Service::from_str(toml_str).unwrap();
+        assert_eq!(svc.healthiness.healthy_after, Duration::from_secs(5));
     }
 
     use super::LogOutput;

@@ -259,8 +259,10 @@ fn handle_status_change(
 
     if valid {
         match next_status {
-            Started => {
-                new_service_handler.status = Started;
+            // The budget is reset only once the service is genuinely stable (green), i.e.
+            // on Running - not on Started - so crash loops do exhaust it.
+            Running => {
+                new_service_handler.status = Running;
                 new_service_handler.restart_attempts = 0;
             }
             InKilling if service_handler.status == Initial => {
@@ -291,23 +293,26 @@ fn handle_status_change(
 
 /// Produces events based on the Restart Strategy of the service.
 fn handle_restart_strategy(service_handler: &ServiceHandler, is_failed: bool) -> Event {
+    use ServiceStatus::*;
+    let attempts_over = service_handler.restart_attempts_are_over();
+    // on-failure/always restart by default, so a budget only bounds them when set (>0).
+    let bounded = service_handler.service.restart.attempts > 0 && attempts_over;
+    let restart_or_fail = |stop: bool| if stop { FinishedFailed } else { Initial };
     let new_status = match service_handler.service.restart.strategy {
+        // `never` restarts only as a rapid-failure escape hatch, so it needs an actual
+        // rapid failure to have been counted. Without that check a service that became
+        // stable and then failed would be restarted - and forever, because failures after
+        // stability never consume the budget.
         RestartStrategy::Never if is_failed => {
-            debug!(
-                "restart attempts: {}, are over: {}, max: {}",
-                service_handler.restart_attempts,
-                service_handler.restart_attempts_are_over(),
-                service_handler.service.restart.attempts
-            );
-            if service_handler.restart_attempts_are_over() {
-                ServiceStatus::FinishedFailed
-            } else {
-                ServiceStatus::Initial
-            }
+            restart_or_fail(service_handler.restart_attempts == 0 || attempts_over)
         }
-        RestartStrategy::OnFailure if is_failed => ServiceStatus::Initial,
-        RestartStrategy::Never | RestartStrategy::OnFailure => ServiceStatus::Finished,
-        RestartStrategy::Always => ServiceStatus::Initial,
+        RestartStrategy::OnFailure | RestartStrategy::Always if is_failed => {
+            restart_or_fail(bounded)
+        }
+        // A successful exit is only restarted by `always`, and only while the budget lasts:
+        // FinishedFailed is not a legal transition from Success, so give up as Finished.
+        RestartStrategy::Always if !bounded => Initial,
+        RestartStrategy::Never | RestartStrategy::OnFailure | RestartStrategy::Always => Finished,
     };
     debug!("Restart strategy applied, ev: {:?}", new_status);
     Event::new_status_update(service_handler.name(), new_status)
@@ -405,6 +410,114 @@ strategy = "{}"
                 let received = handle_restart_strategy(&sh, has_failed);
                 assert_eq!(received, expected);
             });
+    }
+
+    #[test]
+    fn test_handle_restart_strategy_honors_attempts_budget() {
+        let ev = |status| Event::new_status_update("servicename", status);
+        let make = |strategy: &str, restart_attempts: u32| {
+            let service: Service = Service::from_str(&format!(
+                r#"name="servicename"
+command = "Not relevant"
+[restart]
+strategy = "{strategy}"
+attempts = 3
+"#
+            ))
+            .unwrap();
+            let mut sh: ServiceHandler = service.into();
+            sh.restart_attempts = restart_attempts;
+            sh
+        };
+
+        // on-failure and always restart while the budget remains, then FinishedFailed.
+        for strategy in ["on-failure", "always"] {
+            assert_eq!(
+                handle_restart_strategy(&make(strategy, 3), true),
+                ev(ServiceStatus::Initial),
+                "{strategy} should restart while budget remains"
+            );
+            assert_eq!(
+                handle_restart_strategy(&make(strategy, 4), true),
+                ev(ServiceStatus::FinishedFailed),
+                "{strategy} should stop once budget is exhausted"
+            );
+        }
+
+        // A successful exit never yields FinishedFailed: that is not a legal transition
+        // from Success, so an exhausted `always` service terminates as Finished instead.
+        assert_eq!(
+            handle_restart_strategy(&make("always", 3), false),
+            ev(ServiceStatus::Initial)
+        );
+        assert_eq!(
+            handle_restart_strategy(&make("always", 4), false),
+            ev(ServiceStatus::Finished)
+        );
+    }
+
+    #[test]
+    fn test_never_does_not_restart_after_becoming_stable() {
+        let ev = |status| Event::new_status_update("servicename", status);
+        let make = |strategy: &str, restart_attempts: u32| {
+            let service: Service = Service::from_str(&format!(
+                r#"name="servicename"
+command = "Not relevant"
+[restart]
+strategy = "{strategy}"
+attempts = 3
+"#
+            ))
+            .unwrap();
+            let mut sh: ServiceHandler = service.into();
+            sh.restart_attempts = restart_attempts;
+            sh
+        };
+
+        // Reaching a stable state resets restart_attempts to 0. A failure from there is
+        // not a rapid failure, so `never` must not use its rapid-failure escape hatch -
+        // otherwise it would restart forever, since such failures never consume budget.
+        assert_eq!(
+            handle_restart_strategy(&make("never", 0), true),
+            ev(ServiceStatus::FinishedFailed)
+        );
+        // ...which is precisely what keeps `never` distinct from `on-failure`.
+        assert_eq!(
+            handle_restart_strategy(&make("on-failure", 0), true),
+            ev(ServiceStatus::Initial)
+        );
+        // A rapid failure still gets the escape hatch, while the budget lasts.
+        assert_eq!(
+            handle_restart_strategy(&make("never", 1), true),
+            ev(ServiceStatus::Initial)
+        );
+        assert_eq!(
+            handle_restart_strategy(&make("never", 4), true),
+            ev(ServiceStatus::FinishedFailed)
+        );
+    }
+
+    #[test]
+    fn test_handle_restart_strategy_unbounded_when_attempts_zero() {
+        let ev = |status| Event::new_status_update("servicename", status);
+        for strategy in ["on-failure", "always"] {
+            let service: Service = Service::from_str(&format!(
+                r#"name="servicename"
+command = "Not relevant"
+[restart]
+strategy = "{strategy}"
+attempts = 0
+"#
+            ))
+            .unwrap();
+            let mut sh: ServiceHandler = service.into();
+            sh.restart_attempts = 100;
+            assert_eq!(
+                handle_restart_strategy(&sh, true),
+                ev(ServiceStatus::Initial),
+                "{strategy} with attempts=0 should restart unboundedly"
+            );
+        }
     }
 
     #[test]
@@ -564,20 +677,23 @@ wait = "10s"
     }
 
     #[test]
-    fn test_started_transition_resets_restart_attempts() {
+    fn test_started_transition_preserves_restart_attempts() {
+        // The budget is no longer reset on Started, only once the service is stable
+        // (Running). This ensures crash loops that never stabilize exhaust the budget.
         let mut sh = make_handler("svc", ServiceStatus::Starting);
         sh.restart_attempts = 5;
         let (new_sh, new_status) = sh.change_status(ServiceStatus::Started);
         assert_eq!(new_status, ServiceStatus::Started);
-        assert_eq!(new_sh.restart_attempts, 0);
+        assert_eq!(new_sh.restart_attempts, 5);
     }
 
     #[test]
-    fn test_non_started_transition_preserves_restart_attempts() {
+    fn test_running_transition_resets_restart_attempts() {
         let mut sh = make_handler("svc", ServiceStatus::Started);
         sh.restart_attempts = 3;
-        let (new_sh, _) = sh.change_status(ServiceStatus::Running);
-        assert_eq!(new_sh.restart_attempts, 3);
+        let (new_sh, new_status) = sh.change_status(ServiceStatus::Running);
+        assert_eq!(new_status, ServiceStatus::Running);
+        assert_eq!(new_sh.restart_attempts, 0);
     }
 
     // ========================================================================

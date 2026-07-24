@@ -3,7 +3,7 @@
 
 use std::thread;
 use std::thread::JoinHandle;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use crossbeam::channel::{Receiver, RecvTimeoutError, Sender, unbounded};
 
@@ -20,6 +20,8 @@ struct Worker {
     service: Service,
     bus: BusConnector<Event>,
     work_done_notifier: Receiver<()>,
+    /// When the worker was spawned, used to enforce `healthiness.healthy-after`.
+    started_at: Instant,
 }
 
 impl Worker {
@@ -28,22 +30,39 @@ impl Worker {
             service,
             bus,
             work_done_notifier,
+            started_at: Instant::now(),
         }
     }
     pub fn spawn_thread(self) -> JoinHandle<()> {
         thread::spawn(move || self.run())
     }
     fn run(self) {
+        let healthy_after = self.service.healthiness.healthy_after;
+        let poll = Duration::from_millis(1000);
         loop {
+            let elapsed = self.started_at.elapsed();
             let status = check_health(&self.service.healthiness);
-            self.bus.send_event(Event::HealthCheck(
-                self.service.name.clone(),
-                status.clone(),
-            ));
-            match self
-                .work_done_notifier
-                .recv_timeout(Duration::from_millis(1000))
-            {
+            // Suppress the "healthy" signal until the service has been alive for at least
+            // `healthy-after`, so a crash within the window counts against the
+            // restart-attempts budget. We send *nothing* (rather than a synthetic
+            // Unhealthy) during the window: Unhealthy counts accumulate and are never
+            // decremented, which would permanently prevent the service becoming Running.
+            let suppress = status == HealthinessStatus::Healthy && elapsed < healthy_after;
+            if !suppress {
+                self.bus.send_event(Event::HealthCheck(
+                    self.service.name.clone(),
+                    status.clone(),
+                ));
+            }
+            // Inside the window, wake up at the boundary instead of only every `poll`, so
+            // the service turns green close to the configured time.
+            let timeout = if elapsed < healthy_after {
+                poll.min(healthy_after - elapsed)
+                    .max(Duration::from_millis(10))
+            } else {
+                poll
+            };
+            match self.work_done_notifier.recv_timeout(timeout) {
                 Ok(()) | Err(RecvTimeoutError::Disconnected) => break,
                 _ => (),
             };
@@ -84,7 +103,11 @@ fn run(bus: BusConnector<Event>, services: Vec<Service>) {
         match ev {
             Event::StatusChanged(s_name, ServiceStatus::Started) => {
                 let service = get_service(&s_name);
-                if !service.healthiness.has_any_check_defined() {
+                // With no explicit check and no healthy-after delay, the service is healthy
+                // immediately; otherwise a worker enforces them before reporting Healthy.
+                if !service.healthiness.has_any_check_defined()
+                    && service.healthiness.healthy_after.is_zero()
+                {
                     bus.send_event(Event::HealthCheck(s_name, HealthinessStatus::Healthy));
                     continue;
                 }
