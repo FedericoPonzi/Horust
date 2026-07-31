@@ -357,7 +357,7 @@ impl Default for User {
 }
 
 impl User {
-    pub(crate) fn get_uid(&self) -> Result<unistd::Uid> {
+    pub fn get_uid(&self) -> Result<unistd::Uid> {
         match &self {
             User::Name(name) => {
                 let user = unistd::User::from_name(name)?
@@ -366,6 +366,12 @@ impl User {
             }
             User::Uid(uid) => Ok(unistd::Uid::from_raw(*uid)),
         }
+    }
+
+    /// Returns the raw UID as u32. Resolves usernames via /etc/passwd.
+    /// Returns None if the username cannot be resolved.
+    pub fn try_get_raw_uid(&self) -> Option<u32> {
+        self.get_uid().ok().map(|uid| uid.as_raw())
     }
 
     fn get_raw_user(&self) -> Result<unistd::User> {

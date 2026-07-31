@@ -8,7 +8,7 @@ exchange protobuf messages.
 
 Supported commands:
 
-* status [servicename]: get the status of your service `servicename`. If not specified, it will return the status for
-  all services.
-* change <servicename> <newstatus>: can be used to change the status of `servicename`.
-  Supported `newstatus` options are start, stop.
+* `status [service_name]`: get the status of a service. If `service_name` is omitted, returns the status of all services.
+* `start <service_name>`: start a stopped service.
+* `stop <service_name>`: stop a running service.
+* `restart <service_name>`: restart a service (stop then start). Internally reuses the stop and start operations.

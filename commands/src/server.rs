@@ -1,8 +1,10 @@
 use crate::UdsConnectionHandler;
 use crate::proto::messages::horust_msg_message::MessageType::Request;
 use crate::proto::messages::{
-    HorustMsgError, HorustMsgMessage, HorustMsgRequest, HorustMsgResponse, HorustMsgServiceStatus,
-    HorustMsgServiceStatusResponse, horust_msg_message, horust_msg_request, horust_msg_response,
+    HorustMsgAllServicesStatusResponse, HorustMsgError, HorustMsgMessage, HorustMsgRequest,
+    HorustMsgResponse, HorustMsgRestartResponse, HorustMsgServiceChangeResponse,
+    HorustMsgServiceStatus, HorustMsgServiceStatusEntry, HorustMsgServiceStatusResponse,
+    horust_msg_message, horust_msg_request, horust_msg_response,
 };
 use anyhow::{Result, anyhow};
 use log::{error, info};
@@ -68,21 +70,40 @@ pub trait CommandsHandlerTrait {
                         "Requested service update for {} to {}",
                         change_request.service_name, change_request.service_status
                     );
-                    new_horust_msg_error_response("Unimplemented!".to_string())
-                    /*self.update_service_status(
-                        &change_request.service_name,
-                        HorustMsgServiceStatus::from_i32(change_request.service_status).unwrap(),
-                    )
-                    .map(|new_status| {
-                        // TODO:
-                        new_horust_msg_service_status_response(
-                            change_request.service_name,
-                            new_status,
-                        )
-                    })
-                    .unwrap_or_else(|err| {
-                        new_horust_msg_error_response(format!("Error from change handler: {err}"))
-                    })*/
+                    let new_status =
+                        HorustMsgServiceStatus::try_from(change_request.service_status);
+                    match new_status {
+                        Ok(status) => {
+                            match self.update_service_status(&change_request.service_name, status) {
+                                Ok(()) => new_horust_msg_change_response(
+                                    change_request.service_name,
+                                    true,
+                                ),
+                                Err(err) => new_horust_msg_error_response(format!(
+                                    "Error from change handler: {err}"
+                                )),
+                            }
+                        }
+                        Err(_) => {
+                            new_horust_msg_error_response("Invalid service status".to_string())
+                        }
+                    }
+                }
+                horust_msg_request::Request::RestartRequest(restart_request) => {
+                    info!("Requested restart for {}", restart_request.service_name);
+                    match self.restart_service(&restart_request.service_name) {
+                        Ok(()) => {
+                            new_horust_msg_restart_response(restart_request.service_name, true)
+                        }
+                        Err(err) => new_horust_msg_error_response(format!(
+                            "Error from restart handler: {err}"
+                        )),
+                    }
+                }
+                horust_msg_request::Request::AllStatusRequest(_) => {
+                    info!("Requested all services status");
+                    let statuses = self.get_all_service_statuses();
+                    new_horust_msg_all_status_response(statuses)
                 }
             };
             uds_conn_handler.send_message(response)?;
@@ -91,39 +112,74 @@ pub trait CommandsHandlerTrait {
     }
 
     fn get_service_status(&self, service_name: &str) -> Result<HorustMsgServiceStatus>;
+    fn start_service(&self, service_name: &str) -> Result<()>;
+    fn stop_service(&self, service_name: &str) -> Result<()>;
     fn update_service_status(
         &self,
         service_name: &str,
         new_status: HorustMsgServiceStatus,
     ) -> Result<()>;
+    fn restart_service(&self, service_name: &str) -> Result<()>;
+    fn get_all_service_statuses(&self) -> Vec<(String, HorustMsgServiceStatus)>;
 }
 
-pub fn new_horust_msg_error_response(error: String) -> HorustMsgMessage {
+fn wrap_response(response: horust_msg_response::Response) -> HorustMsgMessage {
     HorustMsgMessage {
         message_type: Some(horust_msg_message::MessageType::Response(
             HorustMsgResponse {
-                response: Some(horust_msg_response::Response::Error(HorustMsgError {
-                    error_string: error,
-                })),
+                response: Some(response),
             },
         )),
     }
+}
+
+pub fn new_horust_msg_error_response(error: String) -> HorustMsgMessage {
+    wrap_response(horust_msg_response::Response::Error(HorustMsgError {
+        error_string: error,
+    }))
 }
 
 pub fn new_horust_msg_service_status_response(
     service_name: String,
     status: HorustMsgServiceStatus,
 ) -> HorustMsgMessage {
-    HorustMsgMessage {
-        message_type: Some(horust_msg_message::MessageType::Response(
-            HorustMsgResponse {
-                response: Some(horust_msg_response::Response::StatusResponse(
-                    HorustMsgServiceStatusResponse {
-                        service_name,
-                        service_status: status.into(),
-                    },
-                )),
-            },
-        )),
-    }
+    wrap_response(horust_msg_response::Response::StatusResponse(
+        HorustMsgServiceStatusResponse {
+            service_name,
+            service_status: status.into(),
+        },
+    ))
+}
+
+fn new_horust_msg_change_response(service_name: String, accepted: bool) -> HorustMsgMessage {
+    wrap_response(horust_msg_response::Response::ChangeResponse(
+        HorustMsgServiceChangeResponse {
+            service_name,
+            accepted,
+        },
+    ))
+}
+
+fn new_horust_msg_restart_response(service_name: String, accepted: bool) -> HorustMsgMessage {
+    wrap_response(horust_msg_response::Response::RestartResponse(
+        HorustMsgRestartResponse {
+            service_name,
+            accepted,
+        },
+    ))
+}
+
+fn new_horust_msg_all_status_response(
+    statuses: Vec<(String, HorustMsgServiceStatus)>,
+) -> HorustMsgMessage {
+    let services = statuses
+        .into_iter()
+        .map(|(name, status)| HorustMsgServiceStatusEntry {
+            service_name: name,
+            service_status: status.into(),
+        })
+        .collect();
+    wrap_response(horust_msg_response::Response::AllStatusResponse(
+        HorustMsgAllServicesStatusResponse { services },
+    ))
 }
