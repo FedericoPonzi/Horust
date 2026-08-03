@@ -111,17 +111,26 @@ attempts = 0
 
 * **`strategy` = `always|on-failure|never`**: Defines the restart strategy.
 
-    * `always`: Failure or Success, it will be always restarted
-    * `on-failure`: Only if it has failed. Please check the `attempts` parameter below.
-    * `never`: It won't be restarted, no matter what's the exit status. Please check the `attempts` parameter below.
+    * `always`: Failure or Success, it will always be restarted (bounded by `attempts`, see below).
+    * `on-failure`: Only if it has failed (bounded by `attempts`, see below).
+    * `never`: By default it won't be restarted, no matter the exit status. It may still be restarted as a
+      rapid-failure escape hatch if `attempts` is configured (see below).
 
 * **`backoff` = `string`**: Use this time before retrying restarting the service.
-* **`attempts` = `number`**: How many attempts to start the service before considering it as FinishedFailed. Default is
-    10.
-  Attempts are useful if your service is failing too quickly. If you're in a start-stop loop, this will put and end to
-  it.
-  If a service has failed too quickly and attempts > 0, it will be restarted even if the strategy is `never`.
-  And if the attempts are over, it will never be restarted even if the restart policy is: `On-Failure`/`Always`.
+* **`attempts` = `number`**: A budget that bounds how many times a service can fail *rapidly* (before it
+    becomes stable) before it's considered `FinishedFailed`. Default is `0`, which means **unbounded**
+    (the service is restarted forever according to its `strategy`).
+  Attempts are useful when a service is failing too quickly: if you're in a start-stop loop, this puts an
+    end to it. A failure counts as "too quick" if it happens before the service became stable, i.e. before
+    it reached the `running` state - see `healthiness.healthy-after` below to control how long a service
+    must survive before it's considered stable. Failing to spawn the process at all (for instance, a
+    command that isn't found) also counts against the budget. The budget applies to all three strategies:
+    * For `always` and `on-failure`, `attempts > 0` bounds the rapid-restart loop; `attempts = 0` keeps
+      restarting forever.
+    * For `never`, `attempts > 0` allows the service to be restarted up to that many times *only* when it
+      fails too quickly; with `attempts = 0` a `never` service is never restarted on failure.
+  In every case, once the budget is exhausted the service is no longer restarted, and it terminates as
+    `FinishedFailed` (or `Finished`, if its last exit was successful).
 
 The delay between attempts is calculated as: `backoff * attempts_made + start-delay`. For instance, using:
 
@@ -136,10 +145,12 @@ Will wait 1 second and then start the service. If it doesn't start:
 * 3d and last attempt will start after 1*3 +1 = 4 seconds.
 
 If the attempts are over, then the service will be considered FailedFinished and won't be restarted.
-The attempt count is reset as soon as the service's state changes to running.
-This state change is driven by the health-check component, and a service with no health-check will be considered as
-`Healthy` and it will
-immediately pass to the running state.
+The attempt count counts only *rapid* failures (failures that happen before the service becomes stable),
+and it is reset as soon as the service's state changes to running (i.e. it becomes "green").
+This state change is driven by the health-check component: a service with no health-check is considered
+`Healthy` and passes to the running state after `healthiness.healthy-after` (immediately by default, see
+the Healthiness section). Configure `healthy-after` to define how long a crash-prone service must survive
+before its restart budget is reset.
 
 ### Healthiness Check
 
@@ -149,6 +160,7 @@ http-endpoint = "http://localhost:8080/healthcheck"
 file-path = "/var/myservice/up"
 command = "curl -s localhost:8080/healthcheck"
 max-failed = 3
+healthy-after = "0s"
 ```
 
 * **`http-endpoint` = `<http endpoint>`**: It will send an HEAD request to the specified http endpoint. 200 means the
@@ -159,6 +171,11 @@ max-failed = 3
 * **`command` = `your_command arg1 arg2 ...`**: It will run this command. If the exit status is 0, the service is
   considered healthy.
 * **`max-failed` = `i32`**: How many unhealthy health-checks in a row are allowed before considering the service failed.
+* **`healthy-after` = `string`**: How long the process must stay alive before it's considered healthy (and
+  thus stably running, which resets the `restart.attempts` budget). Defaults to `0s`, meaning the service
+  is considered healthy immediately. This is most useful for services without an explicit health-check:
+  raising it lets a crash loop deterministically exhaust its restart budget instead of resetting it on
+  every quick (re)start.
 * You can check the healthiness of your system using a http endpoint or a flag file.
 * You can use the enforce dependency to kill every dependent system.
 

@@ -169,6 +169,10 @@ impl Supervisor {
             Event::Run(service_name) if self.repo.get_sh(&service_name).is_initial() => {
                 let service_handler = self.repo.get_mut_sh(&service_name);
                 service_handler.status = ServiceStatus::Starting;
+                // Health check results from a previous run must not carry over to the new
+                // process, otherwise a service that was healthy before would immediately
+                // be considered green again (skipping its `healthy-after` window).
+                service_handler.healthiness_checks_failed = None;
                 let evs = vec![Event::StatusChanged(service_name, ServiceStatus::Starting)];
 
                 let res = healthcheck::prepare_service(&service_handler.service().healthiness);
@@ -202,6 +206,10 @@ impl Supervisor {
             }
             Event::SpawnFailed(s_name) => {
                 let service_handler = self.repo.get_mut_sh(&s_name);
+                // The process never came to exist, so no ServiceExited will ever arrive to
+                // account for this failure. Count it here, otherwise a service that can
+                // never be spawned (e.g. command not found) would restart forever.
+                service_handler.restart_attempts += 1;
                 service_handler.status = ServiceStatus::Failed;
                 vec![Event::StatusUpdate(s_name, ServiceStatus::Failed)]
             }
