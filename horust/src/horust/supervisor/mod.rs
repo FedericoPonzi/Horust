@@ -206,6 +206,10 @@ impl Supervisor {
             }
             Event::SpawnFailed(s_name) => {
                 let service_handler = self.repo.get_mut_sh(&s_name);
+                // The process never came to exist, so no ServiceExited will ever arrive to
+                // account for this failure. Count it here, otherwise a service that can
+                // never be spawned (e.g. command not found) would restart forever.
+                service_handler.restart_attempts += 1;
                 service_handler.status = ServiceStatus::Failed;
                 vec![Event::StatusUpdate(s_name, ServiceStatus::Failed)]
             }

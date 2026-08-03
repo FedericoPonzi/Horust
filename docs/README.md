@@ -121,7 +121,10 @@ attempts = 0
     becomes stable) before it's considered `FinishedFailed`. Default is `0`, which means **unbounded**
     (the service is restarted forever according to its `strategy`).
   Attempts are useful when a service is failing too quickly: if you're in a start-stop loop, this puts an
-    end to it. The budget applies to all three strategies:
+    end to it. A failure counts as "too quick" if it happens before the service became stable, i.e. before
+    it reached the `running` state - see `healthiness.healthy-after` below to control how long a service
+    must survive before it's considered stable. Failing to spawn the process at all (for instance, a
+    command that isn't found) also counts against the budget. The budget applies to all three strategies:
     * For `always` and `on-failure`, `attempts > 0` bounds the rapid-restart loop; `attempts = 0` keeps
       restarting forever.
     * For `never`, `attempts > 0` allows the service to be restarted up to that many times *only* when it

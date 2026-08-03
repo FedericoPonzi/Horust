@@ -86,6 +86,26 @@ strategy = "on-failure"
     recv.recv_or_kill(Duration::from_secs(15));
 }
 
+/// Waits for horust to exit on its own, panicking with `on_timeout` if it keeps running.
+fn wait_for_exit(
+    child: &mut std::process::Child,
+    on_timeout: impl FnOnce() -> String,
+) -> std::process::ExitStatus {
+    let deadline = std::time::Instant::now() + Duration::from_secs(15);
+    loop {
+        if let Some(status) = child.try_wait().unwrap() {
+            return status;
+        }
+        if std::time::Instant::now() >= deadline {
+            let msg = on_timeout();
+            child.kill().unwrap();
+            child.wait().unwrap();
+            panic!("{msg}");
+        }
+        std::thread::sleep(Duration::from_millis(20));
+    }
+}
+
 /// Runs an always-failing service and returns (horust exit status, number of launches).
 fn run_bounded_crash_loop(strategy: &str, attempts: u32) -> (std::process::ExitStatus, usize) {
     let (mut cmd, temp_dir) = get_cli();
@@ -125,26 +145,38 @@ strategy = "ignore"
         .arg("--unsuccessful-exit-finished-failed")
         .spawn()
         .unwrap();
-    let deadline = std::time::Instant::now() + Duration::from_secs(15);
-    let status = loop {
-        if let Some(status) = child.try_wait().unwrap() {
-            break status;
-        }
-        if std::time::Instant::now() >= deadline {
-            let launches = std::fs::read_to_string(&attempts_log)
-                .map(|contents| contents.lines().count())
-                .unwrap_or(0);
-            child.kill().unwrap();
-            child.wait().unwrap();
-            panic!("Horust did not stop after {launches} launches");
-        }
-        std::thread::sleep(Duration::from_millis(20));
+    let count_launches = || {
+        std::fs::read_to_string(&attempts_log)
+            .map(|contents| contents.lines().count())
+            .unwrap_or(0)
     };
-    let launches = std::fs::read_to_string(attempts_log)
-        .unwrap()
-        .lines()
-        .count();
-    (status, launches)
+    let status = wait_for_exit(&mut child, || {
+        format!("Horust did not stop after {} launches", count_launches())
+    });
+    (status, count_launches())
+}
+
+/// A service whose command cannot be spawned at all (not found in PATH) fails before the
+/// process ever exists, so there is no exit to observe. It must still consume the restart
+/// budget, otherwise it would be restarted forever.
+#[test]
+fn test_spawn_failure_exhausts_attempts() {
+    let (mut cmd, temp_dir) = get_cli();
+    let service = r#"command = "definitely-not-a-real-binary-xyz"
+[restart]
+attempts = 2
+backoff = "1ms"
+strategy = "on-failure"
+"#;
+    std::fs::write(temp_dir.path().join("svc.toml"), service).unwrap();
+    let mut child = cmd
+        .arg("--unsuccessful-exit-finished-failed")
+        .spawn()
+        .unwrap();
+    let status = wait_for_exit(&mut child, || {
+        "Horust kept restarting a service that could never be spawned".to_string()
+    });
+    assert_eq!(status.code(), Some(101));
 }
 
 #[test]
