@@ -78,6 +78,38 @@ make run
 make help 
 ```
 
+If your PR changes the dependencies in `Cargo.lock` (added, removed or upgraded), you also need to refresh the
+vendored dependencies hash used by the nix build, otherwise `nix build` will fail with a hash mismatch:
+
+```
+# replace the current hash with a placeholder:
+sed -i 's|cargoHash = "sha256-[^"]*"|cargoHash = lib.fakeHash|' package.nix
+# nix will fail and print the correct hash, copy the "got:" value back into package.nix:
+nix build .#default
+```
+
+Alternatively, `nix run nixpkgs#nix-update -- --flake --version=skip default` does it for you.
+
+---
+
+## Releasing a new version
+
+1. Add the user visible changes to `CHANGELOG.md` under a new version heading. Internal changes (CI, tests,
+   refactors, dependency bumps) are not part of the changelog.
+2. Bump `workspace.package.version` and the `horust-commands-lib` version in the root `Cargo.toml`, then run
+   `cargo check` to refresh `Cargo.lock`.
+3. Commit the above on master, then tag the commit with the matching version and push the tag:
+
+```
+git tag v0.1.14
+git push origin v0.1.14
+```
+
+The CI takes care of the rest: it publishes `horust-commands-lib`, `horust` and `horustctl` to crates.io, builds
+the release binaries and attaches them to a new GitHub release, and pushes the docker images.
+Note that the tag must match the version in `Cargo.toml`, since crates.io publishes whatever the tagged commit
+contains, and that publishing to crates.io cannot be undone.
+
 ---
 
 ## Local development using a container
