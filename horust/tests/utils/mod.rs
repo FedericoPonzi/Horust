@@ -7,11 +7,12 @@ use nix::sys::signal::{Signal, kill};
 use nix::unistd::Pid;
 use rand::RngExt;
 use rand::distr::Alphanumeric;
+use std::io::{BufRead, BufReader};
 use std::path::Path;
-use std::process::Command;
+use std::process::{Command, Stdio};
 use std::sync::mpsc;
 use std::thread;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 use tempfile::TempDir;
 
 /// Create a random name
@@ -132,4 +133,43 @@ impl RecvWrapper {
             }
         }
     }
+}
+
+/// Runs `cmd`, waits until `needle` appears on stdout at least `min_count` times, then kills it.
+///
+/// The supervisor polls on a 300ms tick, so a restart cycle costs well over a second and its
+/// latency grows with machine load. Asserting against a fixed process timeout therefore races the
+/// supervisor. Waiting for the output instead returns as soon as the condition holds, and `timeout`
+/// only needs to be a generous upper bound rather than a tight estimate.
+#[allow(dead_code)]
+pub fn assert_stdout_repeats(cmd: &mut Command, needle: &str, min_count: usize, timeout: Duration) {
+    let mut child = cmd.stdout(Stdio::piped()).spawn().unwrap();
+    let stdout = child.stdout.take().expect("piped stdout");
+
+    let (sender, receiver) = mpsc::channel();
+    thread::spawn(move || {
+        for line in BufReader::new(stdout).lines().map_while(Result::ok) {
+            if sender.send(line).is_err() {
+                return;
+            }
+        }
+    });
+
+    let deadline = Instant::now() + timeout;
+    let mut seen = 0;
+    while seen < min_count {
+        let remaining = deadline.saturating_duration_since(Instant::now());
+        match receiver.recv_timeout(remaining) {
+            Ok(line) => seen += line.matches(needle).count(),
+            Err(_) => break,
+        }
+    }
+
+    let _ = child.kill();
+    let _ = child.wait();
+
+    assert!(
+        seen >= min_count,
+        "expected {needle:?} on stdout at least {min_count} times within {timeout:?}, saw {seen}"
+    );
 }

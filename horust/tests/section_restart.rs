@@ -1,13 +1,11 @@
 use std::time::Duration;
 
-use assert_cmd::cmd::Command;
 #[cfg(target_os = "linux")]
 use libc::SIGPOLL;
 use libc::{
     SIGABRT, SIGBUS, SIGFPE, SIGHUP, SIGILL, SIGINT, SIGKILL, SIGPIPE, SIGPROF, SIGQUIT, SIGSEGV,
     SIGSYS, SIGTERM, SIGTRAP, SIGUSR1, SIGUSR2, SIGVTALRM, SIGXCPU, SIGXFSZ, c_int,
 };
-use predicates::prelude::predicate;
 use utils::*;
 
 #[allow(dead_code)]
@@ -89,8 +87,7 @@ strategy = "on-failure"
 /// With restart strategy set to always, the child service should be always restarted regardless of
 /// the reason why it exited.
 fn test_restart_always_signal(signal: i32) -> Result<(), std::io::Error> {
-    let (cmd, temp_dir) = get_cli();
-    let mut cmd = Command::from_std(cmd);
+    let (mut cmd, temp_dir) = get_cli();
 
     let suicide_script = format!(
         r#"#!/usr/bin/env bash
@@ -109,12 +106,7 @@ strategy = "always"
         Some(service),
         None,
     );
-    cmd.timeout(Duration::from_millis(2000))
-        .assert()
-        .failure()
-        .stdout(predicate::function(|x: &str| {
-            x.matches("restarting").count() >= 2
-        }));
+    assert_stdout_repeats(&mut cmd, "restarting", 2, Duration::from_secs(15));
 
     Ok(())
 }
@@ -139,8 +131,7 @@ fn test_restart_always_killed_by_signals() -> Result<(), std::io::Error> {
 
 #[test]
 fn test_restart_always_normal_exit() -> Result<(), std::io::Error> {
-    let (cmd, temp_dir) = get_cli();
-    let mut cmd = Command::from_std(cmd);
+    let (mut cmd, temp_dir) = get_cli();
 
     let suicide_script = r#"#!/usr/bin/env bash
 echo "restarting"
@@ -151,12 +142,7 @@ sleep 0.5
 strategy = "always"
 "#;
     store_service_script(temp_dir.path(), suicide_script, Some(service), None);
-    cmd.timeout(Duration::from_millis(2000))
-        .assert()
-        .failure()
-        .stdout(predicate::function(|x: &str| {
-            x.matches("restarting").count() >= 2
-        }));
+    assert_stdout_repeats(&mut cmd, "restarting", 2, Duration::from_secs(15));
 
     Ok(())
 }
