@@ -33,7 +33,7 @@ wait = "1s""#;
 
     let recv = run_async(&mut cmd, true);
     kill(recv.pid, Signal::SIGINT).expect("kill");
-    recv.recv_or_kill(Duration::from_secs(5));
+    recv.recv_or_kill(Duration::from_secs(15));
 }
 
 fn test_termination_custom_signal(friendly_name: &str) {

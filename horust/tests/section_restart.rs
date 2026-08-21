@@ -142,7 +142,7 @@ sleep 0.5
 strategy = "always"
 "#;
     store_service_script(temp_dir.path(), suicide_script, Some(service), None);
-    assert_stdout_repeats(&mut cmd, "restarting", 2, Duration::from_secs(15));
+    assert_stdout_repeats(&mut cmd, "restarting", 4, Duration::from_secs(15));
 
     Ok(())
 }
