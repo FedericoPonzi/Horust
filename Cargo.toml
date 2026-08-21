@@ -3,10 +3,10 @@ members = ["commands", "horust", "horustctl"]
 resolver = "2"
 
 [workspace.package]
-version = "0.1.13"
+version = "0.1.14"
 
 [workspace.dependencies]
-horust-commands-lib = { path = "commands", version = "0.1.13" }
+horust-commands-lib = { path = "commands", version = "0.1.14" }
 
 [profile.release]
 strip = "symbols"
