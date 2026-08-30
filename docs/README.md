@@ -17,7 +17,7 @@
   - [Horust's configuration](#horusts-configuration)
   - [Running a single command](#running-a-single-command)
   - [Multiple service directories](#multiple-service-directories)
-  - [horustctl: Checking system status](#horustctl-checking-system-status)
+  - [horustctl: Managing services](#horustctl-managing-services)
   - [Plugins (WIP)](#plugins-wip)
 
 When starting horust, you can optionally specify where it should look for services and uses `/etc/horust/services` by
@@ -316,18 +316,35 @@ These directories are loaded at once and treated just like all `*.toml` files we
 It means that for example service from `./services/extra` can depend on service from `./services/core`.
 The last parameter is used to load a single service file instead of a directory.
 
-## horustctl: Checking system status
+## horustctl: Managing services
 
 Horustctl is a program that allows you to interact with horust. They communicate using Unix Domain Socket (UDS), and by
 default, horust stores the sockets in /var/run/horust. You can override the path by using the argument
---uds-folder-path. Then you can use it, like this:
+--uds-folder-path.
 
-```
+Supported commands:
+
+```bash
+# Check the status of a specific service
 horustctl --uds-folder-path /tmp status myapp.toml
+
+# Check the status of all services
+horustctl --uds-folder-path /tmp status
+
+# Start a stopped service
+horustctl --uds-folder-path /tmp start myapp.toml
+
+# Stop a running service
+horustctl --uds-folder-path /tmp stop myapp.toml
+
+# Restart a service (stop then start)
+horustctl --uds-folder-path /tmp restart myapp.toml
 ```
 
-To check the status of your service. Currently, horustctl only supports querying for the service status. Additional
-capabilities are planned but not yet implemented.
+### Permissions
+
+Non-root users can only manage services that are configured to run as themselves (via the `user` field in the service
+configuration). Root (UID 0) can manage all services. Permissions are enforced using `SO_PEERCRED` on Linux.
 
 ## Plugins (WIP)
 

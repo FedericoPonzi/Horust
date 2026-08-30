@@ -101,7 +101,10 @@ impl Horust {
         commands_handler::spawn(
             self.join_bus(),
             self.uds_path.clone(),
-            self.services.iter().map(|s| s.name.clone()).collect(),
+            self.services
+                .iter()
+                .map(|s| (s.name.clone(), s.user.clone()))
+                .collect(),
         );
         let handle = supervisor::spawn(self.join_bus(), self.services.clone());
         let bus = self

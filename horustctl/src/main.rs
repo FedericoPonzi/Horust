@@ -1,13 +1,13 @@
 use anyhow::{Result, anyhow, bail};
 use clap::{Args, Parser, Subcommand};
 use env_logger::Env;
-use horust_commands_lib::{ClientHandler, get_path};
+use horust_commands_lib::{ClientHandler, HorustMsgServiceStatus, get_path};
 use log::debug;
 use std::fs::read_dir;
 use std::os::unix::fs::FileTypeExt;
 use std::path::PathBuf;
 
-/// Simple program to greet a person
+/// CLI tool for managing horust services
 #[derive(Parser, Debug)]
 #[command(author, version, about, long_about = None)]
 struct HorustctlArgs {
@@ -28,16 +28,30 @@ struct HorustctlArgs {
 
 #[derive(Subcommand, Debug)]
 enum Commands {
+    /// Show the status of one or all services
     Status(StatusArgs),
+    /// Start a stopped service
+    Start(ServiceNameArg),
+    /// Stop a running service
+    Stop(ServiceNameArg),
+    /// Restart a service (stop then start)
+    Restart(ServiceNameArg),
 }
 
 #[derive(Args, Debug)]
 struct StatusArgs {
+    /// Service name. If omitted, shows all services.
     service_name: Option<String>,
 }
 
+#[derive(Args, Debug)]
+struct ServiceNameArg {
+    /// The name of the service
+    service_name: String,
+}
+
 fn main() -> Result<()> {
-    env_logger::Builder::from_env(Env::default().default_filter_or("debug")).init();
+    env_logger::Builder::from_env(Env::default().default_filter_or("info")).init();
     let args = HorustctlArgs::parse();
     debug!("args: {args:?}");
 
@@ -48,16 +62,67 @@ fn main() -> Result<()> {
     match &args.commands {
         Commands::Status(status_args) => {
             debug!("Status command received: {status_args:?}");
-            debug!("uds path : {uds_path:?}");
-            let (service_name, service_status) =
-                uds_handler.send_status_request(status_args.service_name.clone().unwrap())?;
-            println!(
-                "Current status for '{service_name}' is: '{}'.",
-                service_status.as_str_name()
-            );
+            match &status_args.service_name {
+                Some(name) => {
+                    let (service_name, service_status) =
+                        uds_handler.send_status_request(name.clone())?;
+                    println!("{:<30} {}", service_name, format_status(&service_status));
+                }
+                None => {
+                    let statuses = uds_handler.send_all_status_request()?;
+                    if statuses.is_empty() {
+                        println!("No services found.");
+                    } else {
+                        println!("{:<30} STATUS", "SERVICE");
+                        for (name, status) in &statuses {
+                            println!("{:<30} {}", name, format_status(status));
+                        }
+                    }
+                }
+            }
+        }
+        Commands::Start(arg) => {
+            let (name, accepted) = uds_handler
+                .send_change_request(arg.service_name.clone(), HorustMsgServiceStatus::Initial)?;
+            if accepted {
+                println!("Start command accepted for '{name}'.");
+            } else {
+                println!("Start command rejected for '{name}'.");
+            }
+        }
+        Commands::Stop(arg) => {
+            let (name, accepted) = uds_handler
+                .send_change_request(arg.service_name.clone(), HorustMsgServiceStatus::Inkilling)?;
+            if accepted {
+                println!("Stop command accepted for '{name}'.");
+            } else {
+                println!("Stop command rejected for '{name}'.");
+            }
+        }
+        Commands::Restart(arg) => {
+            let (name, accepted) = uds_handler.send_restart_request(arg.service_name.clone())?;
+            if accepted {
+                println!("Restart command accepted for '{name}'.");
+            } else {
+                println!("Restart command rejected for '{name}'.");
+            }
         }
     }
     Ok(())
+}
+
+fn format_status(status: &HorustMsgServiceStatus) -> &'static str {
+    match status {
+        HorustMsgServiceStatus::Starting => "STARTING",
+        HorustMsgServiceStatus::Started => "STARTED",
+        HorustMsgServiceStatus::Running => "RUNNING",
+        HorustMsgServiceStatus::Inkilling => "STOPPING",
+        HorustMsgServiceStatus::Success => "SUCCESS",
+        HorustMsgServiceStatus::Finished => "FINISHED",
+        HorustMsgServiceStatus::Finishedfailed => "FAILED (finished)",
+        HorustMsgServiceStatus::Failed => "FAILED",
+        HorustMsgServiceStatus::Initial => "INITIAL",
+    }
 }
 
 fn get_uds_path(pid: Option<i32>, sockets_folder_path: PathBuf) -> Result<PathBuf> {
