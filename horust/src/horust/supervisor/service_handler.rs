@@ -85,9 +85,15 @@ impl ServiceHandler {
     }
     pub fn add_healthcheck_event(&mut self, check: HealthinessStatus) {
         let previous_hc = self.healthiness_checks_failed.unwrap_or(0);
-        let new_hc =
-            i32::from(self.is_alive_state() && !matches!(check, HealthinessStatus::Healthy));
-        self.healthiness_checks_failed = Some(previous_hc + new_hc);
+        let failed_checks = if self.is_alive_state() {
+            match check {
+                HealthinessStatus::Healthy => 0,
+                HealthinessStatus::Unhealthy => previous_hc.saturating_add(1),
+            }
+        } else {
+            previous_hc
+        };
+        self.healthiness_checks_failed = Some(failed_checks);
     }
 
     pub fn is_finished_failed(&self) -> bool {
@@ -718,9 +724,9 @@ wait = "10s"
         sh.add_healthcheck_event(HealthinessStatus::Unhealthy);
         assert_eq!(sh.healthiness_checks_failed, Some(2));
 
-        // Healthy while alive doesn't decrement (just adds 0)
+        // A healthy check resets the consecutive-failure count.
         sh.add_healthcheck_event(HealthinessStatus::Healthy);
-        assert_eq!(sh.healthiness_checks_failed, Some(2));
+        assert_eq!(sh.healthiness_checks_failed, Some(0));
 
         // Unhealthy while NOT alive (Initial) stays at 0
         let mut sh = make_handler("svc", ServiceStatus::Initial);
@@ -853,6 +859,27 @@ wait = "10s"
         let sh = repo.services.get("svc").unwrap();
         let events = sh.next(&repo, LifecycleStatus::Running);
         assert!(events.is_empty());
+    }
+
+    #[test]
+    fn test_next_started_recovers_after_healthy_check() {
+        let mut repo = make_repo(vec![("svc", ServiceStatus::Started)]);
+        {
+            let sh = repo.services.get_mut("svc").unwrap();
+            sh.add_healthcheck_event(HealthinessStatus::Unhealthy);
+        }
+        let sh = repo.services.get("svc").unwrap();
+        assert!(sh.next(&repo, LifecycleStatus::Running).is_empty());
+
+        {
+            let sh = repo.services.get_mut("svc").unwrap();
+            sh.add_healthcheck_event(HealthinessStatus::Healthy);
+        }
+        let sh = repo.services.get("svc").unwrap();
+        assert_eq!(
+            sh.next(&repo, LifecycleStatus::Running),
+            vec![Event::new_status_update("svc", ServiceStatus::Running)]
+        );
     }
 
     #[test]
