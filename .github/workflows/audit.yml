@@ -5,6 +5,7 @@ on:
     paths:
       - '**/Cargo.toml'
       - 'Cargo.lock'
+      - '.github/workflows/audit.yml'
   push:
     branches:
       - master
