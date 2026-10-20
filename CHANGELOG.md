@@ -11,6 +11,12 @@ Releases before 0.1.14 are documented on the
 
 ## [Unreleased]
 
+### Fixed
+
+- **Shutdown signal handling.** Fix a data race and a lost second SIGTERM/SIGINT
+  that could prevent escalation to forceful shutdown.
+  ([#337](https://github.com/FedericoPonzi/Horust/issues/337))
+
 ## [0.1.14] - 2026-08-21
 
 ### Added

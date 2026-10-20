@@ -278,6 +278,9 @@ impl Supervisor {
                 vec![]
             }
             Event::ShuttingDownInitiated(shutting_down) => {
+                if self.status == LifecycleStatus::ShuttingDown(ShuttingDown::Forcefully) {
+                    return vec![];
+                }
                 match shutting_down {
                     ShuttingDown::Gracefully => {
                         warn!("Gracefully stopping...");
@@ -287,7 +290,6 @@ impl Supervisor {
                     }
                 }
                 self.status = LifecycleStatus::ShuttingDown(shutting_down);
-                signal_handling::clear_sigtem();
                 vec![]
             }
             Event::StatusUpdate(service_name, new_status) => {
@@ -313,6 +315,18 @@ impl Supervisor {
         }
     }
 
+    fn handle_signals(&mut self, pending: u32) {
+        let shutdown = match (self.status, pending) {
+            (_, 0) | (LifecycleStatus::ShuttingDown(ShuttingDown::Forcefully), _) => return,
+            (LifecycleStatus::Running, 1) => ShuttingDown::Gracefully,
+            _ => ShuttingDown::Forcefully,
+        };
+        let event = Event::ShuttingDownInitiated(shutdown);
+        // Apply locally before broadcasting so another signal need not wait for the bus.
+        self.handle_event(event.clone());
+        self.repo.send_ev(event);
+    }
+
     /// Blocking call.
     /// This function will run the services and reap dead pids.
     fn run(mut self) -> ExitStatus {
@@ -320,25 +334,13 @@ impl Supervisor {
             // Ingest updates
             let received_events = self.repo.get_events();
             debug!("Applying events... {:?}", received_events);
-            match (self.status, signal_handling::is_sigterm_received()) {
-                (LifecycleStatus::Running, true) => {
-                    warn!("1. SIGTERM received");
-                    self.repo
-                        .send_ev(Event::ShuttingDownInitiated(ShuttingDown::Gracefully));
-                }
-                (LifecycleStatus::ShuttingDown(ShuttingDown::Gracefully), true) => {
-                    warn!("2. SIGTERM received");
-                    self.repo
-                        .send_ev(Event::ShuttingDownInitiated(ShuttingDown::Forcefully));
-                }
-                _ => {}
-            }
             // Handling of the received events and commands:
             let produced_events = received_events
                 .into_iter()
                 .flat_map(|ev| self.handle_event(ev))
                 .collect::<Vec<Event>>();
             debug!("Produced events: {:?}", produced_events);
+            self.handle_signals(signal_handling::take_pending_signals());
             // Producing commands which will be applied in the next iteration
             let next_evs: Vec<Event> = self
                 .repo
@@ -442,5 +444,67 @@ mod tests {
         // With a budget the multiplier can never exceed it anyway.
         let bounded = restart(5, 100);
         assert_eq!(restart_backoff(&bounded, 99), Duration::from_millis(500));
+    }
+}
+
+#[cfg(test)]
+mod signal_tests {
+    use super::*;
+    use crate::horust::bus::Bus;
+
+    #[test]
+    fn signals_escalate_without_waiting_for_bus_events() {
+        let bus = Bus::<Event>::new();
+        let mut supervisor = Supervisor::new(bus.join_bus(), vec![]);
+        supervisor.handle_signals(0);
+        assert_eq!(supervisor.status, LifecycleStatus::Running);
+        supervisor.handle_signals(1);
+        assert_eq!(
+            supervisor.status,
+            LifecycleStatus::ShuttingDown(ShuttingDown::Gracefully)
+        );
+        supervisor.handle_signals(0);
+        assert_eq!(
+            supervisor.status,
+            LifecycleStatus::ShuttingDown(ShuttingDown::Gracefully)
+        );
+        supervisor.handle_signals(1);
+        assert_eq!(
+            supervisor.status,
+            LifecycleStatus::ShuttingDown(ShuttingDown::Forcefully)
+        );
+        supervisor.handle_event(Event::ShuttingDownInitiated(ShuttingDown::Gracefully));
+        assert_eq!(
+            supervisor.status,
+            LifecycleStatus::ShuttingDown(ShuttingDown::Forcefully)
+        );
+        supervisor.handle_signals(2);
+        assert_eq!(
+            supervisor.status,
+            LifecycleStatus::ShuttingDown(ShuttingDown::Forcefully)
+        );
+    }
+
+    #[test]
+    fn two_pending_signals_force_shutdown() {
+        let bus = Bus::<Event>::new();
+        let mut supervisor = Supervisor::new(bus.join_bus(), vec![]);
+        supervisor.handle_signals(2);
+        assert_eq!(
+            supervisor.status,
+            LifecycleStatus::ShuttingDown(ShuttingDown::Forcefully)
+        );
+    }
+
+    #[test]
+    fn signal_escalates_shutdown_initiated_by_service_failure() {
+        let bus = Bus::<Event>::new();
+        let mut supervisor = Supervisor::new(bus.join_bus(), vec![]);
+        supervisor.handle_event(Event::ShuttingDownInitiated(ShuttingDown::Gracefully));
+        supervisor.handle_signals(1);
+        assert_eq!(
+            supervisor.status,
+            LifecycleStatus::ShuttingDown(ShuttingDown::Forcefully)
+        );
     }
 }
