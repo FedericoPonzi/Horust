@@ -37,9 +37,6 @@ jobs:
       fail-fast: false
       matrix:
         build: [ stable, beta, nightly ]
-        include:
-          - build: nightly
-            benches: true
 
     steps:
       - name: Checkout
@@ -51,18 +48,31 @@ jobs:
         run: |
           rustup toolchain install ${{ matrix.build }} --profile minimal --no-self-update
           rustup default ${{ matrix.build }}
+          if [ "${{ matrix.build }}" = nightly ]; then
+            rustup component add rust-src
+          fi
 
       - name: Install protoc
         run: sudo apt-get update && sudo apt-get install -y protobuf-compiler
-
-      - name: Build debug
-        run: cargo build --all
 
       - name: Create /var/run/horust directory
         run: sudo mkdir -p /var/run/horust && sudo chmod 777 /var/run/horust
 
       - name: Test
-        run: cargo test
+        if: matrix.build != 'nightly'
+        run: cargo test --workspace
+
+      - name: Configure sanitizer address space
+        if: matrix.build == 'nightly'
+        run: sudo sysctl -w vm.mmap_rnd_bits=28
+
+      - name: Test workspace units with ThreadSanitizer
+        if: matrix.build == 'nightly'
+        env:
+          RUSTFLAGS: -Zsanitizer=thread
+          CARGO_TARGET_DIR: target/tsan
+          TSAN_OPTIONS: halt_on_error=1
+        run: cargo test -Zbuild-std --target x86_64-unknown-linux-gnu --workspace --lib --bins
 
   docker-build-push:
     needs: [ test ]

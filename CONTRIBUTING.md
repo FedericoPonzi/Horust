@@ -67,6 +67,14 @@ If you want to run integration tests only:
 cargo test --package horust --test horust -- --exact
 ```
 
+CI runs all tests on stable and beta, and workspace unit tests under ThreadSanitizer on nightly. To run the latter locally on x86_64 Linux:
+
+```shell
+rustup toolchain install nightly --profile minimal --component rust-src
+RUSTFLAGS="-Zsanitizer=thread" CARGO_TARGET_DIR=target/tsan TSAN_OPTIONS=halt_on_error=1 \
+  cargo +nightly test -Zbuild-std --target x86_64-unknown-linux-gnu --workspace --lib --bins
+```
+
 There is also a make file, at the moment, used mainly for docker:
 
 ```
