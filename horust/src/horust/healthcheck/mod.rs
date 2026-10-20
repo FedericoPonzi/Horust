@@ -198,9 +198,11 @@ mod test {
             info!("Received request");
             let mut buffer = [0; 512];
             let mut stream = stream?;
-            stream.read(&mut buffer).unwrap();
+            if stream.read(&mut buffer)? == 0 {
+                return Ok(());
+            }
             let response = b"HTTP/1.1 200 OK\r\n\r\n";
-            stream.write(response).expect("Stream write");
+            stream.write_all(response).expect("Stream write");
         }
         Ok(())
     }
