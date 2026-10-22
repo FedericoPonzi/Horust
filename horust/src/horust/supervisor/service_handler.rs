@@ -111,6 +111,11 @@ impl ServiceHandler {
         self.healthiness_checks_failed.unwrap_or(1) > 0
     }
 
+    /// Returns true if more than `max-failed` healthchecks in a row were Unhealthy.
+    pub fn exceeded_max_failed_healthchecks(&self) -> bool {
+        self.healthiness_checks_failed.unwrap_or(-1) > self.service.healthiness.max_failed
+    }
+
     pub fn is_initial(&self) -> bool {
         ServiceStatus::Initial == self.status
     }
@@ -157,11 +162,10 @@ fn next_events(repo: &Repo, service_handler: &ServiceHandler) -> Vec<Event> {
         ServiceStatus::Started if !service_handler.has_some_failed_healthchecks() => {
             vev_status(ServiceStatus::Running)
         }
-        // This will kill the service after 3 failed healthchecks in a row.
-        // Maybe this should be parametrized
-        ServiceStatus::Running
-            if service_handler.healthiness_checks_failed.unwrap_or(-1)
-                > service_handler.service.healthiness.max_failed =>
+        // Kill the service after more than `max-failed` failed healthchecks in a row, also
+        // while it is starting: otherwise a service that never becomes healthy stays Started forever.
+        ServiceStatus::Running | ServiceStatus::Started
+            if service_handler.exceeded_max_failed_healthchecks() =>
         {
             vec![
                 ev_status(ServiceStatus::InKilling),
@@ -280,6 +284,15 @@ fn handle_status_change(
                     next_status
                 );
                 new_service_handler.status = Success;
+            }
+            // A service killed before ever becoming healthy failed rapidly: count it here,
+            // since by the time it exits it is InKilling and no longer in an early state.
+            InKilling
+                if service_handler.status == Started
+                    && service_handler.exceeded_max_failed_healthchecks() =>
+            {
+                new_service_handler.status = InKilling;
+                new_service_handler.restart_attempts += 1;
             }
             new_status => {
                 new_service_handler.status = new_status;
@@ -702,6 +715,16 @@ wait = "10s"
         assert_eq!(new_sh.restart_attempts, 0);
     }
 
+    #[test]
+    fn test_healthcheck_kill_counts_restart_attempt_only_before_running() {
+        for (status, attempts) in [(ServiceStatus::Started, 1), (ServiceStatus::Running, 0)] {
+            let mut sh = make_handler("svc", status);
+            sh.healthiness_checks_failed = Some(4);
+            let (new_sh, _) = sh.change_status(ServiceStatus::InKilling);
+            assert_eq!(new_sh.restart_attempts, attempts);
+        }
+    }
+
     // ========================================================================
     // Healthcheck event tracking tests
     // ========================================================================
@@ -866,7 +889,8 @@ wait = "10s"
         let mut repo = make_repo(vec![("svc", ServiceStatus::Started)]);
         {
             let sh = repo.services.get_mut("svc").unwrap();
-            sh.add_healthcheck_event(HealthinessStatus::Unhealthy);
+            sh.healthiness_checks_failed = Some(2);
+            sh.add_healthcheck_event(HealthinessStatus::Unhealthy); // == max_failed: keep waiting
         }
         let sh = repo.services.get("svc").unwrap();
         assert!(sh.next(&repo, LifecycleStatus::Running).is_empty());
@@ -884,20 +908,23 @@ wait = "10s"
 
     #[test]
     fn test_next_running_healthchecks_exceeded_kills() {
-        let mut repo = make_repo(vec![("svc", ServiceStatus::Running)]);
-        {
-            let sh = repo.services.get_mut("svc").unwrap();
-            sh.healthiness_checks_failed = Some(4); // > default max_failed of 3
+        // Also applies while Started, else a never-healthy service waits forever (#335).
+        for status in [ServiceStatus::Running, ServiceStatus::Started] {
+            let mut repo = make_repo(vec![("svc", status)]);
+            {
+                let sh = repo.services.get_mut("svc").unwrap();
+                sh.healthiness_checks_failed = Some(4); // > default max_failed of 3
+            }
+            let sh = repo.services.get("svc").unwrap();
+            let events = sh.next(&repo, LifecycleStatus::Running);
+            assert_eq!(
+                events,
+                vec![
+                    Event::new_status_update("svc", ServiceStatus::InKilling),
+                    Event::Kill("svc".into()),
+                ]
+            );
         }
-        let sh = repo.services.get("svc").unwrap();
-        let events = sh.next(&repo, LifecycleStatus::Running);
-        assert_eq!(
-            events,
-            vec![
-                Event::new_status_update("svc", ServiceStatus::InKilling),
-                Event::Kill("svc".into()),
-            ]
-        );
     }
 
     #[test]

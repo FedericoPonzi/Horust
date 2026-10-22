@@ -175,6 +175,7 @@ healthy-after = "0s"
 * **`command` = `your_command arg1 arg2 ...`**: It will run this command. If the exit status is 0, the service is
   considered healthy.
 * **`max-failed` = `i32`**: How many unhealthy health-checks in a row are allowed before considering the service failed.
+  Applies while starting too (about one check per second): raise it for services slow to become healthy.
 * **`healthy-after` = `string`**: How long the process must stay alive before it's considered healthy (and
   thus stably running, which resets the `restart.attempts` budget). Defaults to `0s`, meaning the service
   is considered healthy immediately. This is most useful for services without an explicit health-check:
