@@ -13,6 +13,10 @@ Releases before 0.1.14 are documented on the
 
 ### Fixed
 
+- **Services that never become healthy now fail.** `healthiness.max-failed` is now also
+  enforced while a service is starting, so its `failure.strategy` applies instead of it
+  staying `Started` forever and blocking its dependents. Slow starters may need a higher
+  `max-failed`. ([#335](https://github.com/FedericoPonzi/Horust/issues/335))
 - **Shutdown signal handling.** Fix a data race and a lost second SIGTERM/SIGINT
   that could prevent escalation to forceful shutdown.
   ([#337](https://github.com/FedericoPonzi/Horust/issues/337))
