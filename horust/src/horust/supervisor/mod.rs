@@ -164,6 +164,7 @@ impl Supervisor {
                 );
 
                 let new_status = if has_failed
+                    || service_handler.exceeded_max_failed_healthchecks()
                     || (service_handler.status == ServiceStatus::Running
                         && service_handler.has_some_failed_healthchecks())
                 {
@@ -568,6 +569,52 @@ mod signal_tests {
         assert_eq!(
             supervisor.status,
             LifecycleStatus::ShuttingDown(ShuttingDown::Forcefully)
+        );
+    }
+}
+
+#[cfg(test)]
+mod service_exited_tests {
+    use nix::unistd::Pid;
+
+    use super::*;
+    use crate::horust::bus::Bus;
+    use crate::horust::formats::RestartStrategy;
+
+    /// Health-kills a Started service that exits 0, returning the restart decision. It must
+    /// count as a failed rapid restart, otherwise its failure strategy never runs (#335).
+    fn never_healthy_cycle(supervisor: &mut Supervisor) -> Vec<Event> {
+        let pid = Pid::from_raw(4242);
+        supervisor.repo.add_pid(pid, "svc".into());
+        let sh = supervisor.repo.get_mut_sh("svc");
+        sh.status = ServiceStatus::Started;
+        sh.pid = Some(pid);
+        sh.healthiness_checks_failed = Some(4);
+        supervisor.handle_event(Event::new_status_update("svc", ServiceStatus::InKilling));
+        assert_eq!(
+            supervisor.handle_event(Event::ServiceExited("svc".into(), 0)),
+            vec![Event::StatusChanged("svc".into(), ServiceStatus::Failed)]
+        );
+        let sh = supervisor.repo.get_sh("svc").clone();
+        sh.next(&supervisor.repo, LifecycleStatus::Running)
+    }
+
+    #[test]
+    fn never_healthy_service_fails_and_exhausts_restart_attempts() {
+        let mut svc = Service::from_name("svc");
+        svc.restart.strategy = RestartStrategy::OnFailure;
+        svc.restart.attempts = 1;
+        let bus = Bus::<Event>::new();
+        let mut supervisor = Supervisor::new(bus.join_bus(), vec![svc]);
+        assert!(
+            never_healthy_cycle(&mut supervisor)
+                .contains(&Event::new_status_update("svc", ServiceStatus::Initial))
+        );
+        assert!(
+            never_healthy_cycle(&mut supervisor).contains(&Event::new_status_update(
+                "svc",
+                ServiceStatus::FinishedFailed
+            ))
         );
     }
 }
