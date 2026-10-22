@@ -69,6 +69,42 @@ http-endpoint = "{}""#,
     Ok(())
 }
 
+/// A service that runs but never becomes healthy must fail after `max-failed` checks,
+/// so its failure strategy applies instead of blocking its dependents forever (#335).
+#[test]
+fn test_healthcheck_never_healthy_fails() {
+    let (mut cmd, tempdir) = get_cli();
+    let never_healthy = format!(
+        r#"
+[termination]
+wait = "1s"
+[restart]
+strategy = "never"
+[failure]
+strategy = "shutdown"
+[healthiness]
+max-failed = 1
+file-path = "{}""#,
+        tempdir.path().join("never-created").display()
+    );
+    let script = r#"#!/usr/bin/env bash
+sleep 60
+"#;
+    store_service_script(
+        tempdir.path(),
+        script,
+        Some(never_healthy.as_str()),
+        Some("a"),
+    );
+    let dependent = r#"start-after = ["a.toml"]
+[termination]
+wait = "500millis"
+"#;
+    store_service_script(tempdir.path(), script, Some(dependent), None);
+    let cmd = cmd.args(vec!["--unsuccessful-exit-finished-failed"]);
+    run_async(cmd, false).recv_or_kill(Duration::from_secs(20));
+}
+
 #[test]
 fn test_healthcheck_file() -> io::Result<()> {
     let (mut cmd, tempdir) = get_cli();
