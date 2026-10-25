@@ -2,11 +2,13 @@
 //! keeping track of their current state.
 //! It will also reap the dead processes
 
+use std::collections::HashMap;
 use std::fmt::Debug;
 use std::ops::Mul;
 use std::thread;
-use std::time::{Duration, Instant};
+use std::time::Duration;
 
+use crossbeam::channel::{Receiver, TryRecvError};
 use nix::sys::signal;
 use nix::unistd;
 
@@ -24,6 +26,9 @@ mod reaper;
 mod repo;
 mod service_handler;
 mod signal_handling;
+
+#[cfg(all(test, target_os = "linux"))]
+mod registration_tests;
 
 #[cfg(test)]
 mod test_utils {
@@ -122,6 +127,7 @@ pub struct Supervisor {
     /// The system is shutting down, no more services will be spawned.
     status: LifecycleStatus,
     repo: Repo,
+    preparations: HashMap<String, Receiver<process_spawner::Preparation>>,
 }
 
 impl Supervisor {
@@ -130,6 +136,7 @@ impl Supervisor {
         Self {
             repo,
             status: LifecycleStatus::Running,
+            preparations: HashMap::new(),
         }
     }
 
@@ -191,7 +198,10 @@ impl Supervisor {
                 // process, otherwise a service that was healthy before would immediately
                 // be considered green again (skipping its `healthy-after` window).
                 service_handler.healthiness_checks_failed = None;
-                let evs = vec![Event::StatusChanged(service_name, ServiceStatus::Starting)];
+                let evs = vec![Event::StatusChanged(
+                    service_name.clone(),
+                    ServiceStatus::Starting,
+                )];
 
                 let res = healthcheck::prepare_service(&service_handler.service().healthiness);
                 if res.is_err() {
@@ -214,11 +224,12 @@ impl Supervisor {
                     &service_handler.service().restart,
                     service_handler.restart_attempts,
                 );
-                process_spawner::spawn_fork_exec_handler(
+                let receiver = process_spawner::prepare_service(
                     service_handler.service().clone(),
                     backoff,
                     self.repo.bus.join_bus(),
                 );
+                self.preparations.insert(service_name, receiver);
                 evs
             }
             Event::SpawnFailed(s_name) => {
@@ -253,22 +264,6 @@ impl Supervisor {
                     service_handler.name(),
                     ServiceStatus::Failed,
                 )]
-            }
-            Event::PidChanged(service_name, pid) => {
-                self.repo.add_pid(pid, service_name.clone());
-
-                let service_handler = self.repo.get_mut_sh(&service_name);
-                service_handler.pid = Some(pid);
-                if service_handler.is_in_killing() {
-                    // Ah! Gotcha!
-                    service_handler.shutting_down_start = Some(Instant::now());
-                    kill(service_handler, None)
-                } else {
-                    service_handler.status = ServiceStatus::Started;
-                    return vec![Event::StatusChanged(service_name, ServiceStatus::Started)];
-                }
-
-                vec![]
             }
             Event::HealthCheck(s_name, health) => {
                 let sh = self.repo.get_mut_sh(&s_name);
@@ -315,6 +310,73 @@ impl Supervisor {
         }
     }
 
+    fn spawn_prepared(&mut self) -> Vec<Event> {
+        let completed = self
+            .preparations
+            .iter()
+            .filter_map(|(name, receiver)| match receiver.try_recv() {
+                Ok(result) => Some((name.clone(), result)),
+                Err(TryRecvError::Empty) => None,
+                Err(TryRecvError::Disconnected) => Some((
+                    name.clone(),
+                    Err(anyhow::anyhow!("preparation worker disconnected")),
+                )),
+            })
+            .collect::<Vec<_>>();
+        let mut events = Vec::new();
+        for (name, result) in completed {
+            self.preparations.remove(&name);
+            let handler = &self.repo.services[&name];
+            if handler.pid.is_some()
+                || !matches!(
+                    handler.status,
+                    ServiceStatus::Starting | ServiceStatus::InKilling
+                )
+            {
+                debug!("Discarding preparation for obsolete attempt: {name}");
+                continue;
+            }
+            match result {
+                Ok(Some(prepared))
+                    if self.status == LifecycleStatus::Running
+                        && handler.status == ServiceStatus::Starting =>
+                {
+                    match process_spawner::spawn_process(prepared) {
+                        Ok(pid) => events.extend(self.register_spawned(name, pid)),
+                        Err(error) => {
+                            error!("Failed spawning the process: {error}");
+                            events.extend(self.handle_event(Event::SpawnFailed(name)));
+                        }
+                    }
+                }
+                Ok(Some(_)) if handler.status == ServiceStatus::InKilling => {
+                    events.extend(
+                        self.handle_event(Event::StatusUpdate(name, ServiceStatus::Failed)),
+                    );
+                }
+                result => {
+                    if let Err(error) = result {
+                        error!("Failed spawning the process: {error}");
+                    }
+                    events.extend(self.handle_event(Event::SpawnFailed(name)));
+                }
+            }
+        }
+        events
+    }
+
+    fn register_spawned(&mut self, name: String, pid: unistd::Pid) -> Vec<Event> {
+        // Registration is local; the bus echoes PidChanged as a notification only.
+        self.repo.add_pid(pid, name.clone());
+        let handler = self.repo.get_mut_sh(&name);
+        handler.pid = Some(pid);
+        handler.status = ServiceStatus::Started;
+        vec![
+            Event::new_pid_changed(name.clone(), pid),
+            Event::StatusChanged(name, ServiceStatus::Started),
+        ]
+    }
+
     fn handle_signals(&mut self, pending: u32) {
         let shutdown = match (self.status, pending) {
             (_, 0) | (LifecycleStatus::ShuttingDown(ShuttingDown::Forcefully), _) => return,
@@ -335,12 +397,13 @@ impl Supervisor {
             let received_events = self.repo.get_events();
             debug!("Applying events... {:?}", received_events);
             // Handling of the received events and commands:
-            let produced_events = received_events
+            let mut produced_events = received_events
                 .into_iter()
                 .flat_map(|ev| self.handle_event(ev))
                 .collect::<Vec<Event>>();
             debug!("Produced events: {:?}", produced_events);
             self.handle_signals(signal_handling::take_pending_signals());
+            produced_events.extend(self.spawn_prepared());
             // Producing commands which will be applied in the next iteration
             let next_evs: Vec<Event> = self
                 .repo

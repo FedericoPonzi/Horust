@@ -279,15 +279,24 @@ strategy = "ignore"
         .spawn()
         .unwrap();
 
-    // Give it time to fail several times and then stabilize. If the budget were not
-    // reset on reaching a stable state, Horust would have exited (FinishedFailed) after
-    // 3 launches; instead it should keep restarting past the budget and still be running.
-    std::thread::sleep(Duration::from_secs(6));
+    // Observe progress past the budget rather than assuming a fixed restart latency.
+    let deadline = std::time::Instant::now() + Duration::from_secs(15);
+    let launches = loop {
+        let launches = std::fs::read_to_string(&attempts_log)
+            .map(|c| c.lines().count())
+            .unwrap_or(0);
+        if launches > 3
+            || child.try_wait().unwrap().is_some()
+            || std::time::Instant::now() >= deadline
+        {
+            break launches;
+        }
+        std::thread::sleep(Duration::from_millis(20));
+    };
     let still_running = child.try_wait().unwrap().is_none();
-    let launches = std::fs::read_to_string(&attempts_log)
-        .map(|c| c.lines().count())
-        .unwrap_or(0);
-    child.kill().unwrap();
+    if still_running {
+        child.kill().unwrap();
+    }
     child.wait().unwrap();
     assert!(
         still_running,
