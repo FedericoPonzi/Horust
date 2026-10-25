@@ -115,3 +115,31 @@ fn test_stress_test_chained_services() {
     let recv = run_async(&mut cmd, true);
     recv.recv_or_kill(Duration::from_secs(max * 2));
 }
+
+#[test]
+fn test_immediate_exit_accounts_for_success_and_failure() {
+    let (mut cmd, temp_dir) = get_cli();
+    store_service(
+        temp_dir.path(),
+        "command = \"/bin/true\"\n",
+        Some("first.toml"),
+    );
+    let marker = temp_dir.path().join("dependent-finished");
+    store_service_script(
+        temp_dir.path(),
+        &format!("#!/bin/sh\nprintf done > '{}'\n", marker.display()),
+        Some("start-after = [\"first.toml\"]"),
+        Some("dependent"),
+    );
+    run_async(&mut cmd, true).recv_or_kill(Duration::from_secs(15));
+    assert_eq!(std::fs::read_to_string(marker).unwrap(), "done");
+
+    let (mut cmd, temp_dir) = get_cli();
+    store_service(
+        temp_dir.path(),
+        "command = \"/bin/sh -c 'exit 7'\"\n",
+        Some("failed.toml"),
+    );
+    cmd.arg("--unsuccessful-exit-finished-failed");
+    run_async(&mut cmd, false).recv_or_kill(Duration::from_secs(15));
+}

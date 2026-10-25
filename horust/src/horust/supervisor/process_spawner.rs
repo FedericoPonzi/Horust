@@ -1,5 +1,5 @@
 use anyhow::{Context, Result, anyhow};
-use crossbeam::channel::{after, tick};
+use crossbeam::channel::{Receiver, after, bounded, tick};
 use nix::errno::Errno;
 use nix::fcntl;
 use nix::unistd;
@@ -19,12 +19,23 @@ use crate::horust::bus::BusConnector;
 use crate::horust::formats::{Event, LogOutput, Service};
 use crate::horust::signal_safe::panic_ssafe;
 
-/// Run another thread that will wait for the start delay and handle the fork / exec
-pub(crate) fn spawn_fork_exec_handler(
+pub(super) type Preparation = Result<Option<PreparedSpawn>>;
+
+#[derive(Debug)]
+pub(super) struct PreparedSpawn {
+    service: Service,
+    path: CString,
+    args: Vec<CString>,
+    environment: Vec<CString>,
+    uid: Uid,
+}
+
+pub(super) fn prepare_service(
     service: Service,
     backoff: Duration,
     bus: BusConnector<Event>,
-) {
+) -> Receiver<Preparation> {
+    let (sender, receiver) = bounded(1);
     std::thread::spawn(move || {
         let total_sleep = service.start_delay.add(backoff);
         let timeout = after(total_sleep);
@@ -35,28 +46,34 @@ pub(crate) fn spawn_fork_exec_handler(
         // a shuttingdowninitiated event
         let is_shutting_down_ev = |ev: Event| matches!(ev, Event::ShuttingDownInitiated(_));
 
-        let ev = loop {
+        let result = loop {
             select! {
                     recv(ticker) -> _ => {
                         let is_shutting_down = bus.try_get_events().into_iter().any(is_shutting_down_ev);
                         if is_shutting_down {
-                            break Event::SpawnFailed(service.name.clone());
+                            break Ok(None);
                         }
                     },
-                    recv(timeout) -> _ => break match spawn_process(&service) {
-                            Ok(pid) => {
-                                debug!("Setting pid:{} for service: {}", pid, service.name);
-                                Event::new_pid_changed(service.name.clone(), pid)
-                            }
-                            Err(error) => {
-                                error!("Failed spawning the process: {}", error);
-                                Event::SpawnFailed(service.name)
-                            }
-                    },
+                    recv(timeout) -> _ => break prepare(service).map(Some),
             }
         };
-        bus.send_event(ev);
+        if sender.send(result).is_err() {
+            debug!("Discarding preparation for an obsolete service attempt");
+        }
     });
+    receiver
+}
+
+pub(super) fn prepare(service: Service) -> Result<PreparedSpawn> {
+    let (path, args, environment) = exec_args(&service)?;
+    let uid = service.user.get_uid()?;
+    Ok(PreparedSpawn {
+        service,
+        path,
+        args,
+        environment,
+        uid,
+    })
 }
 
 /// Produces the execvpe arguments out of a `Service`
@@ -117,13 +134,18 @@ fn child_process_main(
 }
 
 /// Fork the process
-fn spawn_process(service: &Service) -> Result<Pid> {
+pub(super) fn spawn_process(prepared: PreparedSpawn) -> Result<Pid> {
+    let PreparedSpawn {
+        service,
+        path,
+        args,
+        environment,
+        uid,
+    } = prepared;
     debug!("Spawning process for service: {}", service.name);
-    let (path, arg_cstrings, env_cstrings) = exec_args(service)?;
-    let uid = service.user.get_uid()?;
     let cwd = service.working_directory.clone();
-    let arg_cptr: Vec<&CStr> = arg_cstrings.iter().map(|c| c.as_c_str()).collect();
-    let env_cptr: Vec<&CStr> = env_cstrings.iter().map(|c| c.as_c_str()).collect();
+    let arg_cptr: Vec<&CStr> = args.iter().map(|c| c.as_c_str()).collect();
+    let env_cptr: Vec<&CStr> = environment.iter().map(|c| c.as_c_str()).collect();
     let mut service_copy = service.clone();
     let (pipe_read, pipe_write) = if service.stdout_rotate_size > 0 {
         let (pipe_read, pipe_write) = unistd::pipe()?;

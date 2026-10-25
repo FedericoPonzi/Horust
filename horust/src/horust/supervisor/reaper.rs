@@ -10,11 +10,6 @@ use crate::horust::Event;
 use crate::horust::supervisor::repo::Repo;
 
 /// Reaps up to `max_iterations` dead processes
-///
-/// # Safety
-///
-/// This function must run in isolation with respect to the fork processes to
-/// prevent pid reusage.
 pub(crate) fn run(repo: &Repo, max_iterations: u32) -> Vec<Event> {
     (0..max_iterations)
         .filter_map(
