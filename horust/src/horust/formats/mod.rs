@@ -1,4 +1,5 @@
 use nix::unistd::Pid;
+use std::path::PathBuf;
 
 pub use horust_config::HorustConfig;
 pub use service::*;
@@ -26,6 +27,7 @@ pub enum Event {
     Run(ServiceName),
     ShuttingDownInitiated(ShuttingDown),
     HealthCheck(ServiceName, HealthinessStatus),
+    ReloadConfig(PathBuf),
 }
 
 impl Event {

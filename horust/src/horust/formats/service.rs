@@ -59,6 +59,8 @@ pub struct Service {
     pub termination: Termination,
     #[serde(default)]
     pub resource_limit: ResourceLimit,
+    #[serde(skip)]
+    pub config_file: Option<PathBuf>,
 }
 
 fn default_as_false() -> bool {
@@ -130,6 +132,7 @@ impl Default for Service {
             failure: Default::default(),
             termination: Default::default(),
             resource_limit: Default::default(),
+            config_file: None,
         }
     }
 }
@@ -863,6 +866,7 @@ mod test {
                 memory: Some(100 * 1024 * 1024),
                 pids_max: Some(100),
             },
+            config_file: None,
         };
 
         let service =

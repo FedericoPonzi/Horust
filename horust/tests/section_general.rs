@@ -214,3 +214,64 @@ start-delay = "10s"
     kill(recv.pid, Signal::SIGINT).expect("kill");
     recv.recv_or_kill(Duration::from_secs(5));
 }
+
+#[test]
+fn test_hot_reload_on_config_change() {
+    let (mut cmd, temp_dir) = get_cli();
+    let started_marker = temp_dir.path().join("started.txt");
+    let reloaded_marker = temp_dir.path().join("reloaded.txt");
+
+    let script_v1 = format!(
+        r#"#!/usr/bin/env bash
+echo "running" > "{}"
+while true ; do
+    sleep 0.2
+done
+"#,
+        started_marker.display()
+    );
+    let script_v2 = format!(
+        r#"#!/usr/bin/env bash
+echo "reloaded" > "{}"
+exit 0
+"#,
+        reloaded_marker.display()
+    );
+    let script_v2_path = temp_dir.path().join("v2.sh");
+    std::fs::write(&script_v2_path, script_v2).unwrap();
+
+    let service_file = store_service_script(
+        temp_dir.path(),
+        &script_v1,
+        Some("[restart]\nstrategy = \"never\"\n"),
+        Some("hotreload_svc"),
+    );
+    let service_path = temp_dir.path().join(&service_file);
+
+    let recv = run_async(&mut cmd, true);
+
+    // Wait for v1 to start and write its marker file
+    let start = std::time::Instant::now();
+    while !started_marker.exists() {
+        assert!(
+            start.elapsed() < Duration::from_secs(10),
+            "Timed out waiting for initial service to start"
+        );
+        sleep(Duration::from_millis(100));
+    }
+
+    // Update the service configuration to run script_v2 instead
+    let updated_service = format!(
+        r#"command = "/usr/bin/env bash {}"
+[restart]
+strategy = "never"
+"#,
+        script_v2_path.display()
+    );
+    std::fs::write(&service_path, updated_service).unwrap();
+
+    // Horust should kill v1, run v2, and exit cleanly once v2 finishes
+    recv.recv_or_kill(Duration::from_secs(15));
+    let content = std::fs::read_to_string(&reloaded_marker).unwrap();
+    assert_eq!(content.trim(), "reloaded");
+}
