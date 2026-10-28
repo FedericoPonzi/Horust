@@ -10,9 +10,7 @@ use crossbeam::channel::{Receiver, RecvTimeoutError, Sender, unbounded};
 use checks::*;
 
 use crate::horust::bus::BusConnector;
-use crate::horust::formats::{
-    Event, Healthiness, HealthinessStatus, Service, ServiceName, ServiceStatus,
-};
+use crate::horust::formats::{Event, Healthiness, HealthinessStatus, Service, ServiceStatus};
 
 mod checks;
 
@@ -87,22 +85,17 @@ fn check_health(healthiness: &Healthiness) -> HealthinessStatus {
         .into()
 }
 
-fn run(bus: BusConnector<Event>, services: Vec<Service>) {
+fn run(bus: BusConnector<Event>, mut services: Vec<Service>) {
     let mut workers = hashmap! {};
-    let get_service = |s_name: &ServiceName| {
-        services
-            .iter()
-            .filter(|sh| sh.name == *s_name)
-            .take(1)
-            .cloned()
-            .collect::<Vec<Service>>()
-            .remove(0)
-    };
 
     for ev in bus.iter() {
         match ev {
             Event::StatusChanged(s_name, ServiceStatus::Started) => {
-                let service = get_service(&s_name);
+                let service = services
+                    .iter()
+                    .find(|sh| sh.name == s_name)
+                    .cloned()
+                    .unwrap();
                 // With no explicit check and no healthy-after delay, the service is healthy
                 // immediately; otherwise a worker enforces them before reporting Healthy.
                 if !service.healthiness.has_any_check_defined()
@@ -136,6 +129,24 @@ fn run(bus: BusConnector<Event>, services: Vec<Service>) {
                     wh.join().unwrap();
                 }
                 break;
+            }
+            Event::ReloadConfig(path) => {
+                let canonical_target = path.canonicalize().ok();
+                if let Some(idx) = services.iter().position(|s| {
+                    s.config_file.as_deref().is_some_and(|cfg| {
+                        cfg == path.as_path()
+                            || (canonical_target.is_some()
+                                && cfg.canonicalize().ok() == canonical_target)
+                    })
+                }) && let Ok(loaded) = crate::horust::load_service(&path)
+                    && loaded.name == services[idx].name
+                {
+                    let mut candidate = services.clone();
+                    candidate[idx] = loaded.clone();
+                    if crate::horust::formats::validate(candidate).is_ok() {
+                        services[idx] = loaded;
+                    }
+                }
             }
             _ => {}
         }

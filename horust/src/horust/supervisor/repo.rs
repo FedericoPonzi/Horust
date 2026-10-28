@@ -1,10 +1,13 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
+use std::path::{Path, PathBuf};
 
 use nix::unistd::Pid;
+use notify::event::ModifyKind;
+use notify::{EventKind, RecursiveMode, Watcher};
 
 use crate::horust::Event;
 use crate::horust::bus::BusConnector;
-use crate::horust::formats::{Service, ServiceName};
+use crate::horust::formats::{Service, ServiceName, validate};
 use crate::horust::supervisor::service_handler::ServiceHandler;
 
 #[derive(Debug)]
@@ -12,10 +15,65 @@ pub(crate) struct Repo {
     pub services: HashMap<ServiceName, ServiceHandler>,
     pub(crate) bus: BusConnector<Event>,
     pub(crate) pid_map: HashMap<Pid, ServiceName>,
+    _watcher: Option<notify::RecommendedWatcher>,
+}
+
+struct ConfigWatcher {
+    bus: BusConnector<Event>,
+}
+
+impl notify::EventHandler for ConfigWatcher {
+    fn handle_event(&mut self, event: notify::Result<notify::Event>) {
+        if let Ok(notify::Event {
+            kind:
+                EventKind::Modify(ModifyKind::Data(_) | ModifyKind::Any | ModifyKind::Name(_))
+                | EventKind::Create(_),
+            paths,
+            attrs: _,
+        }) = event
+        {
+            for path in paths {
+                self.bus.send_event(Event::ReloadConfig(path));
+            }
+        }
+    }
 }
 
 impl Repo {
     pub(crate) fn new(bus: BusConnector<Event>, services: Vec<Service>) -> Self {
+        let watch_dirs: HashSet<PathBuf> = services
+            .iter()
+            .filter_map(|service| service.config_file.as_deref())
+            .map(|path| {
+                path.parent()
+                    .filter(|p| !p.as_os_str().is_empty())
+                    .unwrap_or(path)
+                    .to_path_buf()
+            })
+            .collect();
+
+        let watcher = if watch_dirs.is_empty() {
+            None
+        } else {
+            match notify::recommended_watcher(ConfigWatcher {
+                bus: bus.join_bus(),
+            }) {
+                Ok(mut watcher) => {
+                    for dir in &watch_dirs {
+                        if let Err(err) = watcher.watch(dir.as_path(), RecursiveMode::NonRecursive)
+                        {
+                            warn!("Failed watching config path {:?}: {}", dir, err);
+                        }
+                    }
+                    Some(watcher)
+                }
+                Err(err) => {
+                    error!("Failed to initialize config file watcher: {}", err);
+                    None
+                }
+            }
+        };
+
         let services = services
             .into_iter()
             .map(|service| (service.name.clone(), service.into()))
@@ -24,7 +82,59 @@ impl Repo {
             bus,
             services,
             pid_map: HashMap::new(),
+            _watcher: watcher,
         }
+    }
+
+    pub(crate) fn get_service_by_path(&self, path: &Path) -> Option<ServiceName> {
+        let canonical_target = path.canonicalize().ok();
+        self.services
+            .iter()
+            .find(|(_, handler)| {
+                handler
+                    .service()
+                    .config_file
+                    .as_deref()
+                    .is_some_and(|config_file| {
+                        config_file == path
+                            || (canonical_target.is_some()
+                                && config_file.canonicalize().ok() == canonical_target)
+                    })
+            })
+            .map(|(service_name, _)| service_name.clone())
+    }
+
+    pub(crate) fn validate_reloaded_service(
+        &self,
+        service_name: &str,
+        new_service: &Service,
+    ) -> bool {
+        if new_service.name != service_name {
+            error!(
+                "Cannot change service name on reload (expected '{}', got '{}')",
+                service_name, new_service.name
+            );
+            return false;
+        }
+        let candidate_services: Vec<Service> = self
+            .services
+            .iter()
+            .map(|(name, sh)| {
+                if name == service_name {
+                    new_service.clone()
+                } else {
+                    sh.service().clone()
+                }
+            })
+            .collect();
+        if let Err(err) = validate(candidate_services) {
+            error!(
+                "Invalid reloaded configuration for service '{}': {}",
+                service_name, err
+            );
+            return false;
+        }
+        true
     }
     pub(crate) fn insert_sh_by_name(&mut self, name: ServiceName, sh: ServiceHandler) {
         self.services.insert(name, sh);
@@ -50,8 +160,8 @@ impl Repo {
         // a number. Then this check can be reduced to `return self.services.len() == self.finished_services`
 
         self.services
-            .iter()
-            .all(|(_s_name, sh)| sh.is_finished() || sh.is_finished_failed())
+            .values()
+            .all(|sh| !sh.reload_config && (sh.is_finished() || sh.is_finished_failed()))
     }
 
     /// Get a mutable reference to the Service Handler
@@ -367,5 +477,50 @@ mod test {
         repo.add_pid(pid, "svc".to_string());
         repo.remove_pid(pid);
         assert_eq!(repo.get_service_by_pid(pid), None);
+    }
+
+    // ========================================================================
+    // Hot-reload helper tests
+    // ========================================================================
+
+    #[test]
+    fn test_get_service_by_path() {
+        let mut svc = Service::from_name("svc");
+        let path = PathBuf::from("/tmp/horust-test-svc.toml");
+        svc.config_file = Some(path.clone());
+        let repo = make_repo_from_services(vec![svc]);
+
+        assert_eq!(repo.get_service_by_path(&path), Some("svc".to_string()));
+        assert_eq!(repo.get_service_by_path(Path::new("/tmp/other.toml")), None);
+    }
+
+    #[test]
+    fn test_validate_reloaded_service() {
+        let repo = make_repo_from_services(vec![Service::from_name("a"), Service::from_name("b")]);
+
+        // Valid reload (depends on existing service "b")
+        let valid_a = Service::start_after("a", vec!["b"]);
+        assert!(repo.validate_reloaded_service("a", &valid_a));
+
+        // Rejects name change
+        let renamed = Service::from_name("renamed");
+        assert!(!repo.validate_reloaded_service("a", &renamed));
+
+        // Rejects missing dependency
+        let invalid_dep = Service::start_after("a", vec!["nonexistent"]);
+        assert!(!repo.validate_reloaded_service("a", &invalid_dep));
+
+        // Rejects empty command
+        let mut empty_cmd = Service::from_name("a");
+        empty_cmd.command = String::new();
+        assert!(!repo.validate_reloaded_service("a", &empty_cmd));
+    }
+
+    #[test]
+    fn test_all_have_finished_false_when_reload_pending() {
+        let mut repo = make_repo(vec![("a", ServiceStatus::Finished)]);
+        assert!(repo.all_have_finished());
+        repo.get_mut_sh("a").reload_config = true;
+        assert!(!repo.all_have_finished());
     }
 }

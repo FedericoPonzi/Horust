@@ -113,7 +113,7 @@ impl Horust {
     }
 }
 
-fn load_service<P>(path: P) -> Result<Service>
+pub(crate) fn load_service<P>(path: P) -> Result<Service>
 where
     P: AsRef<Path> + Sized + AsRef<OsStr> + Debug,
     PathBuf: From<P>,
@@ -125,6 +125,7 @@ where
             let filename = path.file_name().unwrap().to_str().unwrap().to_owned();
             service.name = filename;
         }
+        service.config_file = Some(path.clone());
         service
     })
     .map_err(|error| {

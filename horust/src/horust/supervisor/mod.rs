@@ -19,7 +19,7 @@ pub(crate) use signal_handling::init;
 
 use crate::horust::bus::BusConnector;
 use crate::horust::formats::{Event, ExitStatus, Restart, Service, ServiceStatus, ShuttingDown};
-use crate::horust::healthcheck;
+use crate::horust::{healthcheck, load_service};
 
 mod process_spawner;
 mod reaper;
@@ -158,15 +158,18 @@ impl Supervisor {
 
                 // If it has failed too quickly, increase service_handler's restart attempts
                 // and check if it has more attempts left.
-                service_handler.restart_attempts += u32::from(
-                    service_handler.has_some_failed_healthchecks()
-                        && service_handler.is_early_state(),
-                );
+                if !service_handler.reload_config {
+                    service_handler.restart_attempts += u32::from(
+                        service_handler.has_some_failed_healthchecks()
+                            && service_handler.is_early_state(),
+                    );
+                }
 
-                let new_status = if has_failed
-                    || service_handler.exceeded_max_failed_healthchecks()
-                    || (service_handler.status == ServiceStatus::Running
-                        && service_handler.has_some_failed_healthchecks())
+                let new_status = if !service_handler.reload_config
+                    && (has_failed
+                        || service_handler.exceeded_max_failed_healthchecks()
+                        || (service_handler.status == ServiceStatus::Running
+                            && service_handler.has_some_failed_healthchecks()))
                 {
                     warn!(
                         "Service: {} has failed, exit code: {}, healthchecks: {} ({:?})",
@@ -194,6 +197,7 @@ impl Supervisor {
             }
             Event::Run(service_name) if self.repo.get_sh(&service_name).is_initial() => {
                 let service_handler = self.repo.get_mut_sh(&service_name);
+                service_handler.reload_config = false;
                 service_handler.status = ServiceStatus::Starting;
                 // Health check results from a previous run must not carry over to the new
                 // process, otherwise a service that was healthy before would immediately
@@ -303,6 +307,27 @@ impl Supervisor {
                     );
                     vec![]
                 }
+            }
+            Event::ReloadConfig(path) => {
+                info!("Reloading config: {path:?}");
+                if let Some(service_name) = self.repo.get_service_by_path(&path)
+                    && let Ok(service) = load_service(&path)
+                {
+                    if &service == self.repo.get_sh(&service_name).service() {
+                        debug!(
+                            "Config for service '{}' is unchanged, skipping reload.",
+                            service_name
+                        );
+                        return vec![];
+                    }
+                    if self.repo.validate_reloaded_service(&service_name, &service) {
+                        let service_handler = self.repo.get_mut_sh(&service_name);
+                        service_handler.service = service;
+                        service_handler.reload_config = true;
+                        service_handler.restart_attempts = 0;
+                    }
+                }
+                vec![]
             }
             ev => {
                 trace!("ignoring: {:?}", ev);
@@ -570,6 +595,65 @@ mod signal_tests {
             supervisor.status,
             LifecycleStatus::ShuttingDown(ShuttingDown::Forcefully)
         );
+    }
+
+    #[test]
+    fn reload_config_updates_service_and_skips_noop() {
+        let tempdir = tempfile::TempDir::with_prefix("horust_reload").unwrap();
+        let cfg_path = tempdir.path().join("svc.toml");
+        std::fs::write(&cfg_path, "command = \"echo v1\"\n").unwrap();
+
+        let svc = load_service(&cfg_path).unwrap();
+        let bus = Bus::<Event>::new();
+        let mut supervisor = Supervisor::new(bus.join_bus(), vec![svc]);
+
+        // Unchanged config is a no-op
+        supervisor.handle_event(Event::ReloadConfig(cfg_path.clone()));
+        assert!(!supervisor.repo.get_sh("svc.toml").reload_config);
+
+        // Invalid config (empty command) is rejected
+        std::fs::write(&cfg_path, "command = \"\"\n").unwrap();
+        supervisor.handle_event(Event::ReloadConfig(cfg_path.clone()));
+        assert!(!supervisor.repo.get_sh("svc.toml").reload_config);
+        assert_eq!(
+            supervisor.repo.get_sh("svc.toml").service().command,
+            "echo v1"
+        );
+
+        // Valid updated config is applied and marks reload_config = true
+        std::fs::write(&cfg_path, "command = \"echo v2\"\n").unwrap();
+        supervisor.handle_event(Event::ReloadConfig(cfg_path.clone()));
+        assert!(supervisor.repo.get_sh("svc.toml").reload_config);
+        assert_eq!(
+            supervisor.repo.get_sh("svc.toml").service().command,
+            "echo v2"
+        );
+    }
+
+    #[test]
+    fn reload_config_treats_exit_as_success_and_run_clears_flag() {
+        let mut svc = Service::from_name("svc");
+        let cfg_path = std::path::PathBuf::from("/tmp/svc.toml");
+        svc.config_file = Some(cfg_path);
+
+        let bus = Bus::<Event>::new();
+        let mut supervisor = Supervisor::new(bus.join_bus(), vec![svc]);
+        let pid = unistd::Pid::from_raw(4242);
+        supervisor.repo.add_pid(pid, "svc".to_string());
+        {
+            let sh = supervisor.repo.get_mut_sh("svc");
+            sh.pid = Some(pid);
+            sh.status = ServiceStatus::InKilling;
+            sh.reload_config = true;
+        }
+
+        // Non-zero exit code during reload still transitions to Success (not Failed)
+        let evs = supervisor.handle_event(Event::ServiceExited("svc".into(), 143));
+        assert_eq!(
+            evs,
+            vec![Event::StatusChanged("svc".into(), ServiceStatus::Success)]
+        );
+        assert_eq!(supervisor.repo.get_sh("svc").restart_attempts, 0);
     }
 }
 

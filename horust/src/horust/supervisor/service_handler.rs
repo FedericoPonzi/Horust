@@ -12,7 +12,8 @@ use super::{LifecycleStatus, ShuttingDown};
 
 #[derive(Clone, Debug, Eq, PartialEq, Default)]
 pub(crate) struct ServiceHandler {
-    service: Service,
+    pub(super) service: Service,
+    pub(super) reload_config: bool,
     /// Status of this service.
     pub(super) status: ServiceStatus,
     /// Process ID of this service, if any
@@ -158,6 +159,12 @@ fn next_events(repo: &Repo, service_handler: &ServiceHandler) -> Vec<Event> {
         ServiceStatus::Initial if repo.is_service_runnable(service_handler) => {
             vec![Event::Run(service_handler.name().clone())]
         }
+        ServiceStatus::Started if service_handler.reload_config => {
+            vec![
+                ev_status(ServiceStatus::InKilling),
+                Event::Kill(service_handler.name().clone()),
+            ]
+        }
         // if enough time has passed, this will be considered running
         ServiceStatus::Started if !service_handler.has_some_failed_healthchecks() => {
             vev_status(ServiceStatus::Running)
@@ -165,12 +172,21 @@ fn next_events(repo: &Repo, service_handler: &ServiceHandler) -> Vec<Event> {
         // Kill the service after more than `max-failed` failed healthchecks in a row, also
         // while it is starting: otherwise a service that never becomes healthy stays Started forever.
         ServiceStatus::Running | ServiceStatus::Started
-            if service_handler.exceeded_max_failed_healthchecks() =>
+            if service_handler.reload_config
+                || service_handler.exceeded_max_failed_healthchecks() =>
         {
             vec![
                 ev_status(ServiceStatus::InKilling),
                 Event::Kill(service_handler.name().clone()),
             ]
+        }
+        ServiceStatus::Success
+        | ServiceStatus::Failed
+        | ServiceStatus::Finished
+        | ServiceStatus::FinishedFailed
+            if service_handler.reload_config =>
+        {
+            vev_status(ServiceStatus::Initial)
         }
         ServiceStatus::Success => vec![handle_restart_strategy(service_handler, false)],
         ServiceStatus::Failed => {
@@ -265,7 +281,10 @@ fn handle_status_change(
         .find(|(status, _)| *status == next_status)
         .map(|(_, allowed_from)| allowed_from);
 
-    let valid = allowed.is_some_and(|allowed_from| allowed_from.contains(&service_handler.status));
+    let valid = allowed.is_some_and(|allowed_from| allowed_from.contains(&service_handler.status))
+        || (service_handler.reload_config
+            && next_status == Initial
+            && matches!(service_handler.status, Finished | FinishedFailed));
 
     if valid {
         match next_status {
@@ -273,6 +292,10 @@ fn handle_status_change(
             // on Running - not on Started - so crash loops do exhaust it.
             Running => {
                 new_service_handler.status = Running;
+                new_service_handler.restart_attempts = 0;
+            }
+            Initial if service_handler.reload_config => {
+                new_service_handler.status = Initial;
                 new_service_handler.restart_attempts = 0;
             }
             InKilling if service_handler.status == Initial => {
@@ -1109,5 +1132,61 @@ wait = "10s"
             ),
             vec![Event::new_force_kill("svc")]
         );
+    }
+
+    // ========================================================================
+    // Hot-reload FSM tests
+    // ========================================================================
+
+    #[test]
+    fn test_next_reload_config_kills_running_and_started() {
+        for status in [ServiceStatus::Running, ServiceStatus::Started] {
+            let mut repo = make_repo(vec![("svc", status.clone())]);
+            repo.get_mut_sh("svc").reload_config = true;
+            let sh = repo.services.get("svc").unwrap();
+            let events = sh.next(&repo, LifecycleStatus::Running);
+            assert_eq!(
+                events,
+                vec![
+                    Event::new_status_update("svc", ServiceStatus::InKilling),
+                    Event::Kill("svc".into()),
+                ],
+                "reload_config in {:?} should emit InKilling + Kill",
+                status
+            );
+        }
+    }
+
+    #[test]
+    fn test_next_reload_config_restarts_from_exit_and_terminal_states() {
+        for status in [
+            ServiceStatus::Success,
+            ServiceStatus::Failed,
+            ServiceStatus::Finished,
+            ServiceStatus::FinishedFailed,
+        ] {
+            let mut repo = make_repo(vec![("svc", status.clone())]);
+            repo.get_mut_sh("svc").reload_config = true;
+            let sh = repo.services.get("svc").unwrap();
+            let events = sh.next(&repo, LifecycleStatus::Running);
+            assert_eq!(
+                events,
+                vec![Event::new_status_update("svc", ServiceStatus::Initial)],
+                "reload_config in {:?} should transition back to Initial",
+                status
+            );
+        }
+    }
+
+    #[test]
+    fn test_reload_config_allows_terminal_to_initial_and_resets_attempts() {
+        for status in [ServiceStatus::Finished, ServiceStatus::FinishedFailed] {
+            let mut sh = make_handler("svc", status);
+            sh.reload_config = true;
+            sh.restart_attempts = 4;
+            let (new_sh, new_status) = sh.change_status(ServiceStatus::Initial);
+            assert_eq!(new_status, ServiceStatus::Initial);
+            assert_eq!(new_sh.restart_attempts, 0);
+        }
     }
 }
