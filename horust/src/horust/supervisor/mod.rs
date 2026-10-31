@@ -143,7 +143,10 @@ impl Supervisor {
     /// Handle the events, returns Events (state changes) to be dispatched.
     fn handle_event(&mut self, ev: Event) -> Vec<Event> {
         match ev {
-            Event::ServiceExited(service_name, exit_code) => {
+            // Reaped exits are applied locally; their bus echoes are notifications only.
+            Event::ServiceExited(service_name, exit_code)
+                if self.repo.get_sh(&service_name).pid.is_some() =>
+            {
                 let pid = self.repo.get_sh(&service_name).pid.unwrap();
                 self.repo.remove_pid(pid);
                 let service_handler = self.repo.get_mut_sh(&service_name);
@@ -260,11 +263,7 @@ impl Supervisor {
                 debug!("Going to forcekill {}", service_name);
                 let service_handler = self.repo.get_mut_sh(&service_name);
                 kill(service_handler, Some(signal::SIGKILL));
-                service_handler.status = ServiceStatus::Failed;
-                vec![Event::new_status_changed(
-                    service_handler.name(),
-                    ServiceStatus::Failed,
-                )]
+                vec![]
             }
             Event::HealthCheck(s_name, health) => {
                 let sh = self.repo.get_mut_sh(&s_name);
@@ -405,13 +404,18 @@ impl Supervisor {
             debug!("Produced events: {:?}", produced_events);
             self.handle_signals(signal_handling::take_pending_signals());
             produced_events.extend(self.spawn_prepared());
+            // Account for reaped PIDs before any delayed bus commands can target them.
+            let reaped_events = reaper::run(&self.repo, MAX_PROCESS_REAPS_ITERS);
+            for event in &reaped_events {
+                produced_events.extend(self.handle_event(event.clone()));
+            }
+            produced_events.extend(reaped_events);
             // Producing commands which will be applied in the next iteration
             let next_evs: Vec<Event> = self
                 .repo
                 .services
                 .iter()
                 .flat_map(|(_s_name, sh)| sh.next(&self.repo, self.status))
-                .chain(reaper::run(&self.repo, MAX_PROCESS_REAPS_ITERS))
                 .collect();
             debug!("Next evs: {:?}", next_evs);
             // Dispatch everything via the bus. Since the bus is run by another thread,
@@ -575,6 +579,9 @@ mod signal_tests {
 
 #[cfg(test)]
 mod service_exited_tests {
+    use std::os::unix::process::ExitStatusExt;
+    use std::process::Command;
+
     use nix::unistd::Pid;
 
     use super::*;
@@ -616,5 +623,100 @@ mod service_exited_tests {
                 ServiceStatus::FinishedFailed
             ))
         );
+    }
+
+    #[test]
+    fn force_kill_waits_for_exit_accounting() {
+        for phase in [
+            LifecycleStatus::Running,
+            LifecycleStatus::ShuttingDown(ShuttingDown::Gracefully),
+            LifecycleStatus::ShuttingDown(ShuttingDown::Forcefully),
+        ] {
+            for successful in [false, true] {
+                let mut service = Service::from_name("svc");
+                service.restart.strategy = RestartStrategy::OnFailure;
+                service.restart.attempts = 3;
+                service.failure.strategy = crate::horust::formats::FailureStrategy::Shutdown;
+                if successful {
+                    service.failure.successful_exit_code = vec![-137];
+                }
+                let bus = Bus::<Event>::new();
+                let mut supervisor = Supervisor::new(bus.join_bus(), vec![service]);
+                supervisor.status = phase;
+                let mut child = Command::new("/bin/sleep").arg("60").spawn().unwrap();
+                let pid = Pid::from_raw(child.id() as i32);
+                supervisor.register_spawned("svc".into(), pid);
+                let sh = supervisor.repo.get_mut_sh("svc");
+                sh.status = ServiceStatus::InKilling;
+                sh.healthiness_checks_failed = Some(0);
+                sh.restart_attempts = 2;
+                sh.shutting_down_started();
+                let before = sh.clone();
+
+                let first = supervisor.handle_event(Event::new_force_kill("svc"));
+                let repeated = supervisor.handle_event(Event::new_force_kill("svc"));
+                // Reap our own child, but deliberately delay the supervisor's exit accounting.
+                assert_eq!(child.wait().unwrap().signal(), Some(libc::SIGKILL));
+                assert_eq!(supervisor.repo.services["svc"], before);
+                assert!(first.is_empty(), "{phase:?}: premature events: {first:?}");
+                assert!(repeated.is_empty());
+                assert_eq!(supervisor.repo.get_service_by_pid(pid), Some(&"svc".into()));
+                assert!(!supervisor.repo.all_have_finished());
+                let pending = before.next(&supervisor.repo, phase);
+                assert_eq!(
+                    pending,
+                    if phase == LifecycleStatus::ShuttingDown(ShuttingDown::Forcefully) {
+                        vec![Event::new_force_kill("svc")]
+                    } else {
+                        vec![]
+                    }
+                );
+
+                let status = if successful {
+                    ServiceStatus::Success
+                } else {
+                    ServiceStatus::Failed
+                };
+                assert_eq!(
+                    supervisor.handle_event(Event::ServiceExited("svc".into(), -137)),
+                    vec![Event::new_status_changed("svc", status.clone())]
+                );
+                let sh = &supervisor.repo.services["svc"];
+                assert_eq!(sh.pid, None);
+                assert_eq!(sh.shutting_down_start, None);
+                assert_eq!(sh.restart_attempts, 2);
+                assert!(supervisor.repo.pid_map.is_empty());
+                let mut expected = vec![];
+                if phase == LifecycleStatus::Running && !successful {
+                    expected.push(Event::ShuttingDownInitiated(ShuttingDown::Gracefully));
+                }
+                expected.push(Event::new_status_update(
+                    "svc",
+                    if phase == LifecycleStatus::Running {
+                        if successful {
+                            ServiceStatus::Finished
+                        } else {
+                            ServiceStatus::Initial
+                        }
+                    } else if successful {
+                        ServiceStatus::Finished
+                    } else {
+                        ServiceStatus::FinishedFailed
+                    },
+                ));
+                assert_eq!(sh.next(&supervisor.repo, phase), expected);
+                assert!(
+                    supervisor
+                        .handle_event(Event::new_force_kill("svc"))
+                        .is_empty()
+                );
+                assert!(
+                    supervisor
+                        .handle_event(Event::ServiceExited("svc".into(), -137))
+                        .is_empty()
+                );
+                assert_eq!(supervisor.repo.services["svc"].status, status);
+            }
+        }
     }
 }

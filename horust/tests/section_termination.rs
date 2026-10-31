@@ -36,6 +36,94 @@ wait = "1s""#;
     recv.recv_or_kill(Duration::from_secs(15));
 }
 
+#[test]
+fn test_force_kill_preserves_successful_exit_classification() {
+    let (mut cmd, temp_dir) = get_cli();
+    let logs = tempfile::Builder::new()
+        .prefix("horust-forcekill-")
+        .tempdir()
+        .unwrap()
+        .keep();
+    let log_path = logs.join("run.log");
+    let ready = temp_dir.path().join("ready");
+    let script = format!(
+        // Stop the fixture if timeout cleanup kills Horust; SIGTERM remains ignored.
+        "trap '' TERM\nparent=$PPID\nprintf 'ready\\n' > '{}'\nwhile kill -0 \"$parent\" 2>/dev/null; do sleep 0.1; done\n",
+        ready.display()
+    );
+    store_service_script(
+        temp_dir.path(),
+        &script,
+        Some(
+            r#"[termination]
+wait = "0s"
+[failure]
+successful-exit-code = [-137]
+strategy = "ignore""#,
+        ),
+        Some("forcekill"),
+    );
+    let mut child = cmd
+        .arg("--unsuccessful-exit-finished-failed")
+        .env("HORUST_LOG", "debug")
+        .stderr(std::fs::File::create(&log_path).unwrap())
+        .spawn()
+        .unwrap();
+    let result = (|| -> anyhow::Result<std::process::ExitStatus> {
+        let deadline = std::time::Instant::now() + Duration::from_secs(15);
+        loop {
+            let output = std::fs::read_to_string(&log_path)?;
+            if ready.exists() && output.contains("StatusChanged(\"forcekill.toml\", Running)") {
+                break;
+            }
+            anyhow::ensure!(
+                child.try_wait()?.is_none(),
+                "Horust exited before readiness"
+            );
+            anyhow::ensure!(std::time::Instant::now() < deadline, "readiness timed out");
+            std::thread::sleep(Duration::from_millis(20));
+        }
+        kill(
+            nix::unistd::Pid::from_raw(child.id() as i32),
+            Signal::SIGTERM,
+        )?;
+        let deadline = std::time::Instant::now() + Duration::from_secs(15);
+        loop {
+            if let Some(status) = child.try_wait()? {
+                return Ok(status);
+            }
+            anyhow::ensure!(std::time::Instant::now() < deadline, "shutdown timed out");
+            std::thread::sleep(Duration::from_millis(20));
+        }
+    })();
+    if result.is_err() {
+        let _ = child.kill();
+        let _ = child.wait();
+    }
+    let status = result.unwrap_or_else(|error| panic!("{error}; logs: {logs:?}"));
+    let output = std::fs::read_to_string(&log_path).unwrap();
+    assert!(output.contains("Going to send SIGKILL"), "logs: {logs:?}");
+    assert!(
+        status.success(),
+        "configured SIGKILL exit failed; logs: {logs:?}"
+    );
+    assert!(
+        output.contains("Service '\"forcekill.toml\"' has exited."),
+        "service was not reaped; logs: {logs:?}"
+    );
+    assert!(
+        output.contains("StatusChanged(\"forcekill.toml\", Success)"),
+        "observed exit was not classified successfully; logs: {logs:?}"
+    );
+    let reaped = output
+        .find("Service '\"forcekill.toml\"' has exited.")
+        .unwrap();
+    assert!(
+        !output[reaped..].contains("Going to send SIGKILL"),
+        "SIGKILL was sent after the PID was reaped; logs: {logs:?}"
+    );
+}
+
 fn test_termination_custom_signal(friendly_name: &str) {
     let (mut cmd, temp_dir) = get_cli();
     // this script captures traps signals
