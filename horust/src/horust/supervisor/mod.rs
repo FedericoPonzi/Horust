@@ -289,6 +289,13 @@ impl Supervisor {
             }
             Event::StatusUpdate(service_name, new_status) => {
                 let service_handler = self.repo.get_sh(&service_name);
+                if service_handler.status == ServiceStatus::Started
+                    && new_status == ServiceStatus::Running
+                    && service_handler.has_some_failed_healthchecks()
+                {
+                    debug!("Discarding stale Running update for unready service: {service_name}");
+                    return vec![];
+                }
 
                 let (new_sh, new_status) = service_handler.change_status(new_status);
                 if new_status != service_handler.status {
@@ -573,6 +580,69 @@ mod signal_tests {
         assert_eq!(
             supervisor.status,
             LifecycleStatus::ShuttingDown(ShuttingDown::Forcefully)
+        );
+    }
+}
+
+#[cfg(test)]
+mod status_update_tests {
+    use super::*;
+    use crate::horust::bus::Bus;
+    use crate::horust::formats::HealthinessStatus;
+
+    fn queued_running_update() -> (Supervisor, Event) {
+        let mut dependent = Service::from_name("b");
+        dependent.start_after = vec!["a".into()];
+        let bus = Bus::<Event>::new();
+        let mut supervisor =
+            Supervisor::new(bus.join_bus(), vec![Service::from_name("a"), dependent]);
+        let sh = supervisor.repo.get_mut_sh("a");
+        sh.status = ServiceStatus::Started;
+        sh.restart_attempts = 3;
+        supervisor.handle_event(Event::HealthCheck("a".into(), HealthinessStatus::Healthy));
+        let queued = supervisor.repo.services["a"].next(&supervisor.repo, supervisor.status);
+        assert_eq!(
+            queued,
+            vec![Event::new_status_update("a", ServiceStatus::Running)]
+        );
+        (supervisor, queued.into_iter().next().unwrap())
+    }
+
+    #[test]
+    fn queued_running_update_rechecks_intervening_health_failure() {
+        let (mut supervisor, queued) = queued_running_update();
+        supervisor.handle_event(Event::HealthCheck("a".into(), HealthinessStatus::Unhealthy));
+        let before = supervisor.repo.services["a"].clone();
+        assert_eq!(before.healthiness_checks_failed, Some(1));
+        assert!(!before.exceeded_max_failed_healthchecks());
+
+        let outputs = supervisor.handle_event(queued);
+        assert_eq!(supervisor.repo.services["a"], before);
+        assert!(
+            outputs.is_empty(),
+            "stale readiness notification: {outputs:?}"
+        );
+        assert!(
+            supervisor.repo.services["b"]
+                .next(&supervisor.repo, supervisor.status)
+                .is_empty()
+        );
+    }
+
+    #[test]
+    fn queued_running_update_admits_currently_healthy_service() {
+        let (mut supervisor, queued) = queued_running_update();
+        assert_eq!(
+            supervisor.handle_event(queued),
+            vec![Event::new_status_changed("a", ServiceStatus::Running)]
+        );
+        let sh = &supervisor.repo.services["a"];
+        assert_eq!(sh.status, ServiceStatus::Running);
+        assert_eq!(sh.healthiness_checks_failed, Some(0));
+        assert_eq!(sh.restart_attempts, 0);
+        assert_eq!(
+            supervisor.repo.services["b"].next(&supervisor.repo, supervisor.status),
+            vec![Event::Run("b".into())]
         );
     }
 }
