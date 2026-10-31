@@ -194,10 +194,9 @@ fn next_events(repo: &Repo, service_handler: &ServiceHandler) -> Vec<Event> {
             failure_evs.extend(other_services_termination);
             failure_evs
         }
-        ServiceStatus::InKilling if should_force_kill(service_handler, None) => vec![
-            Event::new_force_kill(service_handler.name()),
-            Event::new_status_changed(service_handler.name(), ServiceStatus::Failed),
-        ],
+        ServiceStatus::InKilling if should_force_kill(service_handler, None) => {
+            vec![Event::new_force_kill(service_handler.name())]
+        }
 
         _ => vec![],
     }
@@ -1021,6 +1020,27 @@ wait = "10s"
         let events = sh.next(&repo, LifecycleStatus::Running);
         // Recently started shutting down, wait time not exceeded
         assert!(events.is_empty());
+    }
+
+    #[test]
+    fn test_next_force_kill_does_not_announce_failure() {
+        let mut repo = make_repo(vec![("svc", ServiceStatus::InKilling)]);
+        let sh = repo.services.get_mut("svc").unwrap();
+        sh.pid = Some(Pid::this());
+        sh.shutting_down_start = Some(
+            std::time::Instant::now() - sh.service().termination.wait - Duration::from_secs(1),
+        );
+        for phase in [
+            LifecycleStatus::Running,
+            LifecycleStatus::ShuttingDown(ShuttingDown::Gracefully),
+            LifecycleStatus::ShuttingDown(ShuttingDown::Forcefully),
+        ] {
+            assert_eq!(
+                repo.services["svc"].next(&repo, phase),
+                vec![Event::new_force_kill("svc")],
+                "{phase:?}: sending SIGKILL must not announce an unobserved exit"
+            );
+        }
     }
 
     // ========================================================================
