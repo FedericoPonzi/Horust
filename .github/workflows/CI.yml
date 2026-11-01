@@ -62,6 +62,10 @@ jobs:
         if: matrix.build != 'nightly'
         run: cargo test --workspace
 
+      - name: Test Horust units without default features
+        if: matrix.build == 'stable'
+        run: cargo test --package horust --no-default-features --lib
+
       - name: Configure sanitizer address space
         if: matrix.build == 'nightly'
         run: sudo sysctl -w vm.mmap_rnd_bits=28
