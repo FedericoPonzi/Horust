@@ -2,6 +2,7 @@ mod utils;
 use utils::*;
 
 use std::time::Duration;
+use std::time::Instant;
 
 // Test failure strategies
 fn test_failure_strategy(strategy: &str) {
@@ -45,4 +46,58 @@ fn test_failure_shutdown() {
 #[test]
 fn test_failure_kill_dependents() {
     test_failure_strategy("kill-dependents");
+}
+
+#[test]
+fn test_failure_shutdown_preserves_failure_with_retries_remaining() {
+    let (mut cmd, temp_dir) = get_cli();
+    let launches_path = temp_dir.path().join("launches.log");
+    let script = format!("printf 'run\\n' >> '{}'\nexit 7\n", launches_path.display());
+    let service = r#"
+[failure]
+strategy = "shutdown"
+successful-exit-code = [0]
+
+[restart]
+strategy = "on-failure"
+attempts = 3
+
+[healthiness]
+healthy-after = "60s"
+"#;
+    store_service_script(temp_dir.path(), &script, Some(service), Some("failing"));
+    let log_path = temp_dir.path().join("horust.log");
+    let log = std::fs::File::create(&log_path).unwrap();
+    let mut child = cmd
+        .arg("--unsuccessful-exit-finished-failed")
+        .env("HORUST_LOG", "debug")
+        .stdout(log.try_clone().unwrap())
+        .stderr(log)
+        .spawn()
+        .unwrap();
+    let deadline = Instant::now() + Duration::from_secs(15);
+    let status = loop {
+        if let Some(status) = child.try_wait().unwrap() {
+            break status;
+        }
+        if Instant::now() >= deadline {
+            child.kill().unwrap();
+            child.wait().unwrap();
+            panic!(
+                "Horust did not finish shutdown:\n{}",
+                std::fs::read_to_string(&log_path).unwrap()
+            );
+        }
+        std::thread::sleep(Duration::from_millis(20));
+    };
+    let logs = std::fs::read_to_string(log_path).unwrap();
+    assert_eq!(status.code(), Some(101), "{logs}");
+    assert_eq!(
+        std::fs::read_to_string(launches_path)
+            .unwrap()
+            .lines()
+            .count(),
+        1,
+        "unexpected restart during shutdown:\n{logs}"
+    );
 }
