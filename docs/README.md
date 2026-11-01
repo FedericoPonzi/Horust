@@ -207,6 +207,7 @@ strategy = "ignore"
       `start-after` section,
       and `a` has strategy=kill-dependents, then b will be stopped if `a` fails.
     * `shutdown`: Shut down all the services and exit Horust if this service has failed.
+      Queued restarts are ignored during shutdown, preserving the service's failed outcome.
 
 ### Environment section
 

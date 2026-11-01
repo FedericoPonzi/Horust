@@ -20,6 +20,8 @@ Releases before 0.1.14 are documented on the
 
 ### Fixed
 
+- Ignore queued restarts after shutdown begins, preserving failed-service finalization
+  and the unsuccessful exit status. ([#350](https://github.com/FedericoPonzi/Horust/issues/350))
 - Ignore queued health results from previous process runs, preventing false
   readiness and failure charges after restart. Exhausted attempt identities
   fail the start and initiate shutdown rather than wrapping.

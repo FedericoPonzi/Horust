@@ -319,6 +319,16 @@ impl Supervisor {
                     debug!("Discarding stale Running update for unready service: {service_name}");
                     return vec![];
                 }
+                if new_status == ServiceStatus::Initial
+                    && self.status != LifecycleStatus::Running
+                    && matches!(
+                        service_handler.status,
+                        ServiceStatus::Success | ServiceStatus::Failed
+                    )
+                {
+                    debug!("Discarding queued restart during shutdown for service: {service_name}");
+                    return vec![];
+                }
 
                 let (new_sh, new_status) = service_handler.change_status(new_status);
                 if new_status != service_handler.status {
@@ -806,7 +816,114 @@ mod health_attempt_tests {
 mod status_update_tests {
     use super::*;
     use crate::horust::bus::Bus;
-    use crate::horust::formats::HealthinessStatus;
+    use crate::horust::formats::{FailureStrategy, HealthinessStatus, RestartStrategy};
+
+    fn queued_restart_updates(
+        status: ServiceStatus,
+        failure_strategy: FailureStrategy,
+    ) -> (Supervisor, Vec<Event>) {
+        let failed = status == ServiceStatus::Failed;
+        let shutdown = failed && failure_strategy == FailureStrategy::Shutdown;
+        let mut service = Service::from_name("a");
+        service.restart.strategy = if failed {
+            RestartStrategy::OnFailure
+        } else {
+            RestartStrategy::Always
+        };
+        service.restart.attempts = 3;
+        service.failure.strategy = failure_strategy;
+        let bus = Bus::<Event>::new();
+        let mut supervisor = Supervisor::new(bus.join_bus(), vec![service]);
+        let sh = supervisor.repo.get_mut_sh("a");
+        sh.status = status;
+        sh.restart_attempts = 2;
+        sh.attempt_id = 4;
+        sh.healthiness_checks_failed = Some(if failed { 1 } else { 0 });
+        let queued = supervisor.repo.services["a"].next(&supervisor.repo, supervisor.status);
+        let mut expected = vec![];
+        if shutdown {
+            expected.push(Event::ShuttingDownInitiated(ShuttingDown::Gracefully));
+        }
+        expected.push(Event::new_status_update("a", ServiceStatus::Initial));
+        assert_eq!(queued, expected);
+        (supervisor, queued)
+    }
+
+    fn assert_queued_restart_rejected(status: ServiceStatus) {
+        for shutdown in [ShuttingDown::Gracefully, ShuttingDown::Forcefully] {
+            let (mut supervisor, mut queued) =
+                queued_restart_updates(status.clone(), FailureStrategy::Shutdown);
+            let restart = queued.pop().unwrap();
+            for event in queued {
+                assert!(supervisor.handle_event(event).is_empty());
+            }
+            let phase = LifecycleStatus::ShuttingDown(shutdown);
+            if supervisor.status != phase {
+                supervisor.handle_event(Event::ShuttingDownInitiated(shutdown));
+            }
+            let before = supervisor.repo.services["a"].clone();
+            let outputs = supervisor.handle_event(restart);
+            assert_eq!(supervisor.repo.services["a"], before, "{shutdown:?}");
+            assert!(outputs.is_empty(), "restart notification: {outputs:?}");
+            assert_eq!(supervisor.status, phase);
+            assert!(supervisor.preparations.is_empty());
+            assert!(supervisor.repo.pid_map.is_empty());
+
+            let terminal = if status == ServiceStatus::Failed {
+                ServiceStatus::FinishedFailed
+            } else {
+                ServiceStatus::Finished
+            };
+            let finalization = supervisor.repo.services["a"].next(&supervisor.repo, phase);
+            assert_eq!(
+                finalization,
+                vec![Event::new_status_update("a", terminal.clone())]
+            );
+            for event in finalization {
+                assert_eq!(
+                    supervisor.handle_event(event),
+                    vec![Event::new_status_changed("a", terminal.clone())]
+                );
+            }
+            let mut expected = before;
+            expected.status = terminal;
+            assert_eq!(supervisor.repo.services["a"], expected);
+            assert!(supervisor.repo.all_have_finished());
+            assert_eq!(
+                supervisor.repo.any_finished_failed(),
+                status == ServiceStatus::Failed
+            );
+        }
+    }
+
+    #[test]
+    fn queued_failed_restart_is_rejected_during_shutdown() {
+        assert_queued_restart_rejected(ServiceStatus::Failed);
+    }
+
+    #[test]
+    fn queued_successful_restart_is_rejected_during_shutdown() {
+        assert_queued_restart_rejected(ServiceStatus::Success);
+    }
+
+    #[test]
+    fn queued_restart_is_accepted_while_running() {
+        for status in [ServiceStatus::Success, ServiceStatus::Failed] {
+            let (mut supervisor, queued) = queued_restart_updates(status, FailureStrategy::Ignore);
+            let mut expected = supervisor.repo.services["a"].clone();
+            expected.status = ServiceStatus::Initial;
+            assert_eq!(
+                supervisor.handle_event(queued.into_iter().next().unwrap()),
+                vec![Event::new_status_changed("a", ServiceStatus::Initial)]
+            );
+            assert_eq!(supervisor.repo.services["a"], expected);
+            assert_eq!(supervisor.status, LifecycleStatus::Running);
+            assert_eq!(
+                expected.next(&supervisor.repo, supervisor.status),
+                vec![Event::Run("a".into())]
+            );
+        }
+    }
 
     fn queued_running_update() -> (Supervisor, Event) {
         let mut dependent = Service::from_name("b");
