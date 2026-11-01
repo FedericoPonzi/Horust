@@ -267,6 +267,20 @@ mod test {
     }
 
     #[test]
+    #[cfg(not(feature = "http-healthcheck"))]
+    fn test_healthiness_http_without_feature() {
+        let healthiness = Healthiness {
+            http_endpoint: Some("http://localhost:123/".into()),
+            ..Default::default()
+        };
+        assert_eq!(check_health(&healthiness), HealthinessStatus::Unhealthy);
+        assert_eq!(
+            check_health(&Healthiness::default()),
+            HealthinessStatus::Healthy
+        );
+    }
+
+    #[test]
     fn test_healthiness_http() -> Result<()> {
         let healthiness = Healthiness {
             file_path: None,
