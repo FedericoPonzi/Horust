@@ -1,5 +1,6 @@
 use std::collections::HashMap;
 use std::sync::{Mutex, OnceLock};
+#[cfg(feature = "http-healthcheck")]
 use std::time::Duration;
 
 use anyhow::Context;
@@ -36,23 +37,25 @@ pub(crate) trait Check {
 /// considered failed if the response is anything other than `200`.
 pub(crate) struct HttpCheck;
 
+#[cfg(feature = "http-healthcheck")]
 static HTTP_REQUEST_TIMEOUT: u64 = 1;
 
 impl Check for HttpCheck {
     fn run(&self, healthiness: &Healthiness) -> bool {
         healthiness
             .http_endpoint.as_ref()
-            .map(|endpoint| {
-                if cfg!(not(feature = "http-healthcheck")) {
+            .map(|_endpoint| {
+                #[cfg(not(feature = "http-healthcheck"))]
+                {
                     error!("There is an http based healthcheck, but horust was built without the http-healthcheck feature (thus it will never pass these checks).");
-                    return false;
+                    false
                 }
                 #[cfg(feature = "http-healthcheck")]
                     {
                         let client = Client::builder()
                             .timeout(Duration::from_secs(HTTP_REQUEST_TIMEOUT))
                             .build().expect("Http client");
-                        let resp: Result<reqwest::blocking::Response, reqwest::Error> = client.head(endpoint).send();
+                        let resp: Result<reqwest::blocking::Response, reqwest::Error> = client.head(_endpoint).send();
                         resp.map(|resp| resp.status().is_success()).unwrap_or(false)
                     }
             })
