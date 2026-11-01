@@ -213,6 +213,10 @@ impl Supervisor {
                         shutdown,
                     ];
                 };
+                if self.status != LifecycleStatus::Running {
+                    debug!("Discarding late Run during shutdown for service: {service_name}");
+                    return vec![];
+                }
                 service_handler.attempt_id = attempt_id;
                 service_handler.status = ServiceStatus::Starting;
                 // Health check results from a previous run must not carry over to the new
@@ -809,6 +813,90 @@ mod health_attempt_tests {
             assert!(supervisor.preparations.is_empty());
             assert!(supervisor.repo.pid_map.is_empty());
         }
+    }
+}
+
+#[cfg(test)]
+mod run_admission_tests {
+    use super::*;
+    use crate::horust::bus::Bus;
+
+    fn initial_service(attempt_id: u64) -> (Supervisor, tempfile::TempDir) {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("healthy");
+        std::fs::write(&path, "healthy").unwrap();
+        let mut service = Service::from_name("svc");
+        service.command = "/bin/true".into();
+        service.healthiness.file_path = Some(path);
+        let bus = Bus::<Event>::new();
+        let mut supervisor = Supervisor::new(bus.join_bus(), vec![service]);
+        let sh = supervisor.repo.get_mut_sh("svc");
+        sh.attempt_id = attempt_id;
+        sh.restart_attempts = 2;
+        sh.healthiness_checks_failed = Some(2);
+        (supervisor, dir)
+    }
+
+    #[test]
+    fn queued_run_preserves_unstarted_service_during_shutdown() {
+        for shutdown in [ShuttingDown::Gracefully, ShuttingDown::Forcefully] {
+            for attempt in [7, u64::MAX - 1] {
+                let (mut supervisor, dir) = initial_service(attempt);
+                let queued =
+                    supervisor.repo.services["svc"].next(&supervisor.repo, supervisor.status);
+                assert_eq!(queued, vec![Event::Run("svc".into())]);
+                supervisor.handle_event(Event::ShuttingDownInitiated(shutdown));
+                let before = supervisor.repo.services["svc"].clone();
+                let outputs = supervisor.handle_event(queued.into_iter().next().unwrap());
+                assert_eq!(supervisor.repo.services["svc"], before, "{shutdown:?}");
+                assert!(outputs.is_empty(), "late admission: {outputs:?}");
+                assert_eq!(supervisor.status, LifecycleStatus::ShuttingDown(shutdown));
+                assert!(dir.path().join("healthy").exists());
+                assert!(supervisor.preparations.is_empty());
+                assert!(supervisor.repo.pid_map.is_empty());
+
+                let finalization = before.next(&supervisor.repo, supervisor.status);
+                assert_eq!(
+                    finalization,
+                    vec![Event::new_status_update("svc", ServiceStatus::Finished)]
+                );
+                assert_eq!(
+                    supervisor.handle_event(finalization.into_iter().next().unwrap()),
+                    vec![Event::new_status_changed("svc", ServiceStatus::Finished)]
+                );
+                let mut expected = before;
+                expected.status = ServiceStatus::Finished;
+                assert_eq!(supervisor.repo.services["svc"], expected);
+                assert!(supervisor.repo.all_have_finished());
+                assert!(!supervisor.repo.any_finished_failed());
+            }
+        }
+    }
+
+    #[test]
+    fn running_admission_still_prepares_and_resets_health() {
+        let (mut supervisor, dir) = initial_service(7);
+        let queued = supervisor.repo.services["svc"].next(&supervisor.repo, supervisor.status);
+        assert_eq!(queued, vec![Event::Run("svc".into())]);
+        assert_eq!(
+            supervisor.handle_event(queued.into_iter().next().unwrap()),
+            vec![Event::new_status_changed("svc", ServiceStatus::Starting)]
+        );
+        let sh = &supervisor.repo.services["svc"];
+        assert_eq!(sh.status, ServiceStatus::Starting);
+        assert_eq!(sh.attempt_id, 8);
+        assert_eq!(sh.healthiness_checks_failed, None);
+        assert_eq!(sh.restart_attempts, 2);
+        assert_eq!(supervisor.status, LifecycleStatus::Running);
+        assert!(!dir.path().join("healthy").exists());
+        assert!(supervisor.repo.pid_map.is_empty());
+        assert!(
+            supervisor.preparations["svc"]
+                .recv_timeout(Duration::from_secs(2))
+                .unwrap()
+                .unwrap()
+                .is_some()
+        );
     }
 }
 

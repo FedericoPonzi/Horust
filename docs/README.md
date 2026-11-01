@@ -82,6 +82,7 @@ working-directory = "/tmp/"
   signal after `api` has fully stopped. A second SIGTERM (forceful shutdown) bypasses this ordering.
 * **`start-delay` = `time`**: Start this service with the specified delay. Check how to specify
   times [here](https://github.com/tailhook/humantime/blob/49f11fdc2a59746085d2457cb46bce204dec746a/src/duration.rs#L338)
+  Queued starts are not prepared once shutdown begins.
 * **`stdout` = `STDOUT|STDERR|file-path`**: Redirect stdout of this service. STDOUT and STDERR are special strings,
   pointing to stdout and stderr respectively. Otherwise, a file path is assumed.
 * **`stdout-rotate-size` = `string`**: Chunk size of the file specified in `stdout`.

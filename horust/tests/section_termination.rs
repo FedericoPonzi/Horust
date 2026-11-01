@@ -5,6 +5,114 @@ pub mod utils;
 
 use utils::*;
 
+#[test]
+fn test_late_run_does_not_delay_shutdown() {
+    late_run_replay(
+        "test_late_run_does_not_delay_shutdown",
+        Duration::from_secs(30),
+    );
+}
+
+#[test]
+fn test_late_run_does_not_fail_unstarted_service() {
+    late_run_replay(
+        "test_late_run_does_not_fail_unstarted_service",
+        Duration::from_secs(2),
+    );
+}
+
+fn late_run_replay(test_name: &str, delay: Duration) {
+    const CHILD_ENV: &str = "HORUST_LATE_RUN_TEST_CHILD";
+    const UDS_ENV: &str = "HORUST_LATE_RUN_TEST_SOCKET";
+    if let Some(mode) = std::env::var_os(CHILD_ENV) {
+        use horust::Horust;
+        use horust::horust::formats::{Event, ExitStatus, Service, ServiceStatus, ShuttingDown};
+
+        let shutdown = match mode.to_str().expect("shutdown mode") {
+            "graceful" => ShuttingDown::Gracefully,
+            "forceful" => ShuttingDown::Forcefully,
+            other => panic!("unexpected shutdown mode: {other}"),
+        };
+        env_logger::Builder::new()
+            .filter_level(log::LevelFilter::Debug)
+            .init();
+        let mut service = Service::from_command("/bin/true".into());
+        service.name = "svc".into();
+        service.start_delay = delay;
+        let mut horust = Horust::from_services(
+            vec![service],
+            std::env::var_os(UDS_ENV)
+                .expect("replay socket path")
+                .into(),
+        );
+        let bus = horust.join_bus();
+        bus.send_event(Event::ShuttingDownInitiated(shutdown));
+        bus.send_event(Event::Run("svc".into()));
+        let observer = std::thread::spawn(move || {
+            let mut seen = vec![];
+            loop {
+                let events = bus.try_get_events();
+                let finished = events.iter().any(|event| {
+                    matches!(event, Event::StatusChanged(name,
+                        ServiceStatus::Finished | ServiceStatus::FinishedFailed)
+                        if name == "svc")
+                });
+                seen.extend(events);
+                if finished {
+                    return seen;
+                }
+                std::thread::sleep(Duration::from_millis(10));
+            }
+        });
+        let result = horust.run();
+        let events = observer.join().unwrap();
+        assert_eq!(result, ExitStatus::Successful, "{shutdown:?}: {events:?}");
+        assert!(
+            !events.iter().any(|event| matches!(
+                event,
+                Event::StatusChanged(_, ServiceStatus::Starting) | Event::PidChanged(_, _)
+            )),
+            "late Run admitted: {events:?}"
+        );
+        return;
+    }
+
+    // Isolate signal handlers and waitpid(-1) from other tests.
+    for mode in ["graceful", "forceful"] {
+        let logs = tempfile::tempdir().unwrap();
+        let path = logs.path().join("run.log");
+        let log = std::fs::File::create(&path).unwrap();
+        let mut child = std::process::Command::new(std::env::current_exe().unwrap())
+            .args(["--exact", test_name, "--nocapture"])
+            .env(CHILD_ENV, mode)
+            .env(UDS_ENV, logs.path().join("horust.sock"))
+            .stdout(log.try_clone().unwrap())
+            .stderr(log)
+            .spawn()
+            .unwrap();
+        let deadline = std::time::Instant::now() + Duration::from_secs(10);
+        loop {
+            if let Some(status) = child.try_wait().unwrap() {
+                assert!(
+                    status.success(),
+                    "{mode} replay failed:\n{}",
+                    std::fs::read_to_string(&path).unwrap()
+                );
+                break;
+            }
+            if std::time::Instant::now() >= deadline {
+                child.kill().unwrap();
+                child.wait().unwrap();
+                panic!(
+                    "{mode} replay timed out:\n{}",
+                    std::fs::read_to_string(&path).unwrap()
+                );
+            }
+            std::thread::sleep(Duration::from_millis(10));
+        }
+    }
+}
+
 // Test termination section
 #[test]
 fn test_termination_wait() {

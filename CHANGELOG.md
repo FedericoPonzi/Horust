@@ -20,6 +20,8 @@ Releases before 0.1.14 are documented on the
 
 ### Fixed
 
+- Reject late starts during shutdown, avoiding start-delay stalls and false
+  failures for unspawned services. ([#353](https://github.com/FedericoPonzi/Horust/issues/353))
 - Ignore queued restarts after shutdown begins, preserving failed-service finalization
   and the unsuccessful exit status. ([#350](https://github.com/FedericoPonzi/Horust/issues/350))
 - Ignore queued health results from previous process runs, preventing false
