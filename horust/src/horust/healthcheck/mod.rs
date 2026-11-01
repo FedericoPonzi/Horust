@@ -175,8 +175,11 @@ pub fn prepare_service(healthiness: &Healthiness) -> Result<Vec<()>, std::io::Er
 
 #[cfg(test)]
 mod test {
+    #[cfg(feature = "http-healthcheck")]
     use std::io::{Read, Write};
+    #[cfg(feature = "http-healthcheck")]
     use std::net::{Ipv4Addr, SocketAddrV4, TcpListener};
+    #[cfg(feature = "http-healthcheck")]
     use std::sync::mpsc;
     use std::thread;
     use std::time::Duration;
@@ -252,6 +255,7 @@ mod test {
         Ok(())
     }
 
+    #[cfg(feature = "http-healthcheck")]
     fn handle_request(listener: TcpListener) -> std::io::Result<()> {
         if let Some(stream) = listener.incoming().next() {
             info!("Received request");
@@ -281,6 +285,7 @@ mod test {
     }
 
     #[test]
+    #[cfg(feature = "http-healthcheck")]
     fn test_healthiness_http() -> Result<()> {
         let healthiness = Healthiness {
             file_path: None,
