@@ -158,6 +158,11 @@ before its restart budget is reset.
 
 ### Healthiness Check
 
+Only results from the current process attempt affect health; queued results from
+previous runs are ignored. If attempt identities are exhausted, Horust refuses
+the start, marks the service failed, and initiates graceful shutdown without
+reusing an identity or downgrading an already-forceful shutdown.
+
 ```toml
 [healthiness]
 http-endpoint = "http://localhost:8080/healthcheck"

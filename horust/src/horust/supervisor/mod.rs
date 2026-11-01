@@ -197,6 +197,23 @@ impl Supervisor {
             }
             Event::Run(service_name) if self.repo.get_sh(&service_name).is_initial() => {
                 let service_handler = self.repo.get_mut_sh(&service_name);
+                let Some(attempt_id) = service_handler.attempt_id.checked_add(1) else {
+                    error!("Attempt IDs exhausted for service: {service_name}");
+                    service_handler.status = ServiceStatus::FinishedFailed;
+                    let mode =
+                        if self.status == LifecycleStatus::ShuttingDown(ShuttingDown::Forcefully) {
+                            ShuttingDown::Forcefully
+                        } else {
+                            ShuttingDown::Gracefully
+                        };
+                    let shutdown = Event::ShuttingDownInitiated(mode);
+                    self.handle_event(shutdown.clone());
+                    return vec![
+                        Event::new_status_changed(&service_name, ServiceStatus::FinishedFailed),
+                        shutdown,
+                    ];
+                };
+                service_handler.attempt_id = attempt_id;
                 service_handler.status = ServiceStatus::Starting;
                 // Health check results from a previous run must not carry over to the new
                 // process, otherwise a service that was healthy before would immediately
@@ -265,8 +282,14 @@ impl Supervisor {
                 kill(service_handler, Some(signal::SIGKILL));
                 vec![]
             }
-            Event::HealthCheck(s_name, health) => {
+            Event::HealthCheck(s_name, attempt_id, health) => {
                 let sh = self.repo.get_mut_sh(&s_name);
+                if attempt_id != sh.attempt_id {
+                    debug!(
+                        "Discarding health result from obsolete attempt {attempt_id} for {s_name}"
+                    );
+                    return vec![];
+                }
                 // Count the failed healthiness checks. The state change producer will handle states
                 // changes (if they're needed)
                 sh.add_healthcheck_event(health);
@@ -380,7 +403,8 @@ impl Supervisor {
         handler.status = ServiceStatus::Started;
         vec![
             Event::new_pid_changed(name.clone(), pid),
-            Event::StatusChanged(name, ServiceStatus::Started),
+            Event::StatusChanged(name.clone(), ServiceStatus::Started),
+            Event::StartHealthCheck(name, handler.attempt_id),
         ]
     }
 
@@ -585,6 +609,200 @@ mod signal_tests {
 }
 
 #[cfg(test)]
+mod health_attempt_tests {
+    use super::*;
+    use crate::horust::bus::Bus;
+    use crate::horust::formats::{HealthinessStatus, RestartStrategy};
+
+    fn supervisor() -> Supervisor {
+        let mut service = Service::from_command("/bin/true".into());
+        service.name = "a".into();
+        service.restart.strategy = RestartStrategy::OnFailure;
+        service.restart.attempts = 3;
+        service.healthiness.max_failed = 1;
+        let mut dependent = Service::from_name("b");
+        dependent.start_after = vec!["a".into()];
+        let bus = Bus::<Event>::new();
+        Supervisor::new(bus.join_bus(), vec![service, dependent])
+    }
+
+    fn begin_attempt(supervisor: &mut Supervisor) {
+        supervisor.handle_event(Event::Run("a".into()));
+        assert!(
+            supervisor
+                .preparations
+                .remove("a")
+                .unwrap()
+                .recv_timeout(Duration::from_secs(5))
+                .unwrap()
+                .unwrap()
+                .is_some()
+        );
+    }
+
+    #[test]
+    fn queued_old_health_does_not_affect_restarted_attempt() {
+        let mut mutations = vec![];
+        for registered in [false, true] {
+            for health in [HealthinessStatus::Healthy, HealthinessStatus::Unhealthy] {
+                let mut supervisor = supervisor();
+                begin_attempt(&mut supervisor);
+                let pid = unistd::Pid::from_raw(4242);
+                supervisor.register_spawned("a".into(), pid);
+                let old_attempt = supervisor.repo.services["a"].attempt_id;
+                supervisor.handle_event(Event::HealthCheck(
+                    "a".into(),
+                    old_attempt,
+                    HealthinessStatus::Healthy,
+                ));
+                supervisor.repo.get_mut_sh("a").restart_attempts = 2;
+                let queued = Event::HealthCheck("a".into(), old_attempt, health.clone());
+                supervisor.handle_event(Event::ServiceExited("a".into(), -137));
+                let restart =
+                    supervisor.repo.services["a"].next(&supervisor.repo, supervisor.status);
+                assert_eq!(
+                    restart,
+                    vec![Event::new_status_update("a", ServiceStatus::Initial)]
+                );
+                supervisor.handle_event(restart.into_iter().next().unwrap());
+                begin_attempt(&mut supervisor);
+                assert_ne!(supervisor.repo.services["a"].attempt_id, old_attempt);
+                if registered {
+                    // Reusing the PID must not make an old worker's result current.
+                    supervisor.register_spawned("a".into(), pid);
+                }
+                let before = supervisor.repo.services["a"].clone();
+                assert_eq!(before.healthiness_checks_failed, None);
+                let outputs = supervisor.handle_event(queued.clone());
+                if supervisor.repo.services["a"] != before {
+                    mutations.push((registered, health, supervisor.repo.services["a"].clone()));
+                }
+                assert!(outputs.is_empty());
+                assert!(
+                    supervisor.repo.services["b"]
+                        .next(&supervisor.repo, supervisor.status)
+                        .is_empty()
+                );
+                assert!(
+                    supervisor.repo.services["a"]
+                        .next(&supervisor.repo, supervisor.status)
+                        .is_empty()
+                );
+                if !registered {
+                    supervisor.register_spawned("a".into(), pid);
+                }
+                let current_attempt = supervisor.repo.services["a"].attempt_id;
+                supervisor.handle_event(Event::HealthCheck(
+                    "a".into(),
+                    current_attempt,
+                    HealthinessStatus::Healthy,
+                ));
+                let ready = supervisor.repo.services["a"].next(&supervisor.repo, supervisor.status);
+                assert_eq!(
+                    ready,
+                    vec![Event::new_status_update("a", ServiceStatus::Running)]
+                );
+                supervisor.handle_event(ready.into_iter().next().unwrap());
+                assert_eq!(supervisor.repo.services["a"].restart_attempts, 0);
+                assert_eq!(
+                    supervisor.repo.services["b"].next(&supervisor.repo, supervisor.status),
+                    vec![Event::Run("b".into())]
+                );
+                let running = supervisor.repo.services["a"].clone();
+                assert!(supervisor.handle_event(queued).is_empty());
+                assert_eq!(supervisor.repo.services["a"], running);
+            }
+        }
+        assert!(
+            mutations.is_empty(),
+            "old results mutated new attempts: {mutations:?}"
+        );
+    }
+
+    #[test]
+    fn current_health_preserves_readiness_and_failure_thresholds() {
+        let mut supervisor = supervisor();
+        begin_attempt(&mut supervisor);
+        supervisor.register_spawned("a".into(), unistd::Pid::from_raw(4242));
+        let attempt = supervisor.repo.services["a"].attempt_id;
+        supervisor.repo.get_mut_sh("a").restart_attempts = 2;
+        supervisor.handle_event(Event::HealthCheck(
+            "a".into(),
+            attempt,
+            HealthinessStatus::Healthy,
+        ));
+        let ready = supervisor.repo.services["a"].next(&supervisor.repo, supervisor.status);
+        assert_eq!(
+            ready,
+            vec![Event::new_status_update("a", ServiceStatus::Running)]
+        );
+        assert_eq!(
+            supervisor.handle_event(ready.into_iter().next().unwrap()),
+            vec![Event::new_status_changed("a", ServiceStatus::Running)]
+        );
+        assert_eq!(supervisor.repo.services["a"].restart_attempts, 0);
+        assert_eq!(supervisor.repo.services["a"].attempt_id, attempt);
+        assert_eq!(
+            supervisor.repo.services["b"].next(&supervisor.repo, supervisor.status),
+            vec![Event::Run("b".into())]
+        );
+        for _ in 0..2 {
+            supervisor.handle_event(Event::HealthCheck(
+                "a".into(),
+                attempt,
+                HealthinessStatus::Unhealthy,
+            ));
+        }
+        assert_eq!(
+            supervisor.repo.services["a"].healthiness_checks_failed,
+            Some(2)
+        );
+        assert_eq!(
+            supervisor.repo.services["a"].next(&supervisor.repo, supervisor.status),
+            vec![
+                Event::new_status_update("a", ServiceStatus::InKilling),
+                Event::Kill("a".into())
+            ]
+        );
+        assert_eq!(supervisor.repo.services["a"].restart_attempts, 0);
+    }
+
+    #[test]
+    fn exhausted_attempt_ids_fail_without_wrapping_or_downgrading_shutdown() {
+        for phase in [
+            LifecycleStatus::Running,
+            LifecycleStatus::ShuttingDown(ShuttingDown::Gracefully),
+            LifecycleStatus::ShuttingDown(ShuttingDown::Forcefully),
+        ] {
+            let mut supervisor = supervisor();
+            supervisor.status = phase;
+            let sh = supervisor.repo.get_mut_sh("a");
+            sh.attempt_id = u64::MAX;
+            sh.healthiness_checks_failed = Some(2);
+            sh.restart_attempts = 2;
+            let mut expected = sh.clone();
+            expected.status = ServiceStatus::FinishedFailed;
+            let shutdown = if phase == LifecycleStatus::ShuttingDown(ShuttingDown::Forcefully) {
+                ShuttingDown::Forcefully
+            } else {
+                ShuttingDown::Gracefully
+            };
+            assert_eq!(
+                supervisor.handle_event(Event::Run("a".into())),
+                vec![
+                    Event::new_status_changed("a", ServiceStatus::FinishedFailed),
+                    Event::ShuttingDownInitiated(shutdown),
+                ]
+            );
+            assert_eq!(supervisor.repo.services["a"], expected);
+            assert_eq!(supervisor.status, LifecycleStatus::ShuttingDown(shutdown));
+            assert!(supervisor.preparations.is_empty());
+            assert!(supervisor.repo.pid_map.is_empty());
+        }
+    }
+}
+
+#[cfg(test)]
 mod status_update_tests {
     use super::*;
     use crate::horust::bus::Bus;
@@ -599,7 +817,12 @@ mod status_update_tests {
         let sh = supervisor.repo.get_mut_sh("a");
         sh.status = ServiceStatus::Started;
         sh.restart_attempts = 3;
-        supervisor.handle_event(Event::HealthCheck("a".into(), HealthinessStatus::Healthy));
+        let attempt = supervisor.repo.services["a"].attempt_id;
+        supervisor.handle_event(Event::HealthCheck(
+            "a".into(),
+            attempt,
+            HealthinessStatus::Healthy,
+        ));
         let queued = supervisor.repo.services["a"].next(&supervisor.repo, supervisor.status);
         assert_eq!(
             queued,
@@ -611,7 +834,12 @@ mod status_update_tests {
     #[test]
     fn queued_running_update_rechecks_intervening_health_failure() {
         let (mut supervisor, queued) = queued_running_update();
-        supervisor.handle_event(Event::HealthCheck("a".into(), HealthinessStatus::Unhealthy));
+        let attempt = supervisor.repo.services["a"].attempt_id;
+        supervisor.handle_event(Event::HealthCheck(
+            "a".into(),
+            attempt,
+            HealthinessStatus::Unhealthy,
+        ));
         let before = supervisor.repo.services["a"].clone();
         assert_eq!(before.healthiness_checks_failed, Some(1));
         assert!(!before.exceeded_max_failed_healthchecks());

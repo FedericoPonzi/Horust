@@ -25,7 +25,10 @@ pub enum Event {
     SpawnFailed(ServiceName),
     Run(ServiceName),
     ShuttingDownInitiated(ShuttingDown),
-    HealthCheck(ServiceName, HealthinessStatus),
+    /// Starts health checks with the identity captured for this process attempt.
+    StartHealthCheck(ServiceName, u64),
+    /// Results must retain the attempt identity supplied at worker start.
+    HealthCheck(ServiceName, u64, HealthinessStatus),
 }
 
 impl Event {

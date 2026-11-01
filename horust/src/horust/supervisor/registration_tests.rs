@@ -128,7 +128,8 @@ fn prepared_registration() {
             notifications,
             vec![
                 Event::PidChanged(name.into(), pid),
-                Event::StatusChanged(name.into(), ServiceStatus::Started)
+                Event::StatusChanged(name.into(), ServiceStatus::Started),
+                Event::StartHealthCheck(name.into(), supervisor.repo.services[name].attempt_id),
             ]
         );
         supervisor.handle_event(notifications[0].clone());

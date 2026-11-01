@@ -10,14 +10,13 @@ use crossbeam::channel::{Receiver, RecvTimeoutError, Sender, unbounded};
 use checks::*;
 
 use crate::horust::bus::BusConnector;
-use crate::horust::formats::{
-    Event, Healthiness, HealthinessStatus, Service, ServiceName, ServiceStatus,
-};
+use crate::horust::formats::{Event, Healthiness, HealthinessStatus, Service, ServiceName};
 
 mod checks;
 
 struct Worker {
     service: Service,
+    attempt_id: u64,
     bus: BusConnector<Event>,
     work_done_notifier: Receiver<()>,
     /// When the worker was spawned, used to enforce `healthiness.healthy-after`.
@@ -25,9 +24,15 @@ struct Worker {
 }
 
 impl Worker {
-    fn new(service: Service, bus: BusConnector<Event>, work_done_notifier: Receiver<()>) -> Self {
+    fn new(
+        service: Service,
+        attempt_id: u64,
+        bus: BusConnector<Event>,
+        work_done_notifier: Receiver<()>,
+    ) -> Self {
         Worker {
             service,
+            attempt_id,
             bus,
             work_done_notifier,
             started_at: Instant::now(),
@@ -51,6 +56,7 @@ impl Worker {
             if !suppress {
                 self.bus.send_event(Event::HealthCheck(
                     self.service.name.clone(),
+                    self.attempt_id,
                     status.clone(),
                 ));
             }
@@ -101,21 +107,26 @@ fn run(bus: BusConnector<Event>, services: Vec<Service>) {
 
     for ev in bus.iter() {
         match ev {
-            Event::StatusChanged(s_name, ServiceStatus::Started) => {
+            Event::StartHealthCheck(s_name, attempt_id) => {
                 let service = get_service(&s_name);
                 // With no explicit check and no healthy-after delay, the service is healthy
                 // immediately; otherwise a worker enforces them before reporting Healthy.
                 if !service.healthiness.has_any_check_defined()
                     && service.healthiness.healthy_after.is_zero()
                 {
-                    bus.send_event(Event::HealthCheck(s_name, HealthinessStatus::Healthy));
+                    bus.send_event(Event::HealthCheck(
+                        s_name,
+                        attempt_id,
+                        HealthinessStatus::Healthy,
+                    ));
                     continue;
                 }
                 if let Some((sender, handler)) = workers.remove(&s_name) {
                     stop_worker(sender, handler)
                 }
                 let (worker_notifier, work_done_rcv) = unbounded();
-                let handle = Worker::new(service, bus.join_bus(), work_done_rcv).spawn_thread();
+                let handle =
+                    Worker::new(service, attempt_id, bus.join_bus(), work_done_rcv).spawn_thread();
                 workers.insert(s_name, (worker_notifier, handle));
             }
             Event::ServiceExited(s_name, _exit_code) => {
@@ -175,6 +186,54 @@ mod test {
 
     use crate::horust::formats::{Healthiness, HealthinessStatus};
     use crate::horust::healthcheck::{check_health, prepare_service};
+
+    #[test]
+    fn health_producers_echo_the_worker_start_attempt() {
+        for explicit_check in [false, true] {
+            let tempdir = TempDir::with_prefix("health-attempt").unwrap();
+            let path = tempdir.path().join("healthy");
+            std::fs::write(&path, "healthy").unwrap();
+            let mut service = super::Service::from_name("svc");
+            if explicit_check {
+                service.healthiness.file_path = Some(path);
+            }
+            let bus = crate::horust::bus::Bus::new();
+            let manager_bus = bus.join_bus();
+            let observer = bus.join_bus();
+            let bus_thread = thread::spawn(move || bus.run());
+            let manager = thread::spawn(move || super::run(manager_bus, vec![service]));
+            let mut results = vec![];
+            for attempt in [7, 8] {
+                observer.send_event(super::Event::StartHealthCheck("svc".into(), attempt));
+                let deadline = std::time::Instant::now() + Duration::from_secs(5);
+                let expected =
+                    super::Event::HealthCheck("svc".into(), attempt, HealthinessStatus::Healthy);
+                let found = loop {
+                    if let Some(event) = observer
+                        .try_get_events()
+                        .into_iter()
+                        .find(|e| *e == expected)
+                    {
+                        break Some(event);
+                    }
+                    if std::time::Instant::now() >= deadline {
+                        break None;
+                    }
+                    thread::sleep(Duration::from_millis(10));
+                };
+                results.push((found, expected));
+            }
+            observer.send_event(super::Event::ShuttingDownInitiated(
+                crate::horust::formats::ShuttingDown::Gracefully,
+            ));
+            manager.join().unwrap();
+            drop(observer);
+            bus_thread.join().unwrap();
+            for (found, expected) in results {
+                assert_eq!(found, Some(expected), "explicit check: {explicit_check}");
+            }
+        }
+    }
 
     #[test]
     fn test_healthiness_check_file() -> Result<()> {

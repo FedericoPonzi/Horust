@@ -17,6 +17,8 @@ pub(crate) struct ServiceHandler {
     pub(super) status: ServiceStatus,
     /// Process ID of this service, if any
     pub(super) pid: Option<Pid>,
+    /// Advances on accepted Run, independently of the PID and restart budget.
+    pub(super) attempt_id: u64,
     /// How many times in a row we failed to start this service
     pub(super) restart_attempts: u32,
     /// Amount of healthiness checks failed, applies only if the service is running

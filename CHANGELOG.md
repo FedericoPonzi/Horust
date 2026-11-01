@@ -11,8 +11,19 @@ Releases before 0.1.14 are documented on the
 
 ## [Unreleased]
 
+### Changed
+
+- **Rust bus API:** `Event::HealthCheck` now includes an attempt ID, and
+  `Event::StartHealthCheck` starts checks for that attempt. Event construction
+  and exhaustive matches must be updated. Service configuration and IPC are unchanged.
+  ([#347](https://github.com/FedericoPonzi/Horust/issues/347))
+
 ### Fixed
 
+- Ignore queued health results from previous process runs, preventing false
+  readiness and failure charges after restart. Exhausted attempt identities
+  fail the start and initiate shutdown rather than wrapping.
+  ([#347](https://github.com/FedericoPonzi/Horust/issues/347))
 - **Services that never become healthy now fail.** `healthiness.max-failed` is now also
   enforced while a service is starting, so its `failure.strategy` applies instead of it
   staying `Started` forever and blocking its dependents. Slow starters may need a higher
