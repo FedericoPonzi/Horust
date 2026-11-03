@@ -1,5 +1,5 @@
 use anyhow::{Context, Result, anyhow};
-use crossbeam::channel::{Receiver, after, bounded, tick};
+use crossbeam_channel::{Receiver, after, bounded, tick};
 use nix::errno::Errno;
 use nix::fcntl;
 use nix::unistd;

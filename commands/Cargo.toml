@@ -19,9 +19,16 @@ rust-version = "1.85.1"
 prost = "~0.14"
 anyhow = "~1.0"
 log = "~0.4"
+prost-build = { version = "~0.14", optional = true }
+
+[features]
+codegen = ["dep:prost-build"]
+
+[[bin]]
+name = "horust-generate-proto"
+path = "src/bin/generate_proto.rs"
+required-features = ["codegen"]
 
 [dev-dependencies]
 env_logger = "~0.11"
-
-[build-dependencies]
-prost-build = { version = "~0.14" }
+tempfile = "~3"

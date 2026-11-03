@@ -1,5 +1,15 @@
 ## Compile
 
-To compile this crate, you will need protobuf compiler. On debian-like you can run:
+Normal builds use the checked-in protobuf bindings and do not require `protoc`.
 
-apt-get install protobuf-compiler
+## Regenerate protobuf bindings
+
+After changing `src/commands.proto`, install `protoc` (on Debian:
+`apt-get install protobuf-compiler`) and run from the workspace root:
+
+```bash
+cargo run -p horust-commands-lib --features codegen --bin horust-generate-proto
+```
+
+An optional output-directory argument generates bindings elsewhere without
+overwriting the checked-in files.

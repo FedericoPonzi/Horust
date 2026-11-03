@@ -193,7 +193,7 @@ fn queue_preparation(
     name: &str,
     result: process_spawner::Preparation,
 ) {
-    let (sender, receiver) = crossbeam::channel::bounded(1);
+    let (sender, receiver) = crossbeam_channel::bounded(1);
     sender.send(result).unwrap();
     supervisor.preparations.insert(name.into(), receiver);
 }
@@ -243,7 +243,7 @@ fn old_preparations_cannot_complete_a_new_attempt() {
     let prepared = process_spawner::prepare(service.clone()).unwrap();
     let mut supervisor = Supervisor::new(bus.join_bus(), vec![service]);
     let bus_thread = thread::spawn(move || bus.run());
-    let (old_sender, old_receiver) = crossbeam::channel::bounded(1);
+    let (old_sender, old_receiver) = crossbeam_channel::bounded(1);
     supervisor
         .preparations
         .insert("service".into(), old_receiver);
@@ -283,7 +283,7 @@ fn disconnected_preparation_fails_once_but_terminal_results_do_not() {
     let bus = Bus::new();
     let mut supervisor = Supervisor::new(bus.join_bus(), vec![Service::from_name("service")]);
     supervisor.repo.get_mut_sh("service").status = ServiceStatus::Starting;
-    let (sender, receiver) = crossbeam::channel::bounded(1);
+    let (sender, receiver) = crossbeam_channel::bounded(1);
     supervisor.preparations.insert("service".into(), receiver);
     drop(sender);
     supervisor.spawn_prepared();
