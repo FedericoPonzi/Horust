@@ -1,11 +1,12 @@
 //! If a service has defined an healthchecker, this module will spawn a worker to making sure that
 //! the service is working as supposed to.
 
+use std::collections::HashMap;
 use std::thread;
 use std::thread::JoinHandle;
 use std::time::{Duration, Instant};
 
-use crossbeam::channel::{Receiver, RecvTimeoutError, Sender, unbounded};
+use crossbeam_channel::{Receiver, RecvTimeoutError, Sender, unbounded};
 
 use checks::*;
 
@@ -94,7 +95,7 @@ fn check_health(healthiness: &Healthiness) -> HealthinessStatus {
 }
 
 fn run(bus: BusConnector<Event>, services: Vec<Service>) {
-    let mut workers = hashmap! {};
+    let mut workers = HashMap::new();
     let get_service = |s_name: &ServiceName| {
         services
             .iter()

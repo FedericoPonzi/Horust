@@ -8,7 +8,7 @@ use std::ops::Mul;
 use std::thread;
 use std::time::Duration;
 
-use crossbeam::channel::{Receiver, TryRecvError};
+use crossbeam_channel::{Receiver, TryRecvError};
 use nix::sys::signal;
 use nix::unistd;
 

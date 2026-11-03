@@ -1,9 +1,7 @@
 #[macro_use]
-extern crate crossbeam;
+extern crate crossbeam_channel;
 #[macro_use]
 extern crate log;
-#[macro_use]
-extern crate maplit;
 
 pub use crate::horust::{Horust, get_sample_service};
 
