@@ -41,6 +41,7 @@ impl Repo {
     }
 
     /// Non blocking
+    #[cfg(not(feature = "formal-trace"))]
     pub(crate) fn get_events(&mut self) -> Vec<Event> {
         self.bus.try_get_events()
     }
@@ -66,17 +67,22 @@ impl Repo {
 
     /// Get all the services that have specified "start-after = [`service_name`]" in their config
     pub(crate) fn get_dependents(&self, service_name: &str) -> Vec<ServiceName> {
-        self.services
+        let result = self
+            .services
             .iter()
             .filter(|(_s_name, sh)| sh.service().start_after.contains(&service_name.to_string()))
             .map(|(s_name, _sh)| s_name)
             .cloned()
-            .collect()
+            .collect();
+        #[cfg(all(test, feature = "formal-trace"))]
+        let result = super::formal_tests::order(result);
+        result
     }
 
     /// Get all the services that have specified "die-if-failed = [`service_name`]" in their config
     pub(crate) fn get_die_if_failed(&self, service_name: &str) -> Vec<&ServiceName> {
-        self.services
+        let result = self
+            .services
             .iter()
             .filter(|(_s_name, sh)| {
                 sh.service()
@@ -85,11 +91,14 @@ impl Repo {
                     .contains(&service_name.to_string())
             })
             .map(|(s_name, _sh)| s_name)
-            .collect()
+            .collect();
+        #[cfg(all(test, feature = "formal-trace"))]
+        let result = super::formal_tests::order(result);
+        result
     }
 
     pub(crate) fn send_ev(&mut self, ev: Event) {
-        self.bus.send_event(ev)
+        ev.publish(&self.bus)
     }
 
     /// Checks if the service is runnable. So the current status is Initial, and

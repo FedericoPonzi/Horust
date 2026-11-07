@@ -13,14 +13,27 @@ use crate::horust::supervisor::repo::Repo;
 pub(crate) fn run(repo: &Repo, max_iterations: u32) -> Vec<Event> {
     (0..max_iterations)
         .filter_map(
-            |_| match waitpid(Pid::from_raw(-1), Some(WaitPidFlag::WNOHANG)) {
+            |_| {
+                let result = waitpid(Pid::from_raw(-1), Some(WaitPidFlag::WNOHANG));
+                #[cfg(feature = "formal-trace")]
+                crate::horust::formal_trace::record("wait", serde_json::json!({"status": format!("{result:?}")}));
+                match result {
                 Ok(wait_status) => match wait_status {
                     WaitStatus::Exited(pid, exit_code) => {
+                        #[cfg(feature = "formal-trace")]
+                        crate::horust::formal_trace::reap(pid.as_raw(), exit_code, repo.get_service_by_pid(pid).map(String::as_str));
                         debug!("Pid '{}' has exited with status: {}", pid, exit_code);
                         repo.get_service_by_pid(pid)
                             .map(|s_name| (s_name, exit_code))
                     }
                     WaitStatus::Signaled(pid, signal, core_dumped) => {
+                        #[cfg(feature = "formal-trace")]
+                        {
+                            crate::horust::formal_trace::record("wait_signal", serde_json::json!({
+                                "pid": pid.as_raw(), "signal": signal as i32, "core_dumped": core_dumped,
+                            }));
+                            crate::horust::formal_trace::reap(pid.as_raw(), -137, repo.get_service_by_pid(pid).map(String::as_str));
+                        }
                         debug!(
                             "Pid '{:?}' has exited due to signal: {:?}. Core dumped: {}",
                             pid, signal, core_dumped
@@ -42,6 +55,7 @@ pub(crate) fn run(repo: &Repo, max_iterations: u32) -> Vec<Event> {
                         error!("Error waitpid(): {}", err);
                     }
                     None
+                }
                 }
             },
         )

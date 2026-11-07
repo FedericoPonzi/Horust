@@ -32,6 +32,16 @@ pub enum Event {
 }
 
 impl Event {
+    pub(crate) fn publish(self, bus: &super::bus::BusConnector<Self>) {
+        #[cfg(feature = "formal-trace")]
+        {
+            let metadata = super::formal_trace::event(&self);
+            bus.send_recorded_event(self, metadata);
+        }
+        #[cfg(not(feature = "formal-trace"))]
+        bus.send_event(self);
+    }
+
     pub(crate) fn new_pid_changed(service_name: ServiceName, pid: Pid) -> Self {
         Self::PidChanged(service_name, pid)
     }

@@ -18,6 +18,8 @@ pub use self::formats::{ExitStatus, HorustConfig, get_sample_service};
 pub mod bus;
 mod commands_handler;
 mod error;
+#[cfg(feature = "formal-trace")]
+mod formal_trace;
 pub mod formats;
 mod healthcheck;
 mod signal_safe;
@@ -109,7 +111,10 @@ impl Horust {
             .take()
             .expect("unable to take Bus, already running?");
         bus.run();
-        handle.join().unwrap()
+        let result = handle.join().unwrap();
+        #[cfg(feature = "formal-trace")]
+        formal_trace::complete();
+        result
     }
 }
 

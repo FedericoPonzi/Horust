@@ -22,6 +22,10 @@ struct Worker {
     work_done_notifier: Receiver<()>,
     /// When the worker was spawned, used to enforce `healthiness.healthy-after`.
     started_at: Instant,
+    #[cfg(feature = "formal-trace")]
+    trace_id: u64,
+    #[cfg(feature = "formal-trace")]
+    trace_origin: u64,
 }
 
 impl Worker {
@@ -31,18 +35,35 @@ impl Worker {
         bus: BusConnector<Event>,
         work_done_notifier: Receiver<()>,
     ) -> Self {
+        #[cfg(feature = "formal-trace")]
+        let trace_id = {
+            let id = super::formal_trace::id();
+            super::formal_trace::record(
+                "worker_start",
+                serde_json::json!({"worker": id, "svc": service.name, "attempt_id": attempt_id}),
+            );
+            id
+        };
         Worker {
             service,
             attempt_id,
             bus,
             work_done_notifier,
             started_at: Instant::now(),
+            #[cfg(feature = "formal-trace")]
+            trace_id,
+            #[cfg(feature = "formal-trace")]
+            trace_origin: super::formal_trace::cause(),
         }
     }
     pub fn spawn_thread(self) -> JoinHandle<()> {
         thread::spawn(move || self.run())
     }
     fn run(self) {
+        #[cfg(feature = "formal-trace")]
+        super::formal_trace::set_actor(self.trace_id);
+        #[cfg(feature = "formal-trace")]
+        super::formal_trace::set_cause(self.trace_origin);
         let healthy_after = self.service.healthiness.healthy_after;
         let poll = Duration::from_millis(1000);
         loop {
@@ -55,11 +76,17 @@ impl Worker {
             // decremented, which would permanently prevent the service becoming Running.
             let suppress = status == HealthinessStatus::Healthy && elapsed < healthy_after;
             if !suppress {
-                self.bus.send_event(Event::HealthCheck(
-                    self.service.name.clone(),
-                    self.attempt_id,
-                    status.clone(),
-                ));
+                #[cfg(feature = "formal-trace")]
+                super::formal_trace::record(
+                    "health_result",
+                    serde_json::json!({
+                        "svc": self.service.name, "good": status == HealthinessStatus::Healthy,
+                        "elapsed_ms": elapsed.as_millis(),
+                        "attempt_id": self.attempt_id,
+                    }),
+                );
+                Event::HealthCheck(self.service.name.clone(), self.attempt_id, status.clone())
+                    .publish(&self.bus);
             }
             // Inside the window, wake up at the boundary instead of only every `poll`, so
             // the service turns green close to the configured time.
@@ -74,6 +101,8 @@ impl Worker {
                 _ => (),
             };
         }
+        #[cfg(feature = "formal-trace")]
+        super::formal_trace::record("worker_end", serde_json::json!({"worker": self.trace_id}));
     }
 }
 
@@ -115,14 +144,16 @@ fn run(bus: BusConnector<Event>, services: Vec<Service>) {
                 if !service.healthiness.has_any_check_defined()
                     && service.healthiness.healthy_after.is_zero()
                 {
-                    bus.send_event(Event::HealthCheck(
-                        s_name,
-                        attempt_id,
-                        HealthinessStatus::Healthy,
-                    ));
+                    Event::HealthCheck(s_name, attempt_id, HealthinessStatus::Healthy)
+                        .publish(&bus);
                     continue;
                 }
                 if let Some((sender, handler)) = workers.remove(&s_name) {
+                    #[cfg(feature = "formal-trace")]
+                    super::formal_trace::record(
+                        "worker_stop_request",
+                        serde_json::json!({"svc": s_name}),
+                    );
                     stop_worker(sender, handler)
                 }
                 let (worker_notifier, work_done_rcv) = unbounded();
@@ -132,12 +163,19 @@ fn run(bus: BusConnector<Event>, services: Vec<Service>) {
             }
             Event::ServiceExited(s_name, _exit_code) => {
                 if let Some((sender, handler)) = workers.remove(&s_name) {
+                    #[cfg(feature = "formal-trace")]
+                    super::formal_trace::record(
+                        "worker_stop_request",
+                        serde_json::json!({"svc": s_name}),
+                    );
                     stop_worker(sender, handler)
                 } else {
                     warn!("Worker thread for {} not found.", s_name);
                 }
             }
             Event::ShuttingDownInitiated(_) => {
+                #[cfg(feature = "formal-trace")]
+                super::formal_trace::record("workers_stop_request", serde_json::json!({}));
                 // Stop all the workers:
                 for (ws, _wh) in workers.values() {
                     // TODO: handle these

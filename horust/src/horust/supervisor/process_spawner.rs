@@ -34,9 +34,28 @@ pub(super) fn prepare_service(
     service: Service,
     backoff: Duration,
     bus: BusConnector<Event>,
+    #[cfg(feature = "formal-trace")] provenance: (u64, u64),
 ) -> Receiver<Preparation> {
     let (sender, receiver) = bounded(1);
+    #[cfg(feature = "formal-trace")]
+    let (request, origin) = provenance;
+    #[cfg(all(test, feature = "formal-trace"))]
+    if super::formal_tests::simulated() {
+        super::formal_tests::intercept_spawn(
+            service.clone(),
+            request,
+            origin,
+            service.start_delay + backoff,
+            bus,
+            sender,
+        );
+        return receiver;
+    }
     std::thread::spawn(move || {
+        #[cfg(feature = "formal-trace")]
+        super::super::formal_trace::set_actor(request);
+        #[cfg(feature = "formal-trace")]
+        super::super::formal_trace::set_cause(origin);
         let total_sleep = service.start_delay.add(backoff);
         let timeout = after(total_sleep);
         let ticker = tick(Duration::from_millis(100));
@@ -57,11 +76,34 @@ pub(super) fn prepare_service(
                     recv(timeout) -> _ => break prepare(service).map(Some),
             }
         };
+        #[cfg(feature = "formal-trace")]
+        super::super::formal_trace::set_cause(origin);
+        #[cfg(feature = "formal-trace")]
+        super::super::formal_trace::record(
+            "preparation_result",
+            serde_json::json!({
+                "request": request, "outcome": preparation_outcome(&result),
+            }),
+        );
         if sender.send(result).is_err() {
             debug!("Discarding preparation for an obsolete service attempt");
         }
+        #[cfg(feature = "formal-trace")]
+        super::super::formal_trace::record(
+            "preparation_worker_end",
+            serde_json::json!({"request": request}),
+        );
     });
     receiver
+}
+
+#[cfg(feature = "formal-trace")]
+pub(super) fn preparation_outcome(result: &Preparation) -> &'static str {
+    match result {
+        Ok(Some(_)) => "ready",
+        Ok(None) => "cancelled",
+        Err(_) => "failed",
+    }
 }
 
 pub(super) fn prepare(service: Service) -> Result<PreparedSpawn> {
@@ -135,6 +177,10 @@ fn child_process_main(
 
 /// Fork the process
 pub(super) fn spawn_process(prepared: PreparedSpawn) -> Result<Pid> {
+    #[cfg(all(test, feature = "formal-trace"))]
+    if super::formal_tests::simulated() {
+        return Ok(super::formal_tests::intercept_fork(&prepared.service));
+    }
     let PreparedSpawn {
         service,
         path,
@@ -166,6 +212,8 @@ pub(super) fn spawn_process(prepared: PreparedSpawn) -> Result<Pid> {
             // descriptor inside the LogOutput::Pipe stays open.
         }
         Ok(ForkResult::Parent { child, .. }) => {
+            #[cfg(feature = "formal-trace")]
+            super::super::formal_trace::birth(&service.name, child.as_raw());
             pipe_read.and_then(|pipe| {
                 drop(pipe_write.unwrap());
                 std::thread::spawn(move || {

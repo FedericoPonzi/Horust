@@ -6,7 +6,7 @@ use std::collections::HashMap;
 use std::fmt::Debug;
 use std::ops::Mul;
 use std::thread;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use crossbeam_channel::{Receiver, TryRecvError};
 use nix::sys::signal;
@@ -21,6 +21,8 @@ use crate::horust::bus::BusConnector;
 use crate::horust::formats::{Event, ExitStatus, Restart, Service, ServiceStatus, ShuttingDown};
 use crate::horust::healthcheck;
 
+#[cfg(all(test, feature = "formal-trace"))]
+mod formal_tests;
 mod process_spawner;
 mod reaper;
 mod repo;
@@ -93,6 +95,14 @@ const MAX_PROCESS_REAPS_ITERS: u32 = 20;
 /// PID 1 is reserved for the init process.
 const INIT_PID: unistd::Pid = unistd::Pid::from_raw(1);
 
+fn clock_now() -> Instant {
+    #[cfg(all(test, feature = "formal-trace"))]
+    if let Some(now) = formal_tests::now() {
+        return now;
+    }
+    Instant::now()
+}
+
 /// Caps the restart delay when the attempts budget is unbounded. Matches the number of
 /// attempts Horust used to default to, so the longest delay stays in a familiar range.
 const MAX_BACKOFF_MULTIPLIER: u32 = 10;
@@ -128,20 +138,90 @@ pub struct Supervisor {
     status: LifecycleStatus,
     repo: Repo,
     preparations: HashMap<String, Receiver<process_spawner::Preparation>>,
+    #[cfg(feature = "formal-trace")]
+    preparation_origins: HashMap<String, (Receiver<process_spawner::Preparation>, u64, u64)>,
 }
 
 impl Supervisor {
     fn new(bus: BusConnector<Event>, services: Vec<Service>) -> Self {
         let repo = Repo::new(bus, services);
-        Self {
+        let supervisor = Self {
             repo,
             status: LifecycleStatus::Running,
             preparations: HashMap::new(),
+            #[cfg(feature = "formal-trace")]
+            preparation_origins: HashMap::new(),
+        };
+        #[cfg(feature = "formal-trace")]
+        if super::formal_trace::enabled() {
+            for name in supervisor
+                .repo
+                .services
+                .keys()
+                .collect::<std::collections::BTreeSet<_>>()
+            {
+                super::formal_trace::service(name);
+            }
+            super::formal_trace::record(
+                "initial",
+                serde_json::json!({
+                    "state": supervisor.trace_state(), "config": supervisor.trace_config(),
+                    "receiver": supervisor.repo.bus.trace_receiver(),
+                }),
+            );
         }
+        supervisor
     }
 
     /// Handle the events, returns Events (state changes) to be dispatched.
     fn handle_event(&mut self, ev: Event) -> Vec<Event> {
+        self.handle_recorded_event(
+            ev,
+            #[cfg(feature = "formal-trace")]
+            false,
+        )
+    }
+
+    fn handle_reaped_event(&mut self, ev: Event) -> Vec<Event> {
+        self.handle_recorded_event(
+            ev,
+            #[cfg(feature = "formal-trace")]
+            true,
+        )
+    }
+
+    fn handle_recorded_event(
+        &mut self,
+        ev: Event,
+        #[cfg(feature = "formal-trace")] reaped: bool,
+    ) -> Vec<Event> {
+        #[cfg(feature = "formal-trace")]
+        let step = super::formal_trace::OwnerStep::enter();
+        #[cfg(feature = "formal-trace")]
+        let before =
+            (step.is_outer() && super::formal_trace::enabled()).then(|| self.trace_state());
+        #[cfg(feature = "formal-trace")]
+        let mut input = super::formal_trace::event(&ev);
+        #[cfg(feature = "formal-trace")]
+        if reaped && let Event::ServiceExited(ref name, _) = ev {
+            input["kind"] = serde_json::json!("ReapedExit");
+            input["pid"] = serde_json::json!(self.repo.services[name].pid.unwrap().as_raw());
+        }
+        let result = self.apply_event(ev);
+        #[cfg(feature = "formal-trace")]
+        if let Some(before) = before {
+            super::formal_trace::record(
+                "step",
+                serde_json::json!({
+                    "before": before, "after": self.trace_state(), "input": input,
+                    "outputs": result.iter().map(super::formal_trace::event).collect::<Vec<_>>(),
+                }),
+            );
+        }
+        result
+    }
+
+    fn apply_event(&mut self, ev: Event) -> Vec<Event> {
         match ev {
             // Reaped exits are applied locally; their bus echoes are notifications only.
             Event::ServiceExited(service_name, exit_code)
@@ -196,6 +276,10 @@ impl Supervisor {
                 vec![Event::StatusChanged(service_name, new_status)]
             }
             Event::Run(service_name) if self.repo.get_sh(&service_name).is_initial() => {
+                #[cfg(feature = "formal-trace")]
+                if let Some((_, request, origin)) = self.preparation_origins.remove(&service_name) {
+                    self.trace_discard_preparation(request, origin);
+                }
                 let service_handler = self.repo.get_mut_sh(&service_name);
                 let Some(attempt_id) = service_handler.attempt_id.checked_add(1) else {
                     error!("Attempt IDs exhausted for service: {service_name}");
@@ -249,11 +333,27 @@ impl Supervisor {
                     &service_handler.service().restart,
                     service_handler.restart_attempts,
                 );
-                let receiver = process_spawner::prepare_service(
-                    service_handler.service().clone(),
-                    backoff,
-                    self.repo.bus.join_bus(),
+                let service = service_handler.service().clone();
+                let bus = self.repo.bus.join_bus();
+                #[cfg(feature = "formal-trace")]
+                let provenance = (
+                    super::formal_trace::spawn_request(&service_name, bus.trace_receiver()),
+                    super::formal_trace::cause(),
                 );
+                let receiver = process_spawner::prepare_service(
+                    service,
+                    backoff,
+                    bus,
+                    #[cfg(feature = "formal-trace")]
+                    provenance,
+                );
+                #[cfg(feature = "formal-trace")]
+                {
+                    self.preparation_origins.insert(
+                        service_name.clone(),
+                        (receiver.clone(), provenance.0, provenance.1),
+                    );
+                }
                 self.preparations.insert(service_name, receiver);
                 evs
             }
@@ -359,17 +459,52 @@ impl Supervisor {
             .preparations
             .iter()
             .filter_map(|(name, receiver)| match receiver.try_recv() {
-                Ok(result) => Some((name.clone(), result)),
+                Ok(result) => Some((name.clone(), result, false)),
                 Err(TryRecvError::Empty) => None,
                 Err(TryRecvError::Disconnected) => Some((
                     name.clone(),
                     Err(anyhow::anyhow!("preparation worker disconnected")),
+                    true,
                 )),
             })
             .collect::<Vec<_>>();
+        #[cfg(all(test, feature = "formal-trace"))]
+        let completed = {
+            let mut completed = completed;
+            if formal_tests::simulated() {
+                completed.sort_by(|a, b| a.0.cmp(&b.0));
+            }
+            completed
+        };
         let mut events = Vec::new();
-        for (name, result) in completed {
-            self.preparations.remove(&name);
+        for (name, result, _disconnected) in completed {
+            #[cfg(feature = "formal-trace")]
+            let context = (super::formal_trace::actor(), super::formal_trace::cause());
+            let _receiver = self.preparations.remove(&name).unwrap();
+            #[cfg(feature = "formal-trace")]
+            let provenance = {
+                let provenance = self.preparation_origins.remove(&name);
+                let provenance = provenance.and_then(|(receiver, request, origin)| {
+                    if receiver.same_channel(&_receiver) {
+                        Some((request, origin))
+                    } else {
+                        self.trace_discard_preparation(request, origin);
+                        None
+                    }
+                });
+                if let Some((request, origin)) = provenance {
+                    super::formal_trace::set_actor(request);
+                    super::formal_trace::set_cause(origin);
+                    super::formal_trace::record(
+                        "preparation_take",
+                        serde_json::json!({
+                            "request": request,
+                            "outcome": if _disconnected { "disconnected" } else { process_spawner::preparation_outcome(&result) },
+                        }),
+                    );
+                }
+                provenance
+            };
             let handler = &self.repo.services[&name];
             if handler.pid.is_some()
                 || !matches!(
@@ -378,7 +513,27 @@ impl Supervisor {
                 )
             {
                 debug!("Discarding preparation for obsolete attempt: {name}");
+                #[cfg(feature = "formal-trace")]
+                if let Some((request, origin)) = provenance {
+                    self.trace_discard_preparation(request, origin);
+                }
+                #[cfg(feature = "formal-trace")]
+                {
+                    super::formal_trace::set_actor(context.0);
+                    super::formal_trace::set_cause(context.1);
+                }
                 continue;
+            }
+            #[cfg(feature = "formal-trace")]
+            if matches!(&result, Ok(Some(_)))
+                && (self.status != LifecycleStatus::Running
+                    || handler.status != ServiceStatus::Starting)
+                && let Some((request, _)) = provenance
+            {
+                super::formal_trace::record(
+                    "preparation_discard",
+                    serde_json::json!({"request": request}),
+                );
             }
             match result {
                 Ok(Some(prepared))
@@ -405,24 +560,78 @@ impl Supervisor {
                     events.extend(self.handle_event(Event::SpawnFailed(name)));
                 }
             }
+            #[cfg(feature = "formal-trace")]
+            {
+                if let Some((request, _)) = provenance {
+                    super::formal_trace::spawn_done(request);
+                }
+                super::formal_trace::set_actor(context.0);
+                super::formal_trace::set_cause(context.1);
+            }
         }
         events
     }
 
     fn register_spawned(&mut self, name: String, pid: unistd::Pid) -> Vec<Event> {
+        #[cfg(feature = "formal-trace")]
+        let before = super::formal_trace::enabled().then(|| self.trace_state());
+        #[cfg(feature = "formal-trace")]
+        let mut input = super::formal_trace::event(&Event::PidChanged(name.clone(), pid));
+        #[cfg(feature = "formal-trace")]
+        {
+            input["kind"] = serde_json::json!("SpawnRegistered");
+        }
         // Registration is local; the bus echoes PidChanged as a notification only.
         self.repo.add_pid(pid, name.clone());
         let handler = self.repo.get_mut_sh(&name);
         handler.pid = Some(pid);
         handler.status = ServiceStatus::Started;
-        vec![
+        let events = vec![
             Event::new_pid_changed(name.clone(), pid),
             Event::StatusChanged(name.clone(), ServiceStatus::Started),
             Event::StartHealthCheck(name, handler.attempt_id),
-        ]
+        ];
+        #[cfg(feature = "formal-trace")]
+        if let Some(before) = before {
+            super::formal_trace::record(
+                "step",
+                serde_json::json!({
+                    "before": before, "after": self.trace_state(), "input": input,
+                    "outputs": events.iter().map(super::formal_trace::event).collect::<Vec<_>>(),
+                }),
+            );
+        }
+        events
+    }
+
+    #[cfg(feature = "formal-trace")]
+    fn trace_discard_preparation(&self, request: u64, origin: u64) {
+        let actor = super::formal_trace::actor();
+        let cause = super::formal_trace::cause();
+        super::formal_trace::set_actor(request);
+        super::formal_trace::set_cause(origin);
+        super::formal_trace::record(
+            "preparation_discard",
+            serde_json::json!({"request": request}),
+        );
+        super::formal_trace::spawn_done(request);
+        super::formal_trace::set_actor(actor);
+        super::formal_trace::set_cause(cause);
+    }
+
+    #[cfg(feature = "formal-trace")]
+    fn discard_preparations(&mut self) {
+        for (_, (_, request, origin)) in self.preparation_origins.drain().collect::<Vec<_>>() {
+            self.trace_discard_preparation(request, origin);
+        }
+        self.preparations.clear();
     }
 
     fn handle_signals(&mut self, pending: u32) {
+        #[cfg(feature = "formal-trace")]
+        if pending > 0 {
+            super::formal_trace::record("signals", serde_json::json!({"pending": pending}));
+        }
         let shutdown = match (self.status, pending) {
             (_, 0) | (LifecycleStatus::ShuttingDown(ShuttingDown::Forcefully), _) => return,
             (LifecycleStatus::Running, 1) => ShuttingDown::Gracefully,
@@ -439,30 +648,41 @@ impl Supervisor {
     fn run(mut self) -> ExitStatus {
         while !self.repo.all_have_finished() {
             // Ingest updates
+            #[cfg(not(feature = "formal-trace"))]
             let received_events = self.repo.get_events();
+            #[cfg(feature = "formal-trace")]
+            let received_events = self.repo.bus.try_get_events_with_ids();
             debug!("Applying events... {:?}", received_events);
             // Handling of the received events and commands:
             let mut produced_events = received_events
                 .into_iter()
-                .flat_map(|ev| self.handle_event(ev))
+                .flat_map(|ev| {
+                    #[cfg(feature = "formal-trace")]
+                    let ev = {
+                        super::formal_trace::set_cause(ev.0);
+                        ev.1
+                    };
+                    self.handle_event(ev)
+                })
                 .collect::<Vec<Event>>();
+            #[cfg(feature = "formal-trace")]
+            super::formal_trace::set_cause(0);
             debug!("Produced events: {:?}", produced_events);
             self.handle_signals(signal_handling::take_pending_signals());
             produced_events.extend(self.spawn_prepared());
             // Account for reaped PIDs before any delayed bus commands can target them.
             let reaped_events = reaper::run(&self.repo, MAX_PROCESS_REAPS_ITERS);
             for event in &reaped_events {
-                produced_events.extend(self.handle_event(event.clone()));
+                produced_events.extend(self.handle_reaped_event(event.clone()));
             }
             produced_events.extend(reaped_events);
             // Producing commands which will be applied in the next iteration
-            let next_evs: Vec<Event> = self
-                .repo
-                .services
-                .iter()
-                .flat_map(|(_s_name, sh)| sh.next(&self.repo, self.status))
-                .collect();
+            let next_evs = self.next_commands();
             debug!("Next evs: {:?}", next_evs);
+            #[cfg(feature = "formal-trace")]
+            self.trace_generated(&next_evs);
+            #[cfg(feature = "formal-trace")]
+            self.trace_publication(&produced_events, &next_evs);
             // Dispatch everything via the bus. Since the bus is run by another thread,
             // the next_evs might not arrive in the next batch, leading to possibly duplicated
             // commands.
@@ -475,15 +695,41 @@ impl Supervisor {
         }
 
         debug!("All services have finished");
+        #[cfg(feature = "formal-trace")]
+        self.discard_preparations();
+        #[cfg(feature = "formal-trace")]
+        if super::formal_trace::enabled() {
+            super::formal_trace::record(
+                "supervisor_finished",
+                serde_json::json!({"state": self.trace_state()}),
+            );
+        }
         // If we're the init system, let's be sure that everything stops before exiting.
         // TODO: Test (probably via docker).
         if unistd::getpid() == INIT_PID {
             let all_processes = unistd::Pid::from_raw(-1);
             let _res = signal::kill(all_processes, signal::SIGTERM);
+            #[cfg(feature = "formal-trace")]
+            super::formal_trace::record(
+                "signal_all",
+                serde_json::json!({"signal": signal::SIGTERM as i32,
+                "errno": _res.err().map(|e| e as i32)}),
+            );
             thread::sleep(Duration::from_secs(3));
             let _res = signal::kill(all_processes, signal::SIGKILL);
+            #[cfg(feature = "formal-trace")]
+            super::formal_trace::record(
+                "signal_all",
+                serde_json::json!({"signal": signal::SIGKILL as i32,
+                "errno": _res.err().map(|e| e as i32)}),
+            );
         }
 
+        #[cfg(feature = "formal-trace")]
+        self.trace_publication(
+            &[Event::ShuttingDownInitiated(ShuttingDown::Gracefully)],
+            &[],
+        );
         self.repo
             .send_ev(Event::ShuttingDownInitiated(ShuttingDown::Gracefully));
         if self.repo.any_finished_failed() {
@@ -492,15 +738,126 @@ impl Supervisor {
             ExitStatus::Successful
         }
     }
+
+    #[cfg(feature = "formal-trace")]
+    fn trace_publication(&self, produced: &[Event], generated: &[Event]) {
+        if super::formal_trace::enabled() {
+            super::formal_trace::record(
+                "publish",
+                serde_json::json!({
+                    "events": produced.iter().chain(generated)
+                        .map(super::formal_trace::event).collect::<Vec<_>>(),
+                }),
+            );
+        }
+    }
+
+    #[cfg(feature = "formal-trace")]
+    fn trace_generated(&self, events: &[Event]) {
+        if super::formal_trace::enabled() {
+            let order = self.repo.services.keys().collect::<Vec<_>>();
+            #[cfg(all(test, feature = "formal-trace"))]
+            let order = formal_tests::order(order);
+            super::formal_trace::record(
+                "generate",
+                serde_json::json!({
+                    "state": self.trace_state(),
+                    "events": events.iter().map(super::formal_trace::event).collect::<Vec<_>>(),
+                    "order": order.into_iter().map(|n| super::formal_trace::service(n)).collect::<Vec<_>>(),
+                }),
+            );
+        }
+    }
+
+    fn next_commands(&self) -> Vec<Event> {
+        #[cfg(all(test, feature = "formal-trace"))]
+        if formal_tests::simulated() {
+            return formal_tests::order(self.repo.services.keys().collect())
+                .into_iter()
+                .flat_map(|name| self.repo.services[name].next(&self.repo, self.status))
+                .collect();
+        }
+        self.repo
+            .services
+            .values()
+            .flat_map(|sh| sh.next(&self.repo, self.status))
+            .collect()
+    }
+
+    #[cfg(feature = "formal-trace")]
+    fn trace_state(&self) -> serde_json::Value {
+        let services = self.repo.services.iter().map(|(name, sh)| {
+                (super::formal_trace::service(name), serde_json::json!({
+                    "status": sh.status, "pid": sh.pid.map_or(0, |p| p.as_raw()),
+                    "retries": sh.restart_attempts, "hc": sh.healthiness_checks_failed.unwrap_or(-1),
+                    "attempt_id": sh.attempt_id,
+                    "timer": sh.shutting_down_start.is_some(),
+                }))
+            }).collect::<std::collections::BTreeMap<_, _>>();
+        let mut pid_map = self
+            .repo
+            .pid_map
+            .iter()
+            .map(|(pid, s)| (pid.as_raw(), super::formal_trace::service(s)))
+            .collect::<Vec<_>>();
+        pid_map.sort();
+        serde_json::json!({
+            "phase": match self.status {
+                LifecycleStatus::Running => "Running",
+                LifecycleStatus::ShuttingDown(ShuttingDown::Gracefully) => "Graceful",
+                LifecycleStatus::ShuttingDown(ShuttingDown::Forcefully) => "Forceful",
+            },
+            "services": services, "pid_map": pid_map,
+        })
+    }
+
+    #[cfg(feature = "formal-trace")]
+    fn trace_config(&self) -> serde_json::Value {
+        serde_json::Value::Object(self.repo
+            .services
+            .iter()
+            .map(|(name, sh)| {
+                let svc = sh.service();
+                (
+                    super::formal_trace::service(name),
+                    serde_json::json!({
+                        "strategy": format!("{:?}", svc.restart.strategy),
+                        "attempts": svc.restart.attempts, "max_failed": svc.healthiness.max_failed,
+                        "start_after": svc.start_after.iter().map(|n| super::formal_trace::service(n)).collect::<Vec<_>>(),
+                        "shutdown_after": svc.shutdown_after.iter().map(|n| super::formal_trace::service(n)).collect::<Vec<_>>(),
+                        "failure": format!("{:?}", svc.failure.strategy),
+                        "die_if_failed": svc.termination.die_if_failed.iter().map(|n| super::formal_trace::service(n)).collect::<Vec<_>>(),
+                        "successful_codes": svc.failure.successful_exit_code,
+                        "wait_secs": svc.termination.wait.as_secs(),
+                        "healthy_after_ms": svc.healthiness.healthy_after.as_millis(),
+                        "checks": svc.healthiness.has_any_check_defined(),
+                    }),
+                )
+            })
+            .collect())
+    }
 }
 
 /// A Kill wrapper which will send a signal to sh.
 /// It will send the signal set out in the termination section of the service
 fn kill(sh: &ServiceHandler, signal: Option<signal::Signal>) {
     let signal = signal.unwrap_or_else(|| sh.service().termination.signal.into());
+    #[cfg(all(test, feature = "formal-trace"))]
+    if formal_tests::intercept_signal(sh, signal) {
+        return;
+    }
     debug!("Going to send {} signal to pid {:?}", signal, sh.pid());
     if let Some(pid) = sh.pid() {
-        if let Err(error) = signal::kill(pid, signal) {
+        let result = signal::kill(pid, signal);
+        #[cfg(feature = "formal-trace")]
+        super::formal_trace::record(
+            "signal",
+            serde_json::json!({
+                "svc": sh.name(), "pid": pid.as_raw(), "signal": signal as i32,
+                "errno": result.as_ref().err().map(|e| *e as i32),
+            }),
+        );
+        if let Err(error) = result {
             match error {
                 // No process or process group can be found corresponding to that specified by pid
                 // It has exited already, so it's fine.

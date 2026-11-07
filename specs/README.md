@@ -11,6 +11,7 @@ arbitrary Rust executions refine the models.
 | `ProcessExtended.tla` | One service with health, restart budgets, delays and termination | `ExtendedStartup`, `ExtendedFailures`, `ExtendedTerm` |
 | `ProcessRules.tla` | Shared pure state-transition and policy functions | Used by `ProcessExtended` |
 | `Horust.tla` | Two/three services, bounded command delivery, dependencies and failure propagation; refines `Supervisor` | `Horust*.cfg` |
+| `TraceValidation.tla` | Checks finite instrumented Rust executions against lifecycle transitions and expected outputs | `TraceValidation`, with generated `TraceData.tla` |
 
 ## Checked refinement
 
@@ -71,12 +72,16 @@ java -Xmx2g -cp "$TLC_JAR" tlc2.TLC -noGenerateSpecTE -workers 1 \
   -config configs/HorustFanIn.cfg -metadir "$states" Horust.tla
 ```
 
-All 22 configurations were checked: 20 should finish without errors. Two are
+The 22 standalone configurations were checked: 20 should finish without errors. Two are
 intentionally negative (exit 13):
 `HorustCycle` has cyclic startup prerequisites (`StartupProgress` fails);
 `HorustShutdownCycle` starts independent services but has cyclic shutdown ordering
 (`ShutdownProgress` fails). Global escalation is possible, not assumed fair, so
 the second counterexample legitimately remains in graceful shutdown.
+
+`TraceValidation` is not a standalone scenario: the
+[trace validator](../tools/formal/README.md) generates its input module from an
+instrumented execution and checks it separately.
 
 ## Contracts and assumptions
 
@@ -134,7 +139,7 @@ The models express intended admission and shutdown ordering, including recheckin
 queued decisions at delivery. Do not infer that every implementation boundary,
 kernel/PID-1 behavior, resource limit, health-worker incarnation or IPC operation
 has been verified by these standalone models. Rust trace validation and fuzzing
-are separate tooling, not included in this specs-only change.
+are separate tooling; see [the local verification guide](../tools/formal/README.md).
 In particular, the persistent victim guard and dependency recheck are desired
 delivery contracts, not evidence that master implements that ledger or every
 recheck; the checked relation is between TLA+ models, not from Rust to TLA+.

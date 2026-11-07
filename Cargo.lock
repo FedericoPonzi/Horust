@@ -697,6 +697,7 @@ dependencies = [
  "rand",
  "reqwest",
  "serde",
+ "serde_json",
  "shellexpand",
  "shlex 2.0.1",
  "tempfile",

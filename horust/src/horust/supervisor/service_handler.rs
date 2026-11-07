@@ -131,7 +131,7 @@ impl ServiceHandler {
     }
 
     pub fn shutting_down_started(&mut self) {
-        self.shutting_down_start = Some(Instant::now());
+        self.shutting_down_start = Some(super::clock_now());
     }
 }
 
@@ -362,17 +362,39 @@ fn should_force_kill(
     service_handler: &ServiceHandler,
     shutting_down: impl Into<Option<ShuttingDown>>,
 ) -> bool {
+    let shutting_down = shutting_down.into();
+    let elapsed_secs = service_handler
+        .shutting_down_start
+        .map(|t| super::clock_now().saturating_duration_since(t).as_secs());
+    let result = force_kill_due(service_handler, shutting_down, elapsed_secs);
+    #[cfg(feature = "formal-trace")]
+    crate::horust::formal_trace::record(
+        "deadline",
+        serde_json::json!({
+            "svc": service_handler.name(), "due": result,
+            "elapsed_secs": elapsed_secs,
+            "wait_secs": service_handler.service().termination.wait.as_secs(),
+            "forced": shutting_down == Some(ShuttingDown::Forcefully),
+        }),
+    );
+    result
+}
+
+fn force_kill_due(
+    service_handler: &ServiceHandler,
+    shutting_down: Option<ShuttingDown>,
+    elapsed_secs: Option<u64>,
+) -> bool {
     if service_handler.pid.is_none() {
         // Since it was in the started state, it doesn't have a pid yet.
         // Let's give it the time to start and exit.
         return false;
     }
-    if let Some(ShuttingDown::Forcefully) = shutting_down.into() {
+    if let Some(ShuttingDown::Forcefully) = shutting_down {
         debug!("{}, should force kill.", service_handler.name());
         return true;
     }
-    if let Some(shutting_down_elapsed_secs) = service_handler.shutting_down_start {
-        let shutting_down_elapsed_secs = shutting_down_elapsed_secs.elapsed().as_secs();
+    if let Some(shutting_down_elapsed_secs) = elapsed_secs {
         debug!(
             "{}, should not force kill. Elapsed: {}, termination wait: {}",
             service_handler.name(),

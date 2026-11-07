@@ -13,6 +13,12 @@ use std::{
 
 use crossbeam_channel::{Receiver, Sender, unbounded};
 
+struct Subscriber<T: Clone> {
+    sender: Sender<Message<T>>,
+    #[cfg(feature = "formal-trace")]
+    id: u64,
+}
+
 /// Bus state shared between `Bus` and all `BusConnector` instances.
 /// It contains all necessary components to send data and join the bus.
 #[derive(Clone)]
@@ -23,7 +29,7 @@ where
     /// Bus input - sender side
     sender: Sender<Message<T>>,
     /// Bus output - all the senders
-    senders: Arc<Mutex<Vec<Sender<Message<T>>>>>,
+    senders: Arc<Mutex<Vec<Subscriber<T>>>>,
 }
 
 impl<T> SharedState<T>
@@ -35,9 +41,23 @@ where
         let mut senders = self.senders.lock().unwrap();
 
         let (sender, receiver) = unbounded();
-        senders.push(sender);
+        #[cfg(feature = "formal-trace")]
+        let receiver_id = {
+            let id = super::formal_trace::id();
+            super::formal_trace::record("join", serde_json::json!({"receiver": id}));
+            id
+        };
+        senders.push(Subscriber {
+            sender,
+            #[cfg(feature = "formal-trace")]
+            id: receiver_id,
+        });
 
-        BusConnector::new(receiver, self.clone())
+        #[cfg(feature = "formal-trace")]
+        let connector = BusConnector::new(receiver, self.clone(), receiver_id);
+        #[cfg(not(feature = "formal-trace"))]
+        let connector = BusConnector::new(receiver, self.clone());
+        connector
     }
 }
 
@@ -107,8 +127,26 @@ where
     fn dispatch(self) {
         drop(self.state.sender);
         for ev in self.receiver {
-            let mut senders = self.state.senders.lock().unwrap();
-            senders.retain(|sender| sender.send(ev.clone()).is_ok());
+            Self::distribute(&self.state.senders, ev);
+        }
+    }
+
+    fn distribute(subscribers: &Mutex<Vec<Subscriber<T>>>, ev: Message<T>) {
+        let mut senders = subscribers.lock().unwrap();
+        #[cfg(feature = "formal-trace")]
+        super::formal_trace::record(
+            "dispatch",
+            serde_json::json!({
+                "message": ev.id, "receivers": senders.iter().map(|s| s.id).collect::<Vec<_>>(),
+            }),
+        );
+        senders.retain(|subscriber| subscriber.sender.send(ev.clone()).is_ok());
+    }
+
+    #[cfg(all(test, feature = "formal-trace"))]
+    pub(crate) fn pump(&self) {
+        for ev in self.receiver.try_iter() {
+            Self::distribute(&self.state.senders, ev);
         }
     }
 }
@@ -120,6 +158,8 @@ where
     T: Clone,
 {
     payload: T,
+    #[cfg(feature = "formal-trace")]
+    id: u64,
 }
 
 impl<T> Message<T>
@@ -127,7 +167,11 @@ where
     T: Clone,
 {
     pub fn new(payload: T) -> Self {
-        Self { payload }
+        Self {
+            payload,
+            #[cfg(feature = "formal-trace")]
+            id: super::formal_trace::id(),
+        }
     }
 
     /// Consume the messages into the payload
@@ -143,6 +187,8 @@ where
 {
     state: SharedState<T>,
     receiver: Receiver<Message<T>>,
+    #[cfg(feature = "formal-trace")]
+    receiver_id: u64,
 }
 
 impl<T: Debug + Clone> Debug for BusConnector<T> {
@@ -155,12 +201,28 @@ impl<T: Debug + Clone> Debug for BusConnector<T> {
     }
 }
 
+#[cfg(feature = "formal-trace")]
+impl<T: Clone> Drop for BusConnector<T> {
+    fn drop(&mut self) {
+        super::formal_trace::record("leave", serde_json::json!({"receiver": self.receiver_id}));
+    }
+}
+
 impl<T> BusConnector<T>
 where
     T: Clone,
 {
-    fn new(receiver: Receiver<Message<T>>, state: SharedState<T>) -> Self {
-        Self { receiver, state }
+    fn new(
+        receiver: Receiver<Message<T>>,
+        state: SharedState<T>,
+        #[cfg(feature = "formal-trace")] receiver_id: u64,
+    ) -> Self {
+        Self {
+            receiver,
+            state,
+            #[cfg(feature = "formal-trace")]
+            receiver_id,
+        }
     }
 
     /// Add another connection to the bus
@@ -183,19 +245,77 @@ where
     }
 
     pub fn iter(&self) -> impl Iterator<Item = T> + '_ {
-        self.receiver.iter().map(|message| message.into_payload())
+        self.receiver
+            .iter()
+            .map(|message| self.unwrap_message(message))
     }
 
     /// Non blocking
     /// Todo: rename to be generic.
     pub fn try_get_events(&self) -> Vec<T> {
-        self.receiver.try_iter().map(|m| m.into_payload()).collect()
+        self.receiver
+            .try_iter()
+            .map(|m| self.unwrap_message(m))
+            .collect()
+    }
+
+    fn unwrap_message(&self, message: Message<T>) -> T {
+        #[cfg(feature = "formal-trace")]
+        {
+            super::formal_trace::record(
+                "receive",
+                serde_json::json!({
+                    "message": message.id, "receiver": self.receiver_id,
+                }),
+            );
+            super::formal_trace::set_cause(message.id);
+        }
+        message.into_payload()
+    }
+
+    #[cfg(feature = "formal-trace")]
+    pub(crate) fn trace_receiver(&self) -> u64 {
+        self.receiver_id
+    }
+
+    #[cfg(feature = "formal-trace")]
+    pub(crate) fn try_get_events_with_ids(&self) -> Vec<(u64, T)> {
+        self.receiver
+            .try_iter()
+            .map(|message| {
+                let id = message.id;
+                (id, self.unwrap_message(message))
+            })
+            .collect()
+    }
+
+    #[cfg(feature = "formal-trace")]
+    pub(crate) fn send_recorded_event(&self, ev: T, metadata: serde_json::Value) {
+        let message = self.wrap(ev);
+        super::formal_trace::record(
+            "send",
+            serde_json::json!({
+                "message": message.id, "event": metadata, "sender": self.receiver_id,
+            }),
+        );
+        self.state
+            .sender
+            .send(message)
+            .expect("Failed sending update event!");
     }
 
     pub fn send_event(&self, ev: T) {
+        let message = self.wrap(ev);
+        #[cfg(feature = "formal-trace")]
+        super::formal_trace::record(
+            "send",
+            serde_json::json!({
+                "message": message.id, "event": null, "sender": self.receiver_id,
+            }),
+        );
         self.state
             .sender
-            .send(self.wrap(ev))
+            .send(message)
             .expect("Failed sending update event!");
     }
 }
